@@ -12,3 +12,4 @@ devenv.local.yaml
 # ai
 .claude/
 .specify/
+specs/
