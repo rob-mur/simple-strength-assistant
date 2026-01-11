@@ -1,5 +1,11 @@
 {pkgs, ...}: {
-  packages = with pkgs; [git spec-kit claude-code gh trunk];
+  packages = with pkgs; [
+    git
+    spec-kit
+    claude-code
+    gh
+    trunk
+  ];
 
   languages.rust = {
     enable = true;
