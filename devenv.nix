@@ -5,5 +5,5 @@
   inputs,
   ...
 }: {
-  packages = with pkgs; [git spec-kit claude-code];
+  packages = with pkgs; [git spec-kit claude-code gh];
 }
