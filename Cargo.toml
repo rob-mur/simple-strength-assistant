@@ -1,10 +1,10 @@
 [package]
 name = "simple-strength-assistant"
 version = "0.1.0"
-edition = "2021"
+edition = "2024"
 authors = ["rob-mur"]
 description = "A simple strength training assistant built with Rust and Dioxus"
-license = "MIT"
+license = "AGPLv3"
 
 [dependencies]
 dioxus = "0.6"
