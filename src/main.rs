@@ -1,3 +1,7 @@
+mod app;
+
+use app::App;
+
 fn main() {
-    println!("Simple Strength Assistant");
+    dioxus::launch(App);
 }
