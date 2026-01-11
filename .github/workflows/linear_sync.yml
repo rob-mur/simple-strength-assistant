@@ -1,0 +1,24 @@
+name: Sync Linear Issue to PR
+on:
+  pull_request:
+    types: [opened, edited]
+
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Find and Fetch Linear Issue
+        id: linear
+        uses: nrpx/action-find-linear-issue@v1.3
+        with:
+          linear-api-key: ${{ secrets.LINEAR_API_KEY }}
+
+      - name: Update PR Description
+        uses: mshick/add-pr-comment@v2
+        with:
+          message: |
+            ### 📝 Linear Issue Context
+            **Title:** ${{ steps.linear.outputs.issue-title }}
+            **Description:**
+            ${{ steps.linear.outputs.issue-description }}
+          allow-repeats: false
