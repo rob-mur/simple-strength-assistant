@@ -1,3 +1,13 @@
+# Rust
+target/
+Cargo.lock
+
+# Build artifacts
+dist/
+
+# Node modules
+node_modules/
+
 # Devenv
 .devenv*
 devenv.local.nix
