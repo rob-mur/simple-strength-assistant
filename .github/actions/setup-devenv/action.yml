@@ -14,14 +14,6 @@ runs:
       with:
         name: devenv
 
-    - name: Cache Nix store
-      uses: actions/cache@v4
-      with:
-        path: /nix/store
-        key: nix-${{ runner.os }}-${{ hashFiles('devenv.nix', 'devenv.lock', 'package-lock.json') }}
-        restore-keys: |
-          nix-${{ runner.os }}-
-
     - name: Cache node_modules
       uses: actions/cache@v4
       with:
