@@ -17,8 +17,8 @@
   scripts = {
     dev.exec = "trunk serve";
     build.exec = "trunk build --release";
-    fmt.exec = "cargo fmt";
-    fmt-check.exec = "cargo fmt -- --check";
+    format.exec = "cargo fmt";
+    format-check.exec = "cargo fmt -- --check";
     lint.exec = "cargo clippy -- -D warnings";
     test.exec = "cargo test";
   };
