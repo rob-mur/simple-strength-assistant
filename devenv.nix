@@ -14,12 +14,21 @@
     targets = ["wasm32-unknown-unknown"];
   };
 
+  languages.javascript = {
+    enable = true;
+    npm = {
+      enable = true;
+      install.enable = true;
+    };
+  };
+
   scripts = {
     dev.exec = "trunk serve";
     build.exec = "trunk build --release";
     format.exec = "cargo fmt";
-    format-check.exec = "cargo fmt -- --check";
-    lint.exec = "cargo clippy -- -D warnings";
+    lint.exec = "./scripts/lint.sh";
     test.exec = "cargo test";
   };
+
+  enterTest = "cargo test";
 }
