@@ -1,0 +1,36 @@
+name: Setup devenv
+description: Install and configure devenv with caching
+
+runs:
+  using: composite
+  steps:
+    - name: Install Nix
+      uses: cachix/install-nix-action@v27
+      with:
+        nix_path: nixpkgs=channel:nixos-unstable
+
+    - name: Install devenv
+      uses: cachix/cachix-action@v15
+      with:
+        name: devenv
+
+    - name: Cache Nix store
+      uses: actions/cache@v4
+      with:
+        path: /nix/store
+        key: nix-${{ runner.os }}-${{ hashFiles('devenv.nix', 'devenv.lock', 'package-lock.json') }}
+        restore-keys: |
+          nix-${{ runner.os }}-
+
+    - name: Cache node_modules
+      uses: actions/cache@v4
+      with:
+        path: node_modules
+        key: node-modules-${{ runner.os }}-${{ hashFiles('package-lock.json') }}
+        restore-keys: |
+          node-modules-${{ runner.os }}-
+
+    - name: Install devenv CLI
+      shell: bash
+      run: |
+        nix profile install nixpkgs#devenv
