@@ -73,6 +73,9 @@ jobs:
           echo "Dist directory contents:"
           find dist/ -type f
 
+      - name: Copy Vercel configuration
+        run: cp vercel.json dist/vercel.json
+
       # Deploy to Vercel
       - name: Deploy to Vercel Preview
         uses: amondnet/vercel-action@v25
