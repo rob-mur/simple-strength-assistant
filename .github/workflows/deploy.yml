@@ -1,0 +1,84 @@
+name: Production Deployment
+
+on:
+  push:
+    branches:
+      - main
+
+jobs:
+  deploy-production:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    permissions:
+      contents: read
+      deployments: write
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Extract PR number from merge commit
+        id: extract-pr
+        run: |
+          PR_NUMBER=$(git log -1 --pretty=%B | grep -oP '(?<=#)\d+' || echo "")
+          echo "pr_number=$PR_NUMBER" >> $GITHUB_OUTPUT
+          if [ -n "$PR_NUMBER" ]; then
+            echo "Found PR number: $PR_NUMBER"
+          else
+            echo "No PR number found (direct commit to main)"
+          fi
+
+      - name: Download build artifacts from merged PR
+        id: download-artifact
+        if: steps.extract-pr.outputs.pr_number != ''
+        uses: dawidd6/action-download-artifact@v6
+        continue-on-error: true
+        with:
+          workflow: ci.yml
+          pr: ${{ steps.extract-pr.outputs.pr_number }}
+          name: build-artifacts
+          path: dist/
+          check_artifacts: true
+
+      - name: Check if artifact was downloaded
+        id: check-artifact
+        run: |
+          if [ -f "dist/index.html" ]; then
+            echo "artifact_found=true" >> $GITHUB_OUTPUT
+            echo "✅ Successfully downloaded artifact from PR #${{ steps.extract-pr.outputs.pr_number }}"
+          else
+            echo "artifact_found=false" >> $GITHUB_OUTPUT
+            echo "⚠️  Artifact not found, will rebuild from source"
+          fi
+
+      - name: Setup devenv (if rebuild needed)
+        if: steps.check-artifact.outputs.artifact_found == 'false'
+        uses: ./.github/actions/setup-devenv
+
+      - name: Rebuild project (if artifact not found)
+        if: steps.check-artifact.outputs.artifact_found == 'false'
+        run: devenv shell build
+
+      - name: Copy Vercel configuration
+        run: cp vercel.json dist/vercel.json
+
+      - name: Deploy to Vercel Production
+        uses: amondnet/vercel-action@v25
+        id: deploy
+        with:
+          vercel-token: ${{ secrets.VERCEL_TOKEN }}
+          vercel-org-id: ${{ secrets.VERCEL_ORG_ID }}
+          vercel-project-id: ${{ secrets.VERCEL_PROJECT_ID }}
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          working-directory: ./dist
+          scope: ${{ secrets.VERCEL_ORG_ID }}
+          vercel-args: '--prod'
+
+      - name: Deployment Summary
+        run: |
+          echo "### Deployment Complete! 🚀" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "- **Environment**: Production" >> $GITHUB_STEP_SUMMARY
+          echo "- **Build Source**: ${{ steps.check-artifact.outputs.artifact_found == 'true' && 'Downloaded from PR' || 'Fresh rebuild' }}" >> $GITHUB_STEP_SUMMARY
+          echo "- **Deployment URL**: ${{ steps.deploy.outputs.preview-url }}" >> $GITHUB_STEP_SUMMARY
