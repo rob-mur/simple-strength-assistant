@@ -1,0 +1,95 @@
+name: Preview Deployment
+
+on:
+  workflow_run:
+    workflows: ["CI"]
+    types:
+      - completed
+    branches:
+      - '**'
+
+# Cancel in-progress deployments for the same PR
+concurrency:
+  group: preview-${{ github.event.workflow_run.head_branch }}
+  cancel-in-progress: true
+
+jobs:
+  deploy-preview:
+    # Only run on PRs when CI succeeded
+    if: |
+      github.event.workflow_run.conclusion == 'success' &&
+      github.event.workflow_run.event == 'pull_request'
+
+    runs-on: ubuntu-latest
+
+    permissions:
+      contents: read
+      pull-requests: write  # For PR comments
+      deployments: write    # For deployment status
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.workflow_run.head_sha }}
+          fetch-depth: 1
+
+      # Primary strategy: Download artifact from CI
+      - name: Download build artifacts from CI
+        id: download-artifact
+        uses: dawidd6/action-download-artifact@v6
+        continue-on-error: true
+        with:
+          workflow: ci.yml
+          workflow_conclusion: success
+          name: build-artifacts
+          path: dist/
+          run_id: ${{ github.event.workflow_run.id }}
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Verify artifact download
+        id: check-artifact
+        run: |
+          if [ "${{ steps.download-artifact.outcome }}" == "success" ] && [ -f "dist/index.html" ]; then
+            echo "strategy=cached" >> $GITHUB_OUTPUT
+            echo "✅ Using cached build artifacts from CI workflow"
+          else
+            echo "strategy=rebuild" >> $GITHUB_OUTPUT
+            echo "⚠️  Artifact download failed, will rebuild"
+          fi
+
+      # Fallback strategy: Rebuild if artifact unavailable
+      - name: Setup devenv (fallback)
+        if: steps.check-artifact.outputs.strategy == 'rebuild'
+        uses: ./.github/actions/setup-devenv
+
+      - name: Build project (fallback)
+        if: steps.check-artifact.outputs.strategy == 'rebuild'
+        run: devenv shell build
+
+      - name: Verify dist directory
+        run: |
+          ls -lah dist/
+          echo "Dist directory contents:"
+          find dist/ -type f
+
+      # Deploy to Vercel
+      - name: Deploy to Vercel Preview
+        uses: amondnet/vercel-action@v25
+        id: vercel-deploy
+        with:
+          vercel-token: ${{ secrets.VERCEL_TOKEN }}
+          vercel-org-id: ${{ secrets.VERCEL_ORG_ID }}
+          vercel-project-id: ${{ secrets.VERCEL_PROJECT_ID }}
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          working-directory: ./dist
+          scope: ${{ secrets.VERCEL_ORG_ID }}
+          github-comment: true
+
+      - name: Deployment Summary
+        run: |
+          echo "## 🚀 Deployment Complete" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "- **Strategy**: ${{ steps.check-artifact.outputs.strategy }}" >> $GITHUB_STEP_SUMMARY
+          echo "- **Preview URL**: ${{ steps.vercel-deploy.outputs.preview-url }}" >> $GITHUB_STEP_SUMMARY
+          echo "- **Deployment ID**: ${{ steps.vercel-deploy.outputs.preview-name }}" >> $GITHUB_STEP_SUMMARY
