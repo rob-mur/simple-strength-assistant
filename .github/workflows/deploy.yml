@@ -45,4 +45,5 @@ jobs:
           working-directory: ./dist
           scope: ${{ secrets.VERCEL_ORG_ID }}
           vercel-args: '--prod'
+          github-comment: false
 
