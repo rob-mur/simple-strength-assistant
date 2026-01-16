@@ -58,7 +58,7 @@ jobs:
         with:
           name: build-artifacts
           path: dist/
-          retention-days: 30
+          retention-days: 7
 
   deploy-preview:
     needs: build

@@ -1,10 +1,7 @@
 name: Production Deployment
 
 on:
-  workflow_run:
-    workflows: ["CI"]
-    types:
-      - completed
+  push:
     branches:
       - main
 
@@ -16,78 +13,25 @@ jobs:
   deploy-production:
     runs-on: ubuntu-latest
     timeout-minutes: 15
-    # Only deploy if CI workflow completed successfully
-    if: github.event.workflow_run.conclusion == 'success'
 
     permissions:
       contents: read
       deployments: write
-      pull-requests: read
 
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
-
-      - name: Find PR associated with commit
-        id: extract-pr
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: |
-          # Use GitHub API to find PRs associated with the commit that triggered CI
-          # Use workflow_run.head_sha, not github.sha (which is the main branch tip)
-          COMMIT_SHA="${{ github.event.workflow_run.head_sha }}"
-
-          # Try to get PR number from API
-          if PR_DATA=$(gh api "/repos/${{ github.repository }}/commits/${COMMIT_SHA}/pulls" 2>&1); then
-            PR_NUMBER=$(echo "$PR_DATA" | jq -r '.[0].number // empty')
-
-            if [ -n "$PR_NUMBER" ] && [ "$PR_NUMBER" != "null" ]; then
-              echo "pr_number=$PR_NUMBER" >> $GITHUB_OUTPUT
-              echo "✅ Found PR #$PR_NUMBER associated with commit ${COMMIT_SHA:0:7}"
-            else
-              echo "pr_number=" >> $GITHUB_OUTPUT
-              echo "ℹ️  No PR associated with this commit (direct commit to main)"
-            fi
-          else
-            echo "pr_number=" >> $GITHUB_OUTPUT
-            echo "⚠️  GitHub API call failed, will rebuild from source"
-            echo "Error: $PR_DATA"
-          fi
-
-      - name: Download build artifacts from CI workflow
-        id: download-artifact
-        uses: actions/download-artifact@v4
-        continue-on-error: true
         with:
-          name: build-artifacts
-          path: dist/
-          github-token: ${{ secrets.GITHUB_TOKEN }}
-          repository: ${{ github.repository }}
-          run-id: ${{ github.event.workflow_run.id }}
+          fetch-depth: 0
 
-      - name: Check if artifact was downloaded
-        id: check-artifact
-        run: |
-          if [ -f "dist/index.html" ]; then
-            echo "artifact_found=true" >> $GITHUB_OUTPUT
-            echo "✅ Successfully downloaded artifact from PR #${{ steps.extract-pr.outputs.pr_number }}"
-          else
-            echo "artifact_found=false" >> $GITHUB_OUTPUT
-            echo "⚠️  Artifact not found, will rebuild from source"
-          fi
-
-      - name: Setup devenv (if rebuild needed)
-        if: steps.check-artifact.outputs.artifact_found != 'true'
+      - name: Setup devenv
         uses: ./.github/actions/setup-devenv
 
-      - name: Rebuild project (if artifact not found)
-        if: steps.check-artifact.outputs.artifact_found != 'true'
+      - name: Build project
         run: devenv shell build
 
       - name: Copy Vercel configuration
         run: |
-          # Copy vercel.json into dist/ for deployment
-          # This ensures WASM CORS headers and SPA routing are configured
           cp vercel.json dist/vercel.json
 
       - name: Deploy to Vercel Production
@@ -102,24 +46,3 @@ jobs:
           scope: ${{ secrets.VERCEL_ORG_ID }}
           vercel-args: '--prod'
 
-      - name: Deployment Summary
-        if: success()
-        run: |
-          echo "### Deployment Complete! 🚀" >> $GITHUB_STEP_SUMMARY
-          echo "" >> $GITHUB_STEP_SUMMARY
-          echo "- **Environment**: Production" >> $GITHUB_STEP_SUMMARY
-          echo "- **Build Source**: ${{ steps.check-artifact.outputs.artifact_found == 'true' && 'Downloaded from CI workflow' || 'Fresh rebuild' }}" >> $GITHUB_STEP_SUMMARY
-          echo "- **Production URL**: ${{ steps.deploy.outputs.preview-url }}" >> $GITHUB_STEP_SUMMARY
-          echo "" >> $GITHUB_STEP_SUMMARY
-          echo "> Note: Despite the output variable name, this is the production deployment URL" >> $GITHUB_STEP_SUMMARY
-
-      - name: Deployment Failure Notification
-        if: failure()
-        run: |
-          echo "### Deployment Failed ❌" >> $GITHUB_STEP_SUMMARY
-          echo "" >> $GITHUB_STEP_SUMMARY
-          echo "The production deployment did not complete successfully." >> $GITHUB_STEP_SUMMARY
-          echo "Check the workflow logs for details." >> $GITHUB_STEP_SUMMARY
-          echo "" >> $GITHUB_STEP_SUMMARY
-          echo "- **Triggered by**: CI workflow run ${{ github.event.workflow_run.id }}" >> $GITHUB_STEP_SUMMARY
-          echo "- **Commit**: ${{ github.event.workflow_run.head_sha }}" >> $GITHUB_STEP_SUMMARY
