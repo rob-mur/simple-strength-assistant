@@ -1,0 +1,48 @@
+name: Production Deployment
+
+on:
+  push:
+    branches:
+      - main
+
+concurrency:
+  group: production-deployment
+  cancel-in-progress: false
+
+jobs:
+  deploy-production:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    permissions:
+      contents: read
+      deployments: write
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Setup devenv
+        uses: ./.github/actions/setup-devenv
+
+      - name: Build project
+        run: devenv shell build
+
+      - name: Copy Vercel configuration
+        run: |
+          cp vercel.json dist/vercel.json
+
+      - name: Deploy to Vercel Production
+        uses: amondnet/vercel-action@v25
+        id: deploy
+        with:
+          vercel-token: ${{ secrets.VERCEL_TOKEN }}
+          vercel-org-id: ${{ secrets.VERCEL_ORG_ID }}
+          vercel-project-id: ${{ secrets.VERCEL_PROJECT_ID }}
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          working-directory: ./dist
+          scope: ${{ secrets.VERCEL_ORG_ID }}
+          vercel-args: '--prod'
+
