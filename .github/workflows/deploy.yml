@@ -1,7 +1,10 @@
 name: Production Deployment
 
 on:
-  push:
+  workflow_run:
+    workflows: ["CI"]
+    types:
+      - completed
     branches:
       - main
 
@@ -9,6 +12,8 @@ jobs:
   deploy-production:
     runs-on: ubuntu-latest
     timeout-minutes: 15
+    # Only deploy if CI workflow completed successfully
+    if: github.event.workflow_run.conclusion == 'success'
 
     permissions:
       contents: read
@@ -25,14 +30,22 @@ jobs:
         run: |
           # Use GitHub API to find PRs associated with this commit
           COMMIT_SHA="${{ github.sha }}"
-          PR_NUMBER=$(gh api "/repos/${{ github.repository }}/commits/${COMMIT_SHA}/pulls" \
-            --jq '.[0].number' 2>/dev/null || echo "")
 
-          echo "pr_number=$PR_NUMBER" >> $GITHUB_OUTPUT
-          if [ -n "$PR_NUMBER" ]; then
-            echo "✅ Found PR #$PR_NUMBER associated with commit ${COMMIT_SHA:0:7}"
+          # Try to get PR number from API
+          if PR_DATA=$(gh api "/repos/${{ github.repository }}/commits/${COMMIT_SHA}/pulls" 2>&1); then
+            PR_NUMBER=$(echo "$PR_DATA" | jq -r '.[0].number // empty')
+
+            if [ -n "$PR_NUMBER" ] && [ "$PR_NUMBER" != "null" ]; then
+              echo "pr_number=$PR_NUMBER" >> $GITHUB_OUTPUT
+              echo "✅ Found PR #$PR_NUMBER associated with commit ${COMMIT_SHA:0:7}"
+            else
+              echo "pr_number=" >> $GITHUB_OUTPUT
+              echo "ℹ️  No PR associated with this commit (direct commit to main)"
+            fi
           else
-            echo "ℹ️  No PR found (direct commit to main)"
+            echo "pr_number=" >> $GITHUB_OUTPUT
+            echo "⚠️  GitHub API call failed, will rebuild from source"
+            echo "Error: $PR_DATA"
           fi
 
       - name: Download build artifacts from merged PR
@@ -46,6 +59,7 @@ jobs:
           name: build-artifacts
           path: dist/
           check_artifacts: true
+          workflow_conclusion: success
 
       - name: Check if artifact was downloaded
         id: check-artifact
@@ -67,7 +81,10 @@ jobs:
         run: devenv shell build
 
       - name: Copy Vercel configuration
-        run: cp vercel.json dist/vercel.json
+        run: |
+          # Copy vercel.json into dist/ for deployment
+          # This ensures WASM CORS headers and SPA routing are configured
+          cp vercel.json dist/vercel.json
 
       - name: Deploy to Vercel Production
         uses: amondnet/vercel-action@v25
@@ -87,4 +104,6 @@ jobs:
           echo "" >> $GITHUB_STEP_SUMMARY
           echo "- **Environment**: Production" >> $GITHUB_STEP_SUMMARY
           echo "- **Build Source**: ${{ steps.check-artifact.outputs.artifact_found == 'true' && 'Downloaded from PR' || 'Fresh rebuild' }}" >> $GITHUB_STEP_SUMMARY
-          echo "- **Deployment URL**: ${{ steps.deploy.outputs.preview-url }}" >> $GITHUB_STEP_SUMMARY
+          echo "- **Production URL**: ${{ steps.deploy.outputs.preview-url }}" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "> Note: Despite the output variable name, this is the production deployment URL" >> $GITHUB_STEP_SUMMARY
