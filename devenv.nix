@@ -1,10 +1,8 @@
 {pkgs, ...}: {
   packages = with pkgs; [
     git
-    spec-kit
-    claude-code
     gh
-    trunk
+    dioxus-cli
     wasm-bindgen-cli
   ];
 
@@ -23,8 +21,6 @@
   };
 
   scripts = {
-    dev.exec = "trunk serve";
-    build.exec = "trunk build --release";
     format.exec = "cargo fmt";
     lint.exec = "./scripts/lint.sh";
     test.exec = "cargo test";

@@ -1,17 +1,19 @@
 <!DOCTYPE html>
 <html>
 <head>
-    <meta charset="utf-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <meta name="theme-color" content="#2563eb">
-    <meta name="description" content="Your personal strength training assistant">
     <title>Strength Assistant</title>
-    <link rel="manifest" href="/manifest.json">
-    <link rel="icon" type="image/png" sizes="192x192" href="/icons/icon-192x192.png">
-    <link rel="apple-touch-icon" href="/icons/icon-192x192.png">
-    <link data-trunk rel="copy-file" href="manifest.json">
-    <link data-trunk rel="copy-file" href="service-worker.js">
-    <link data-trunk rel="copy-dir" href="icons">
+    <link rel="manifest" href="assets/manifest.json" data-trunk>
+    <link rel="copy-file" href="assets/service-worker.js" data-trunk>
+    <link rel="copy-dir" href="assets/icons" data-trunk>
+    <script>
+        if ('serviceWorker' in navigator) {
+            window.addEventListener('load', () => {
+                navigator.serviceWorker.register('./service-worker.js')
+                    .then(reg => console.log('Service worker registered', reg))
+                    .catch(err => console.error('Service worker registration failed', err));
+            });
+        }
+    </script>
 </head>
 <body>
     <div id="main"></div>
