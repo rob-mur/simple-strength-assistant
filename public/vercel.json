@@ -5,7 +5,6 @@
   },
   "buildCommand": null,
   "framework": null,
-  "outputDirectory": "dist",
   "installCommand": null,
   "headers": [
     {
