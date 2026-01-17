@@ -77,10 +77,8 @@ jobs:
         uses: actions/download-artifact@v4
         with:
           name: build-artifacts
-          path: dist/
+          path: dist/public
 
-      - name: Copy Vercel configuration
-        run: cp vercel.json dist/vercel.json
 
       - name: Deploy to Vercel Preview
         uses: amondnet/vercel-action@v25

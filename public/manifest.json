@@ -18,5 +18,21 @@
 			"sizes": "512x512",
 			"type": "image/png"
 		}
+	],
+	"screenshots": [
+		{
+			"src": "/icons/icon-512x512.png",
+			"sizes": "512x512",
+			"type": "image/png",
+			"form_factor": "narrow",
+			"label": "Mobile Home Screen"
+		},
+		{
+			"src": "/icons/icon-512x512.png",
+			"sizes": "512x512",
+			"type": "image/png",
+			"form_factor": "wide",
+			"label": "Desktop View"
+		}
 	]
 }
