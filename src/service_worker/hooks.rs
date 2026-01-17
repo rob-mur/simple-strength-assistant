@@ -4,7 +4,10 @@ use gloo_timers::future::IntervalStream;
 use wasm_bindgen_futures::spawn_local;
 use web_sys::console;
 
-use super::{check_for_updates, register_service_worker, setup_controller_change_listener, setup_update_listener};
+use super::{
+    check_for_updates, register_service_worker, setup_controller_change_listener,
+    setup_update_listener,
+};
 
 /// Dioxus hook to manage service worker registration and updates
 ///
@@ -40,8 +43,7 @@ pub fn use_service_worker_manager() {
                     // Set up controller change listener
                     if let Err(e) = setup_controller_change_listener() {
                         console::error_1(
-                            &format!("Failed to setup controller change listener: {:?}", e)
-                                .into(),
+                            &format!("Failed to setup controller change listener: {:?}", e).into(),
                         );
                     }
 

@@ -1,9 +1,9 @@
 pub mod hooks;
 
-use wasm_bindgen::prelude::*;
 use wasm_bindgen::JsCast;
+use wasm_bindgen::prelude::*;
 use wasm_bindgen_futures::JsFuture;
-use web_sys::{console, ServiceWorkerRegistration};
+use web_sys::{ServiceWorkerRegistration, console};
 
 pub use hooks::use_service_worker_manager;
 
@@ -61,6 +61,7 @@ pub fn setup_update_listener(registration: &ServiceWorkerRegistration) -> Result
             let installing_clone = installing.clone();
 
             // Create closure for statechange event on the installing worker
+            #[allow(clippy::collapsible_if)]
             let statechange_callback = Closure::wrap(Box::new(move || {
                 let state = installing_clone.state();
                 console::log_1(&format!("Service worker state: {:?}", state).into());

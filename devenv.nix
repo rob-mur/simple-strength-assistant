@@ -30,5 +30,17 @@
     test.exec = "cargo test";
   };
 
-  enterTest = "cargo test";
+  git-hooks.hooks = {
+    ci-checks = {
+      enable = true;
+      name = "Code quality checks (format, clippy, test, build)";
+      entry = ''
+        format
+        lint
+        test
+        build
+      '';
+      stages = ["pre-commit" "pre-push"];
+    };
+  };
 }
