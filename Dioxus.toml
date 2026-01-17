@@ -1,5 +1,4 @@
 [application]
-asset_dir = "assets"
 
 [web.app]
 title = "Strength Assistant"
