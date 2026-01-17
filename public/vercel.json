@@ -3,9 +3,9 @@
   "github": {
     "enabled": false
   },
-  "buildCommand": null,
+  "buildCommand": "true",
   "framework": null,
-  "installCommand": null,
+  "installCommand": "true",
   "headers": [
     {
       "source": "/(.*).wasm",
