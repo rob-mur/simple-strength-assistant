@@ -1,9 +1,16 @@
 <!DOCTYPE html>
 <html>
 <head>
-    <meta charset="utf-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Simple Strength Assistant</title>
+    <link rel="manifest" href="manifest.json">
+    <script>
+        if ('serviceWorker' in navigator) {
+            window.addEventListener('load', () => {
+                navigator.serviceWorker.register('./service-worker.js')
+                    .then(reg => console.log('Service worker registered', reg))
+                    .catch(err => console.error('Service worker registration failed', err));
+            });
+        }
+    </script>
 </head>
 <body>
     <div id="main"></div>

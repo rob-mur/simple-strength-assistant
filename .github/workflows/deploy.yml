@@ -30,9 +30,6 @@ jobs:
       - name: Build project
         run: devenv shell build
 
-      - name: Copy Vercel configuration
-        run: |
-          cp vercel.json dist/vercel.json
 
       - name: Deploy to Vercel Production
         uses: amondnet/vercel-action@v25
@@ -42,7 +39,7 @@ jobs:
           vercel-org-id: ${{ secrets.VERCEL_ORG_ID }}
           vercel-project-id: ${{ secrets.VERCEL_PROJECT_ID }}
           github-token: ${{ secrets.GITHUB_TOKEN }}
-          working-directory: ./dist
+          working-directory: ./dist/public
           scope: ${{ secrets.VERCEL_ORG_ID }}
           vercel-args: '--prod'
           github-comment: false

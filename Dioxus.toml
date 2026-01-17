@@ -1,0 +1,6 @@
+[application]
+name = "simple-strength-assistant"
+out_dir = "dist"
+
+[web.app]
+title = "Strength Assistant"

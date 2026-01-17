@@ -1,0 +1,15 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512">
+  <rect x="0" y="0" width="512" height="512" fill="#2563eb" rx="64"/>
+  <g fill="#ffffff" transform="translate(256, 256) scale(0.65) translate(-256, -256)">
+    <!-- Left weight -->
+    <rect x="60" y="180" width="60" height="152" rx="8"/>
+    <!-- Left connector -->
+    <rect x="120" y="236" width="60" height="40" rx="4"/>
+    <!-- Center bar -->
+    <rect x="180" y="220" width="152" height="72" rx="36"/>
+    <!-- Right connector -->
+    <rect x="332" y="236" width="60" height="40" rx="4"/>
+    <!-- Right weight -->
+    <rect x="392" y="180" width="60" height="152" rx="8"/>
+  </g>
+</svg>

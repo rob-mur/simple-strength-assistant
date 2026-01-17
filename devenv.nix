@@ -1,11 +1,10 @@
 {pkgs, ...}: {
   packages = with pkgs; [
     git
-    spec-kit
-    claude-code
     gh
-    trunk
+    dioxus-cli
     wasm-bindgen-cli
+    binaryen
   ];
 
   languages.rust = {
@@ -23,12 +22,23 @@
   };
 
   scripts = {
-    dev.exec = "trunk serve";
-    build.exec = "trunk build --release";
+    build.exec = "dx bundle --web --release --debug-symbols=false";
     format.exec = "cargo fmt";
     lint.exec = "./scripts/lint.sh";
     test.exec = "cargo test";
   };
 
-  enterTest = "cargo test";
+  git-hooks.hooks = {
+    ci-checks = {
+      enable = true;
+      name = "Code quality checks (format, clippy, test, build)";
+      entry = ''
+        format
+        lint
+        test
+        build
+      '';
+      stages = ["pre-commit" "pre-push"];
+    };
+  };
 }

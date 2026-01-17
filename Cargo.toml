@@ -7,4 +7,7 @@ description = "A simple strength training assistant built with Rust and Dioxus"
 license = "AGPLv3"
 
 [dependencies]
-dioxus = { version = "0.6", features = ["web"] }
+dioxus = { version = "0.7.0", features = ["web"] }
+wasm-bindgen = "=0.2.106"
+
+
