@@ -4,6 +4,7 @@
     "enabled": false
   },
   "buildCommand": "true",
+  "outputDirectory": ".",
   "framework": null,
   "installCommand": "true",
   "headers": [
