@@ -13,6 +13,7 @@ jobs:
     permissions:
       contents: read
       deployments: write
+      pull-requests: write
     uses: ./.github/workflows/build-and-deploy.yml
     with:
       git-ref: ${{ inputs.version }}
