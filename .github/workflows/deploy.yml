@@ -94,16 +94,7 @@ jobs:
         id: semantic
         env:
           GITHUB_TOKEN: ${{ secrets.RELEASE_TOKEN }}
-        run: devenv shell node scripts/publish-release.mjs
-
-      - name: Upload dist.zip to release
-        if: steps.semantic.outputs.new_release_published == 'true'
-        env:
-          GH_TOKEN: ${{ secrets.RELEASE_TOKEN }}
-        run: |
-          gh release upload ${{ steps.semantic.outputs.new_release_git_tag }} \
-            dist.zip \
-            --clobber
+        run: devenv shell npx semantic-release
 
   deploy-production:
     needs: [build, release]

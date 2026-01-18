@@ -110,7 +110,20 @@
 		],
 		[
 			"@semantic-release/github",
-			{}
+			{
+				"assets": [
+					{
+						"path": "dist.zip",
+						"label": "Build Artifact"
+					}
+				]
+			}
+		],
+		[
+			"@semantic-release/exec",
+			{
+				"publishCmd": "echo 'new_release_published=true' >> $GITHUB_OUTPUT && echo 'new_release_version=${nextRelease.version}' >> $GITHUB_OUTPUT && echo 'new_release_git_tag=${nextRelease.gitTag}' >> $GITHUB_OUTPUT"
+			}
 		]
 	]
 }
