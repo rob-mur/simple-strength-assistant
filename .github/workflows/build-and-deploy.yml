@@ -166,8 +166,6 @@ jobs:
           name: ${{ steps.artifact.outputs.name }}
           path: ./dist/
 
-      - name: Setup devenv
-        uses: ./.github/actions/setup-devenv
 
       - name: Deploy to Vercel
         uses: amondnet/vercel-action@v25
