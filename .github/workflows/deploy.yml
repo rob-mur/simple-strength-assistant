@@ -92,9 +92,15 @@ jobs:
 
       - name: Run semantic-release
         id: semantic
+        uses: cycjimmy/semantic-release-action@v4
+        with:
+          semantic_version: 24
+          extra_plugins: |
+            @semantic-release/changelog
+            @semantic-release/git
+            conventional-changelog-conventionalcommits
         env:
           GITHUB_TOKEN: ${{ secrets.RELEASE_TOKEN }}
-        run: devenv shell npx semantic-release
 
       - name: Upload dist.zip to release
         if: steps.semantic.outputs.new_release_published == 'true'
