@@ -111,6 +111,7 @@ jobs:
     permissions:
       contents: read
       deployments: write
+      pull-requests: write
     uses: ./.github/workflows/build-and-deploy.yml
     with:
       git-ref: ${{ needs.release.outputs.new_release_git_tag }}
