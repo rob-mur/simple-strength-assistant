@@ -90,6 +90,40 @@
 			{
 				"changelogFile": "CHANGELOG.md"
 			}
+		],
+		[
+			"@semantic-release/npm",
+			{
+				"npmPublish": false
+			}
+		],
+		[
+			"@semantic-release/git",
+			{
+				"assets": [
+					"CHANGELOG.md",
+					"package.json",
+					"package-lock.json"
+				],
+				"message": "chore(release): ${nextRelease.version} [skip ci]\n\n${nextRelease.notes}"
+			}
+		],
+		[
+			"@semantic-release/github",
+			{
+				"assets": [
+					{
+						"path": "dist.zip",
+						"label": "Build Artifact"
+					}
+				]
+			}
+		],
+		[
+			"@semantic-release/exec",
+			{
+				"publishCmd": "echo 'new_release_published=true' >> $GITHUB_OUTPUT && echo 'new_release_version=${nextRelease.version}' >> $GITHUB_OUTPUT && echo 'new_release_git_tag=${nextRelease.gitTag}' >> $GITHUB_OUTPUT"
+			}
 		]
 	]
 }
