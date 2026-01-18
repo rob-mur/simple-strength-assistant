@@ -1,0 +1,180 @@
+name: Build and Deploy
+
+on:
+  workflow_call:
+    inputs:
+      git-ref:
+        description: 'Git ref to checkout (branch, tag, or commit SHA)'
+        required: true
+        type: string
+      vercel-environment:
+        description: 'Vercel deployment environment (production or preview)'
+        required: true
+        type: string
+      use-release-artifact:
+        description: 'Download build from release instead of building'
+        required: false
+        type: boolean
+        default: false
+      release-tag:
+        description: 'Release tag to download artifact from (required if use-release-artifact is true)'
+        required: false
+        type: string
+      github-comment:
+        description: 'Enable GitHub PR comments for deployment URL'
+        required: false
+        type: boolean
+        default: false
+    secrets:
+      VERCEL_TOKEN:
+        required: true
+      VERCEL_ORG_ID:
+        required: true
+      VERCEL_PROJECT_ID:
+        required: true
+    outputs:
+      deployment-url:
+        description: 'Vercel deployment URL'
+        value: ${{ jobs.deploy.outputs.url }}
+      build-artifact-name:
+        description: 'Name of the uploaded build artifact'
+        value: ${{ jobs.build.outputs.artifact-name }}
+
+  workflow_dispatch:
+    inputs:
+      git-ref:
+        description: 'Git ref to checkout (branch, tag, or commit SHA)'
+        required: true
+        type: string
+        default: 'main'
+      vercel-environment:
+        description: 'Vercel deployment environment'
+        required: true
+        type: choice
+        options:
+          - production
+          - preview
+        default: 'preview'
+      use-release-artifact:
+        description: 'Download build from release instead of building'
+        required: false
+        type: boolean
+        default: false
+      release-tag:
+        description: 'Release tag to download artifact from (e.g., v0.1.0)'
+        required: false
+        type: string
+      github-comment:
+        description: 'Enable GitHub PR comments for deployment URL'
+        required: false
+        type: boolean
+        default: false
+
+jobs:
+  build:
+    if: ${{ !inputs.use-release-artifact }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    outputs:
+      artifact-name: ${{ steps.artifact-info.outputs.name }}
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.git-ref }}
+          fetch-depth: 0
+
+      - name: Setup devenv
+        uses: ./.github/actions/setup-devenv
+
+      - name: Build project
+        run: devenv shell build
+
+      - name: Set artifact name
+        id: artifact-info
+        run: echo "name=build-${{ inputs.git-ref }}-${{ github.run_id }}" >> $GITHUB_OUTPUT
+
+      - name: Upload build artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ steps.artifact-info.outputs.name }}
+          path: ./dist/
+          retention-days: 90
+          compression-level: 9
+
+  download-release:
+    if: ${{ inputs.use-release-artifact }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    outputs:
+      artifact-name: ${{ steps.download.outputs.artifact-name }}
+
+    steps:
+      - name: Download release artifact
+        id: download
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          gh release download ${{ inputs.release-tag }} \
+            --pattern 'dist.zip' \
+            --repo ${{ github.repository }}
+          unzip -q dist.zip -d dist/
+          echo "artifact-name=release-artifact-${{ inputs.release-tag }}" >> $GITHUB_OUTPUT
+
+      - name: Upload artifact for deployment
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ steps.download.outputs.artifact-name }}
+          path: ./dist/
+          retention-days: 1
+
+  deploy:
+    needs: [build, download-release]
+    if: always() && (needs.build.result == 'success' || needs.download-release.result == 'success')
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    permissions:
+      contents: read
+      deployments: write
+      pull-requests: write
+
+    outputs:
+      url: ${{ steps.deploy.outputs.preview-url }}
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.git-ref }}
+
+      - name: Determine artifact name
+        id: artifact
+        run: |
+          if [ "${{ inputs.use-release-artifact }}" == "true" ]; then
+            echo "name=${{ needs.download-release.outputs.artifact-name }}" >> $GITHUB_OUTPUT
+          else
+            echo "name=${{ needs.build.outputs.artifact-name }}" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Download build artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: ${{ steps.artifact.outputs.name }}
+          path: ./dist/
+
+      - name: Deploy to Vercel
+        uses: amondnet/vercel-action@v25
+        id: deploy
+        with:
+          vercel-token: ${{ secrets.VERCEL_TOKEN }}
+          vercel-org-id: ${{ secrets.VERCEL_ORG_ID }}
+          vercel-project-id: ${{ secrets.VERCEL_PROJECT_ID }}
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          working-directory: ./dist/public
+          scope: ${{ secrets.VERCEL_ORG_ID }}
+          vercel-args: ${{ inputs.vercel-environment == 'production' && '--prod' || '' }}
+          github-comment: ${{ inputs.github-comment }}

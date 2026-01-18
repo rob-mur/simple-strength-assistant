@@ -22,7 +22,7 @@
   };
 
   scripts = {
-    build.exec = "dx bundle --web --release --debug-symbols=false && ./scripts/fix-vercel-config.sh";
+    build.exec = "dx bundle --web --release --debug-symbols=false";
     format.exec = "cargo fmt";
     lint.exec = "./scripts/lint.sh";
     test.exec = "cargo test";

@@ -4,34 +4,32 @@ on:
   push:
     branches:
       - main
+  workflow_dispatch:
+    inputs:
+      force-release:
+        description: 'Force release even if no commits warrant it'
+        required: false
+        type: boolean
+        default: false
 
 concurrency:
   group: production-deployment
   cancel-in-progress: false
 
 jobs:
-  deploy-production:
-    if: "!contains(github.event.head_commit.message, '[skip ci]')"
-
+  build:
     runs-on: ubuntu-latest
     timeout-minutes: 15
 
-    permissions:
-      contents: read
-      deployments: write
+    outputs:
+      artifact-name: ${{ steps.artifact-info.outputs.name }}
 
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
         with:
           fetch-depth: 0
-
-      - name: Get version
-        id: version
-        run: |
-          VERSION=$(grep '^version = ' Cargo.toml | head -1 | sed 's/version = "\(.*\)"/\1/')
-          echo "version=$VERSION" >> $GITHUB_OUTPUT
-          echo "Deploying version: $VERSION"
+          token: ${{ secrets.RELEASE_TOKEN }}
 
       - name: Setup devenv
         uses: ./.github/actions/setup-devenv
@@ -39,23 +37,87 @@ jobs:
       - name: Build project
         run: devenv shell build
 
-      - name: Deploy to Vercel Production
-        uses: amondnet/vercel-action@v25
-        id: deploy
+      - name: Set artifact name
+        id: artifact-info
+        run: echo "name=build-main-${{ github.sha }}-${{ github.run_id }}" >> $GITHUB_OUTPUT
+
+      - name: Upload build artifact
+        uses: actions/upload-artifact@v4
         with:
-          vercel-token: ${{ secrets.VERCEL_TOKEN }}
-          vercel-org-id: ${{ secrets.VERCEL_ORG_ID }}
-          vercel-project-id: ${{ secrets.VERCEL_PROJECT_ID }}
-          github-token: ${{ secrets.GITHUB_TOKEN }}
-          working-directory: ./dist/public
-          scope: ${{ secrets.VERCEL_ORG_ID }}
-          vercel-args: '--prod'
-          github-comment: false
+          name: ${{ steps.artifact-info.outputs.name }}
+          path: ./dist/
+          retention-days: 90
+          compression-level: 9
 
-      - name: Deployment Summary
+      - name: Create dist.zip for release
+        run: zip -r dist.zip ./dist
+
+      - name: Upload dist.zip as artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: dist-zip-${{ github.run_id }}
+          path: ./dist.zip
+          retention-days: 1
+
+  release:
+    needs: build
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    permissions:
+      contents: write
+      issues: write
+      pull-requests: write
+
+    outputs:
+      new_release_published: ${{ steps.semantic.outputs.new_release_published }}
+      new_release_version: ${{ steps.semantic.outputs.new_release_version }}
+      new_release_git_tag: ${{ steps.semantic.outputs.new_release_git_tag }}
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          token: ${{ secrets.RELEASE_TOKEN }}
+
+      - name: Setup devenv
+        uses: ./.github/actions/setup-devenv
+
+      - name: Download dist.zip artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: dist-zip-${{ github.run_id }}
+          path: ./
+
+      - name: Run semantic-release
+        id: semantic
+        env:
+          GITHUB_TOKEN: ${{ secrets.RELEASE_TOKEN }}
+        run: devenv shell npx semantic-release
+
+      - name: Upload dist.zip to release
+        if: steps.semantic.outputs.new_release_published == 'true'
+        env:
+          GH_TOKEN: ${{ secrets.RELEASE_TOKEN }}
         run: |
-          echo "## ✅ Production Deployment" >> $GITHUB_STEP_SUMMARY
-          echo "" >> $GITHUB_STEP_SUMMARY
-          echo "**Version:** ${{ steps.version.outputs.version }}" >> $GITHUB_STEP_SUMMARY
-          echo "**URL:** ${{ steps.deploy.outputs.preview-url }}" >> $GITHUB_STEP_SUMMARY
+          gh release upload ${{ steps.semantic.outputs.new_release_git_tag }} \
+            dist.zip \
+            --clobber
 
+  deploy-production:
+    needs: [build, release]
+    if: needs.release.outputs.new_release_published == 'true'
+    permissions:
+      contents: read
+      deployments: write
+    uses: ./.github/workflows/build-and-deploy.yml
+    with:
+      git-ref: ${{ needs.release.outputs.new_release_git_tag }}
+      vercel-environment: 'production'
+      use-release-artifact: true
+      release-tag: ${{ needs.release.outputs.new_release_git_tag }}
+    secrets:
+      VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
+      VERCEL_ORG_ID: ${{ secrets.VERCEL_ORG_ID }}
+      VERCEL_PROJECT_ID: ${{ secrets.VERCEL_PROJECT_ID }}
