@@ -1,0 +1,25 @@
+name: Rollback
+
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'Version to rollback to (e.g., v0.1.0)'
+        required: true
+        type: string
+
+jobs:
+  rollback-deploy:
+    permissions:
+      contents: read
+      deployments: write
+    uses: ./.github/workflows/build-and-deploy.yml
+    with:
+      git-ref: ${{ inputs.version }}
+      vercel-environment: 'production'
+      use-release-artifact: true
+      release-tag: ${{ inputs.version }}
+    secrets:
+      VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
+      VERCEL_ORG_ID: ${{ secrets.VERCEL_ORG_ID }}
+      VERCEL_PROJECT_ID: ${{ secrets.VERCEL_PROJECT_ID }}

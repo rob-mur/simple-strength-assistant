@@ -38,54 +38,18 @@ jobs:
       - name: Run tests
         run: devenv test
 
-  build:
-    runs-on: ubuntu-latest
-
-    steps:
-      - name: Checkout code
-        uses: actions/checkout@v4
-        with:
-          fetch-depth: 0
-
-      - name: Setup devenv
-        uses: ./.github/actions/setup-devenv
-
-      - name: Build project
-        run: devenv shell build
-
-      - name: Upload build artifacts
-        uses: actions/upload-artifact@v4
-        with:
-          name: build-artifacts
-          path: dist/
-          retention-days: 7
-
-  deploy-preview:
-    needs: build
-    runs-on: ubuntu-latest
-
+  build-and-deploy:
     permissions:
       contents: read
-      pull-requests: write
       deployments: write
-
-    steps:
-      - name: Checkout code
-        uses: actions/checkout@v4
-
-      - name: Download build artifacts
-        uses: actions/download-artifact@v4
-        with:
-          name: build-artifacts
-          path: dist
-
-      - name: Deploy to Vercel Preview
-        uses: amondnet/vercel-action@v25
-        with:
-          vercel-token: ${{ secrets.VERCEL_TOKEN }}
-          vercel-org-id: ${{ secrets.VERCEL_ORG_ID }}
-          vercel-project-id: ${{ secrets.VERCEL_PROJECT_ID }}
-          github-token: ${{ secrets.GITHUB_TOKEN }}
-          working-directory: ./dist/public
-          scope: ${{ secrets.VERCEL_ORG_ID }}
-          github-comment: true
+      pull-requests: write
+    uses: ./.github/workflows/build-and-deploy.yml
+    with:
+      git-ref: ${{ github.event.pull_request.head.sha }}
+      vercel-environment: 'preview'
+      use-release-artifact: false
+      github-comment: true
+    secrets:
+      VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
+      VERCEL_ORG_ID: ${{ secrets.VERCEL_ORG_ID }}
+      VERCEL_PROJECT_ID: ${{ secrets.VERCEL_PROJECT_ID }}
