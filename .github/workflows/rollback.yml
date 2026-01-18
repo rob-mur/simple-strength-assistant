@@ -3,8 +3,8 @@ name: Rollback
 on:
   workflow_dispatch:
     inputs:
-      tag:
-        description: 'Git tag to rollback to (e.g., v0.1.0)'
+      version:
+        description: 'Version to rollback to (e.g., 0.1.0)'
         required: true
         type: string
       reason:
@@ -31,33 +31,26 @@ jobs:
         with:
           fetch-depth: 0
 
-      - name: Validate tag
+      - name: Validate version tag
         id: check
         run: |
-          if git rev-parse "${{ inputs.tag }}" >/dev/null 2>&1; then
+          TAG="v${{ inputs.version }}"
+          if git rev-parse "$TAG" >/dev/null 2>&1; then
             echo "exists=true" >> $GITHUB_OUTPUT
-            echo "sha=$(git rev-parse ${{ inputs.tag }})" >> $GITHUB_OUTPUT
-            echo "✓ Tag ${{ inputs.tag }} exists"
+            echo "sha=$(git rev-parse $TAG)" >> $GITHUB_OUTPUT
+            echo "✓ Tag $TAG exists"
           else
             echo "exists=false" >> $GITHUB_OUTPUT
-            echo "✗ Tag ${{ inputs.tag }} does not exist"
+            echo "✗ Tag $TAG does not exist"
             exit 1
           fi
-
-      - name: Get tag version
-        id: version
-        run: |
-          git checkout "${{ inputs.tag }}"
-          VERSION=$(grep '^version = ' Cargo.toml | head -1 | sed 's/version = "\(.*\)"/\1/')
-          echo "version=$VERSION" >> $GITHUB_OUTPUT
-          echo "Rolling back to version: $VERSION"
 
       - name: Validation Summary
         run: |
           echo "## 🔄 Rollback Validation" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
-          echo "**Tag:** ${{ inputs.tag }}" >> $GITHUB_STEP_SUMMARY
-          echo "**Version:** ${{ steps.version.outputs.version }}" >> $GITHUB_STEP_SUMMARY
+          echo "**Version:** ${{ inputs.version }}" >> $GITHUB_STEP_SUMMARY
+          echo "**Tag:** v${{ inputs.version }}" >> $GITHUB_STEP_SUMMARY
           echo "**SHA:** ${{ steps.check.outputs.sha }}" >> $GITHUB_STEP_SUMMARY
           echo "**Reason:** ${{ inputs.reason }}" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
@@ -77,7 +70,7 @@ jobs:
       - name: Checkout tag
         uses: actions/checkout@v4
         with:
-          ref: ${{ inputs.tag }}
+          ref: v${{ inputs.version }}
           fetch-depth: 0
 
       - name: Setup devenv
@@ -106,10 +99,11 @@ jobs:
             await github.rest.issues.create({
               owner: context.repo.owner,
               repo: context.repo.repo,
-              title: `Rollback to ${{ inputs.tag }} deployed`,
+              title: `Rollback to v${{ inputs.version }} deployed`,
               body: `## Rollback Deployment
 
-            **Tag:** ${{ inputs.tag }}
+            **Version:** ${{ inputs.version }}
+            **Tag:** v${{ inputs.version }}
             **Commit:** ${{ needs.validate.outputs.tag_sha }}
             **Reason:** ${{ inputs.reason }}
             **Deployed by:** @${{ github.actor }}
@@ -123,7 +117,8 @@ jobs:
         run: |
           echo "## ✅ Rollback Complete" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
-          echo "**Tag:** ${{ inputs.tag }}" >> $GITHUB_STEP_SUMMARY
+          echo "**Version:** ${{ inputs.version }}" >> $GITHUB_STEP_SUMMARY
+          echo "**Tag:** v${{ inputs.version }}" >> $GITHUB_STEP_SUMMARY
           echo "**Deployed by:** ${{ github.actor }}" >> $GITHUB_STEP_SUMMARY
           echo "**Reason:** ${{ inputs.reason }}" >> $GITHUB_STEP_SUMMARY
           echo "**URL:** ${{ steps.deploy.outputs.preview-url }}" >> $GITHUB_STEP_SUMMARY
