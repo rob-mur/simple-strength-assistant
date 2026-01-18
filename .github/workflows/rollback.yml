@@ -1,0 +1,131 @@
+name: Rollback
+
+on:
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: 'Git tag to rollback to (e.g., v0.1.0)'
+        required: true
+        type: string
+      reason:
+        description: 'Reason for rollback'
+        required: true
+        type: string
+
+concurrency:
+  group: rollback
+  cancel-in-progress: false
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+
+    outputs:
+      tag_exists: ${{ steps.check.outputs.exists }}
+      tag_sha: ${{ steps.check.outputs.sha }}
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Validate tag
+        id: check
+        run: |
+          if git rev-parse "${{ inputs.tag }}" >/dev/null 2>&1; then
+            echo "exists=true" >> $GITHUB_OUTPUT
+            echo "sha=$(git rev-parse ${{ inputs.tag }})" >> $GITHUB_OUTPUT
+            echo "✓ Tag ${{ inputs.tag }} exists"
+          else
+            echo "exists=false" >> $GITHUB_OUTPUT
+            echo "✗ Tag ${{ inputs.tag }} does not exist"
+            exit 1
+          fi
+
+      - name: Get tag version
+        id: version
+        run: |
+          git checkout "${{ inputs.tag }}"
+          VERSION=$(grep '^version = ' Cargo.toml | head -1 | sed 's/version = "\(.*\)"/\1/')
+          echo "version=$VERSION" >> $GITHUB_OUTPUT
+          echo "Rolling back to version: $VERSION"
+
+      - name: Validation Summary
+        run: |
+          echo "## 🔄 Rollback Validation" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "**Tag:** ${{ inputs.tag }}" >> $GITHUB_STEP_SUMMARY
+          echo "**Version:** ${{ steps.version.outputs.version }}" >> $GITHUB_STEP_SUMMARY
+          echo "**SHA:** ${{ steps.check.outputs.sha }}" >> $GITHUB_STEP_SUMMARY
+          echo "**Reason:** ${{ inputs.reason }}" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "Proceeding with rollback deployment..." >> $GITHUB_STEP_SUMMARY
+
+  rollback-deploy:
+    needs: validate
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    permissions:
+      contents: read
+      deployments: write
+      issues: write
+
+    steps:
+      - name: Checkout tag
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.tag }}
+          fetch-depth: 0
+
+      - name: Setup devenv
+        uses: ./.github/actions/setup-devenv
+
+      - name: Build project
+        run: devenv shell build
+
+      - name: Deploy to Vercel Production
+        uses: amondnet/vercel-action@v25
+        id: deploy
+        with:
+          vercel-token: ${{ secrets.VERCEL_TOKEN }}
+          vercel-org-id: ${{ secrets.VERCEL_ORG_ID }}
+          vercel-project-id: ${{ secrets.VERCEL_PROJECT_ID }}
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          working-directory: ./dist/public
+          scope: ${{ secrets.VERCEL_ORG_ID }}
+          vercel-args: '--prod'
+          github-comment: false
+
+      - name: Create rollback issue
+        uses: actions/github-script@v7
+        with:
+          script: |
+            await github.rest.issues.create({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              title: `Rollback to ${{ inputs.tag }} deployed`,
+              body: `## Rollback Deployment
+
+            **Tag:** ${{ inputs.tag }}
+            **Commit:** ${{ needs.validate.outputs.tag_sha }}
+            **Reason:** ${{ inputs.reason }}
+            **Deployed by:** @${{ github.actor }}
+            **Deployment URL:** ${{ steps.deploy.outputs.preview-url }}
+
+            This is an automated issue created after a production rollback.`,
+              labels: ['rollback', 'deployment']
+            });
+
+      - name: Rollback Summary
+        run: |
+          echo "## ✅ Rollback Complete" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "**Tag:** ${{ inputs.tag }}" >> $GITHUB_STEP_SUMMARY
+          echo "**Deployed by:** ${{ github.actor }}" >> $GITHUB_STEP_SUMMARY
+          echo "**Reason:** ${{ inputs.reason }}" >> $GITHUB_STEP_SUMMARY
+          echo "**URL:** ${{ steps.deploy.outputs.preview-url }}" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "⚠️ A GitHub issue has been created to track this rollback." >> $GITHUB_STEP_SUMMARY

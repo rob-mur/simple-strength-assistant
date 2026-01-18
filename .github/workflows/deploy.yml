@@ -11,6 +11,8 @@ concurrency:
 
 jobs:
   deploy-production:
+    if: "!contains(github.event.head_commit.message, '[skip ci]')"
+
     runs-on: ubuntu-latest
     timeout-minutes: 15
 
@@ -24,12 +26,18 @@ jobs:
         with:
           fetch-depth: 0
 
+      - name: Get version
+        id: version
+        run: |
+          VERSION=$(grep '^version = ' Cargo.toml | head -1 | sed 's/version = "\(.*\)"/\1/')
+          echo "version=$VERSION" >> $GITHUB_OUTPUT
+          echo "Deploying version: $VERSION"
+
       - name: Setup devenv
         uses: ./.github/actions/setup-devenv
 
       - name: Build project
         run: devenv shell build
-
 
       - name: Deploy to Vercel Production
         uses: amondnet/vercel-action@v25
@@ -43,4 +51,11 @@ jobs:
           scope: ${{ secrets.VERCEL_ORG_ID }}
           vercel-args: '--prod'
           github-comment: false
+
+      - name: Deployment Summary
+        run: |
+          echo "## ✅ Production Deployment" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "**Version:** ${{ steps.version.outputs.version }}" >> $GITHUB_STEP_SUMMARY
+          echo "**URL:** ${{ steps.deploy.outputs.preview-url }}" >> $GITHUB_STEP_SUMMARY
 
