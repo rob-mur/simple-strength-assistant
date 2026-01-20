@@ -166,16 +166,25 @@ jobs:
           name: ${{ steps.artifact.outputs.name }}
           path: ./dist/
 
+      - name: Setup devenv
+        uses: ./.github/actions/setup-devenv
 
       - name: Deploy to Vercel
-        uses: amondnet/vercel-action@v25
-        id: deploy
-        with:
-          vercel-token: ${{ secrets.VERCEL_TOKEN }}
-          vercel-org-id: ${{ secrets.VERCEL_ORG_ID }}
-          vercel-project-id: ${{ secrets.VERCEL_PROJECT_ID }}
-          github-token: ${{ secrets.GITHUB_TOKEN }}
-          working-directory: ./dist/public
-          scope: ${{ secrets.VERCEL_ORG_ID }}
-          vercel-args: ${{ inputs.vercel-environment == 'production' && '--prod' || '' }}
-          github-comment: ${{ inputs.github-comment }}
+        env:
+          VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
+          VERCEL_ORG_ID: ${{ secrets.VERCEL_ORG_ID }}
+          VERCEL_PROJECT_ID: ${{ secrets.VERCEL_PROJECT_ID }}
+        run: |
+          devenv shell npx vercel  \
+          --token=$VERCEL_TOKEN \
+          --scope=$VERCEL_ORG_ID \
+          ${{ inputs.vercel-environment == 'production' && '--prod' || '' }} \
+          -m githubCommitSha=${{ github.sha }} \
+          -m githubCommitAuthorName="${{ github.actor }}" \
+          -m githubCommitAuthorLogin="${{ github.actor }}" \
+          -m githubDeployment=1 \
+          -m githubOrg="${{ github.repository_owner }}" \
+          -m githubRepo="${{ github.event.repository.name }}" \
+          -m githubCommitMessage="$(git log -1 --pretty=format:"%s")" \
+          -m githubCommitRef="${{ github.ref_name }}" \
+          ./dist/public
