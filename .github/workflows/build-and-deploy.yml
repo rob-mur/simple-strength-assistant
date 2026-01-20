@@ -121,7 +121,7 @@ jobs:
           gh release download ${{ inputs.release-tag }} \
             --pattern 'dist.zip' \
             --repo ${{ github.repository }}
-          unzip -q dist.zip -d dist/
+          unzip -q dist.zip
           echo "artifact-name=release-artifact-${{ inputs.release-tag }}" >> $GITHUB_OUTPUT
 
       - name: Upload artifact for deployment
