@@ -16,6 +16,16 @@ fi
 echo "✓ Commit messages valid"
 echo ""
 
+# CSS build check
+echo "→ Building CSS..."
+if ! npm run build:css; then
+  echo "✗ CSS build failed!"
+  echo "  Please fix CSS build errors."
+  exit 1
+fi
+echo "✓ CSS built successfully"
+echo ""
+
 # Format check
 echo "→ Checking code formatting..."
 cargo fmt -- --check
