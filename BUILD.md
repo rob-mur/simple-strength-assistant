@@ -48,7 +48,7 @@ The built files will be in `target/dx/simple-strength-assistant/release/web/publ
 ## Project Structure
 
 - `src/styles.css` - Tailwind CSS source file with directives
-- `public/styles.css` - Compiled CSS output (generated, not committed)
+- `public/styles.css` - Compiled CSS output (must be committed)
 - `tailwind.config.js` - Tailwind CSS configuration with DaisyUI
 - `postcss.config.js` - PostCSS configuration for Tailwind processing
 - `index.html` - Main HTML template
@@ -56,6 +56,8 @@ The built files will be in `target/dx/simple-strength-assistant/release/web/publ
 
 ## Notes
 
-- The `public/styles.css` file is generated during the build process and should not be committed to version control.
+- The `public/styles.css` file is generated from `src/styles.css` and **must be committed** to version control.
+- After modifying `src/styles.css` or Tailwind configuration files, run `npm run build:css` and commit the updated `public/styles.css`.
+- The lint check verifies that `public/styles.css` is in sync with the source files.
 - DaisyUI provides pre-built components that can be used with simple class names (e.g., `btn btn-primary`, `card`, `card-body`).
 - Tailwind utility classes can be used directly in component class attributes.

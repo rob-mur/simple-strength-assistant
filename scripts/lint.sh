@@ -17,13 +17,35 @@ echo "✓ Commit messages valid"
 echo ""
 
 # CSS build check
-echo "→ Building CSS..."
-if ! npm run build:css; then
-  echo "✗ CSS build failed!"
-  echo "  Please fix CSS build errors."
+echo "→ Checking CSS is in sync with source..."
+
+# Check if styles.css exists in the repo
+if [ ! -f "public/styles.css" ]; then
+  echo "✗ public/styles.css is missing!"
+  echo "  Please run 'npm run build:css' and commit the result."
   exit 1
 fi
-echo "✓ CSS built successfully"
+
+# Build CSS to a temporary location
+TEMP_CSS=$(mktemp)
+if ! postcss src/styles.css -o "$TEMP_CSS" > /dev/null 2>&1; then
+  echo "✗ CSS build failed!"
+  echo "  Please fix CSS build errors."
+  rm -f "$TEMP_CSS"
+  exit 1
+fi
+
+# Compare the built CSS with the committed version
+if ! diff -q "$TEMP_CSS" "public/styles.css" > /dev/null 2>&1; then
+  echo "✗ CSS is out of sync with source!"
+  echo "  The committed public/styles.css does not match the built output."
+  echo "  Please run 'npm run build:css' and commit the changes."
+  rm -f "$TEMP_CSS"
+  exit 1
+fi
+
+rm -f "$TEMP_CSS"
+echo "✓ CSS is in sync with source"
 echo ""
 
 # Format check

@@ -4,7 +4,6 @@ Cargo.lock
 
 # Build artifacts
 dist/
-public/styles.css
 
 # Node modules
 node_modules/
