@@ -26,11 +26,11 @@
 					},
 					{
 						"type": "docs",
-						"release": false
+						"release": "patch"
 					},
 					{
 						"type": "style",
-						"release": false
+						"release": "patch"
 					},
 					{
 						"type": "refactor",
@@ -38,19 +38,19 @@
 					},
 					{
 						"type": "test",
-						"release": false
+						"release": "patch"
 					},
 					{
 						"type": "build",
-						"release": false
+						"release": "patch"
 					},
 					{
 						"type": "ci",
-						"release": false
+						"release": "patch"
 					},
 					{
 						"type": "chore",
-						"release": false
+						"release": "patch"
 					}
 				]
 			}
