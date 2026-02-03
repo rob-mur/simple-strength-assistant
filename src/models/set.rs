@@ -4,17 +4,14 @@ use serde::{Deserialize, Serialize};
 ///
 /// The enum forces compile-time handling of both exercise types, ensuring
 /// that weight-related fields are only present for weighted exercises.
+/// Validation constraints (min_weight, increment) live in ExerciseMetadata's SetTypeConfig.
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
 #[allow(dead_code)]
 pub enum SetType {
-    /// A weighted exercise with specific weight configuration
+    /// A weighted exercise with the actual weight used
     Weighted {
-        /// Current weight for this set
+        /// Weight used for this set
         weight: f32,
-        /// Minimum allowed weight for this exercise
-        min_weight: f32,
-        /// Weight increment (e.g., 2.5kg for standard plates)
-        increment: f32,
     },
     /// A bodyweight exercise with no additional weight
     Bodyweight,
@@ -43,21 +40,11 @@ mod tests {
 
     #[test]
     fn test_weighted_set_type_pattern_matching() {
-        let set_type = SetType::Weighted {
-            weight: 100.0,
-            min_weight: 20.0,
-            increment: 2.5,
-        };
+        let set_type = SetType::Weighted { weight: 100.0 };
 
         match set_type {
-            SetType::Weighted {
-                weight,
-                min_weight,
-                increment,
-            } => {
+            SetType::Weighted { weight } => {
                 assert_eq!(weight, 100.0);
-                assert_eq!(min_weight, 20.0);
-                assert_eq!(increment, 2.5);
             }
             SetType::Bodyweight => panic!("Expected Weighted variant"),
         }
@@ -81,11 +68,7 @@ mod tests {
             set_number: 1,
             reps: 10,
             rpe: 7.5,
-            set_type: SetType::Weighted {
-                weight: 100.0,
-                min_weight: 20.0,
-                increment: 2.5,
-            },
+            set_type: SetType::Weighted { weight: 100.0 },
         };
 
         let json = serde_json::to_string(&original_set).expect("Serialization failed");
@@ -119,21 +102,9 @@ mod tests {
 
     #[test]
     fn test_set_type_equality() {
-        let weighted1 = SetType::Weighted {
-            weight: 100.0,
-            min_weight: 20.0,
-            increment: 2.5,
-        };
-        let weighted2 = SetType::Weighted {
-            weight: 100.0,
-            min_weight: 20.0,
-            increment: 2.5,
-        };
-        let weighted3 = SetType::Weighted {
-            weight: 105.0,
-            min_weight: 20.0,
-            increment: 2.5,
-        };
+        let weighted1 = SetType::Weighted { weight: 100.0 };
+        let weighted2 = SetType::Weighted { weight: 100.0 };
+        let weighted3 = SetType::Weighted { weight: 105.0 };
 
         assert_eq!(weighted1, weighted2);
         assert_ne!(weighted1, weighted3);

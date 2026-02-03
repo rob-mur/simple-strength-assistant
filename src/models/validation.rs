@@ -1,3 +1,4 @@
+use super::exercise::{ExerciseMetadata, SetTypeConfig};
 use super::set::{CompletedSet, SetType};
 
 /// Validation errors that can occur when validating exercise data.
@@ -6,6 +7,8 @@ use super::set::{CompletedSet, SetType};
 pub enum ValidationError {
     /// Weight is below the minimum allowed for this exercise
     WeightBelowMinimum { weight: f32, min_weight: f32 },
+    /// Weight exceeds the maximum sanity check limit
+    WeightExceedsMaximum { weight: f32, max_weight: f32 },
     /// Weight is not a valid multiple of the increment
     WeightNotMultipleOfIncrement { weight: f32, increment: f32 },
     /// RPE is outside the valid range (1.0 to 10.0)
@@ -28,6 +31,13 @@ impl std::fmt::Display for ValidationError {
                     f,
                     "Weight {:.1}kg is below minimum {:.1}kg",
                     weight, min_weight
+                )
+            }
+            ValidationError::WeightExceedsMaximum { weight, max_weight } => {
+                write!(
+                    f,
+                    "Weight {:.1}kg exceeds maximum sanity check limit {:.1}kg",
+                    weight, max_weight
                 )
             }
             ValidationError::WeightNotMultipleOfIncrement { weight, increment } => {
@@ -77,8 +87,18 @@ pub fn validate_weight(
     min_weight: f32,
     increment: f32,
 ) -> Result<(), ValidationError> {
+    // Maximum sanity check - 500kg should be more than enough for any human exercise
+    const MAX_WEIGHT: f32 = 500.0;
+
     if weight < min_weight {
         return Err(ValidationError::WeightBelowMinimum { weight, min_weight });
+    }
+
+    if weight > MAX_WEIGHT {
+        return Err(ValidationError::WeightExceedsMaximum {
+            weight,
+            max_weight: MAX_WEIGHT,
+        });
     }
 
     // Check if weight is a valid multiple of increment relative to min_weight
@@ -86,7 +106,9 @@ pub fn validate_weight(
     let remainder = (diff / increment).fract().abs();
 
     // Use a small epsilon for floating point comparison
-    if remainder > 0.001 && remainder < 0.999 {
+    // Accept values very close to 0.0 (exact multiple) or 1.0 (rounding to next multiple)
+    const EPSILON: f32 = 0.001;
+    if remainder > EPSILON && remainder < (1.0 - EPSILON) {
         return Err(ValidationError::WeightNotMultipleOfIncrement { weight, increment });
     }
 
@@ -160,23 +182,41 @@ pub fn validate_set_number(set_number: u32) -> Result<(), ValidationError> {
 ///
 /// # Arguments
 /// * `set` - The completed set to validate
+/// * `exercise` - The exercise metadata containing validation constraints
 ///
 /// # Returns
 /// `Ok(())` if all validations pass, otherwise the first `ValidationError` encountered
 #[allow(dead_code)]
-pub fn validate_completed_set(set: &CompletedSet) -> Result<(), ValidationError> {
+pub fn validate_completed_set(
+    set: &CompletedSet,
+    exercise: &ExerciseMetadata,
+) -> Result<(), ValidationError> {
     validate_set_number(set.set_number)?;
     validate_reps(set.reps)?;
     validate_rpe(set.rpe)?;
 
     // Validate weight if this is a weighted set
-    if let SetType::Weighted {
-        weight,
-        min_weight,
-        increment,
-    } = set.set_type
-    {
-        validate_weight(weight, min_weight, increment)?;
+    match (&set.set_type, &exercise.set_type_config) {
+        (
+            SetType::Weighted { weight },
+            SetTypeConfig::Weighted {
+                min_weight,
+                increment,
+            },
+        ) => {
+            validate_weight(*weight, *min_weight, *increment)?;
+        }
+        (SetType::Bodyweight, SetTypeConfig::Bodyweight) => {
+            // Valid combination - no weight to validate
+        }
+        (SetType::Weighted { .. }, SetTypeConfig::Bodyweight) => {
+            // This shouldn't happen - weighted set for bodyweight exercise
+            // For now we'll allow it, but could add a validation error variant for this
+        }
+        (SetType::Bodyweight, SetTypeConfig::Weighted { .. }) => {
+            // This shouldn't happen - bodyweight set for weighted exercise
+            // For now we'll allow it, but could add a validation error variant for this
+        }
     }
 
     Ok(())
@@ -233,6 +273,18 @@ mod tests {
             Err(ValidationError::WeightNotMultipleOfIncrement {
                 weight: 23.75,
                 increment: 2.5
+            })
+        );
+    }
+
+    #[test]
+    fn test_validate_weight_exceeds_maximum() {
+        let result = validate_weight(600.0, 20.0, 2.5);
+        assert_eq!(
+            result,
+            Err(ValidationError::WeightExceedsMaximum {
+                weight: 600.0,
+                max_weight: 500.0
             })
         );
     }
@@ -325,22 +377,31 @@ mod tests {
 
     #[test]
     fn test_validate_completed_set_weighted_valid() {
-        let set = CompletedSet {
-            set_number: 1,
-            reps: 10,
-            rpe: 7.5,
-            set_type: SetType::Weighted {
-                weight: 100.0,
+        let exercise = ExerciseMetadata {
+            name: "Bench Press".to_string(),
+            set_type_config: SetTypeConfig::Weighted {
                 min_weight: 20.0,
                 increment: 2.5,
             },
         };
 
-        assert!(validate_completed_set(&set).is_ok());
+        let set = CompletedSet {
+            set_number: 1,
+            reps: 10,
+            rpe: 7.5,
+            set_type: SetType::Weighted { weight: 100.0 },
+        };
+
+        assert!(validate_completed_set(&set, &exercise).is_ok());
     }
 
     #[test]
     fn test_validate_completed_set_bodyweight_valid() {
+        let exercise = ExerciseMetadata {
+            name: "Pull-ups".to_string(),
+            set_type_config: SetTypeConfig::Bodyweight,
+        };
+
         let set = CompletedSet {
             set_number: 2,
             reps: 15,
@@ -348,23 +409,27 @@ mod tests {
             set_type: SetType::Bodyweight,
         };
 
-        assert!(validate_completed_set(&set).is_ok());
+        assert!(validate_completed_set(&set, &exercise).is_ok());
     }
 
     #[test]
     fn test_validate_completed_set_invalid_weight() {
-        let set = CompletedSet {
-            set_number: 1,
-            reps: 10,
-            rpe: 7.5,
-            set_type: SetType::Weighted {
-                weight: 15.0,
+        let exercise = ExerciseMetadata {
+            name: "Bench Press".to_string(),
+            set_type_config: SetTypeConfig::Weighted {
                 min_weight: 20.0,
                 increment: 2.5,
             },
         };
 
-        let result = validate_completed_set(&set);
+        let set = CompletedSet {
+            set_number: 1,
+            reps: 10,
+            rpe: 7.5,
+            set_type: SetType::Weighted { weight: 15.0 },
+        };
+
+        let result = validate_completed_set(&set, &exercise);
         assert_eq!(
             result,
             Err(ValidationError::WeightBelowMinimum {
@@ -376,6 +441,11 @@ mod tests {
 
     #[test]
     fn test_validate_completed_set_invalid_rpe() {
+        let exercise = ExerciseMetadata {
+            name: "Pull-ups".to_string(),
+            set_type_config: SetTypeConfig::Bodyweight,
+        };
+
         let set = CompletedSet {
             set_number: 1,
             reps: 10,
@@ -383,12 +453,17 @@ mod tests {
             set_type: SetType::Bodyweight,
         };
 
-        let result = validate_completed_set(&set);
+        let result = validate_completed_set(&set, &exercise);
         assert_eq!(result, Err(ValidationError::RpeOutOfBounds { rpe: 11.0 }));
     }
 
     #[test]
     fn test_validate_completed_set_zero_reps() {
+        let exercise = ExerciseMetadata {
+            name: "Pull-ups".to_string(),
+            set_type_config: SetTypeConfig::Bodyweight,
+        };
+
         let set = CompletedSet {
             set_number: 1,
             reps: 0,
@@ -396,7 +471,7 @@ mod tests {
             set_type: SetType::Bodyweight,
         };
 
-        let result = validate_completed_set(&set);
+        let result = validate_completed_set(&set, &exercise);
         assert_eq!(result, Err(ValidationError::ZeroReps));
     }
 
@@ -407,6 +482,15 @@ mod tests {
             min_weight: 20.0,
         };
         assert_eq!(format!("{}", err), "Weight 15.0kg is below minimum 20.0kg");
+
+        let err = ValidationError::WeightExceedsMaximum {
+            weight: 600.0,
+            max_weight: 500.0,
+        };
+        assert_eq!(
+            format!("{}", err),
+            "Weight 600.0kg exceeds maximum sanity check limit 500.0kg"
+        );
 
         let err = ValidationError::RpeOutOfBounds { rpe: 11.0 };
         assert_eq!(

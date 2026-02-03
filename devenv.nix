@@ -25,7 +25,6 @@
     build.exec = "dx bundle --web --release --debug-symbols=false";
     format.exec = "cargo fmt";
     lint.exec = "./scripts/lint.sh";
-    test.exec = "cargo test";
   };
 
   git-hooks.hooks = {
