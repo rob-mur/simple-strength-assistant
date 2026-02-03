@@ -2,7 +2,6 @@
 ///
 /// This module provides type-safe data structures for representing exercises,
 /// sets, and workout data, along with validation logic to ensure data integrity.
-
 pub mod exercise;
 pub mod set;
 pub mod validation;
@@ -15,6 +14,6 @@ pub use exercise::{ExerciseMetadata, SetTypeConfig};
 pub use set::{CompletedSet, SetType};
 #[allow(unused_imports)]
 pub use validation::{
-    validate_completed_set, validate_reps, validate_rpe, validate_set_number, validate_weight,
-    ValidationError,
+    ValidationError, validate_completed_set, validate_reps, validate_rpe, validate_set_number,
+    validate_weight,
 };

@@ -2,6 +2,7 @@ use super::set::{CompletedSet, SetType};
 
 /// Validation errors that can occur when validating exercise data.
 #[derive(Debug, PartialEq)]
+#[allow(dead_code)]
 pub enum ValidationError {
     /// Weight is below the minimum allowed for this exercise
     WeightBelowMinimum { weight: f32, min_weight: f32 },
@@ -23,10 +24,18 @@ impl std::fmt::Display for ValidationError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
             ValidationError::WeightBelowMinimum { weight, min_weight } => {
-                write!(f, "Weight {:.1}kg is below minimum {:.1}kg", weight, min_weight)
+                write!(
+                    f,
+                    "Weight {:.1}kg is below minimum {:.1}kg",
+                    weight, min_weight
+                )
             }
             ValidationError::WeightNotMultipleOfIncrement { weight, increment } => {
-                write!(f, "Weight {:.1}kg is not a multiple of increment {:.1}kg", weight, increment)
+                write!(
+                    f,
+                    "Weight {:.1}kg is not a multiple of increment {:.1}kg",
+                    weight, increment
+                )
             }
             ValidationError::RpeOutOfBounds { rpe } => {
                 write!(f, "RPE {:.1} is outside valid range (1.0 to 10.0)", rpe)
@@ -38,7 +47,11 @@ impl std::fmt::Display for ValidationError {
                 write!(f, "Number of reps must be greater than 0")
             }
             ValidationError::RepsExceedLimit { reps, limit } => {
-                write!(f, "Number of reps ({}) exceeds sanity check limit ({})", reps, limit)
+                write!(
+                    f,
+                    "Number of reps ({}) exceeds sanity check limit ({})",
+                    reps, limit
+                )
             }
             ValidationError::ZeroSetNumber => {
                 write!(f, "Set number must be greater than 0")
@@ -58,7 +71,12 @@ impl std::error::Error for ValidationError {}
 ///
 /// # Returns
 /// `Ok(())` if valid, otherwise a `ValidationError`
-pub fn validate_weight(weight: f32, min_weight: f32, increment: f32) -> Result<(), ValidationError> {
+#[allow(dead_code)]
+pub fn validate_weight(
+    weight: f32,
+    min_weight: f32,
+    increment: f32,
+) -> Result<(), ValidationError> {
     if weight < min_weight {
         return Err(ValidationError::WeightBelowMinimum { weight, min_weight });
     }
@@ -82,8 +100,9 @@ pub fn validate_weight(weight: f32, min_weight: f32, increment: f32) -> Result<(
 ///
 /// # Returns
 /// `Ok(())` if valid, otherwise a `ValidationError`
+#[allow(dead_code)]
 pub fn validate_rpe(rpe: f32) -> Result<(), ValidationError> {
-    if rpe < 1.0 || rpe > 10.0 {
+    if !(1.0..=10.0).contains(&rpe) {
         return Err(ValidationError::RpeOutOfBounds { rpe });
     }
 
@@ -103,6 +122,7 @@ pub fn validate_rpe(rpe: f32) -> Result<(), ValidationError> {
 ///
 /// # Returns
 /// `Ok(())` if valid, otherwise a `ValidationError`
+#[allow(dead_code)]
 pub fn validate_reps(reps: u32) -> Result<(), ValidationError> {
     const MAX_REPS: u32 = 100;
 
@@ -111,7 +131,10 @@ pub fn validate_reps(reps: u32) -> Result<(), ValidationError> {
     }
 
     if reps > MAX_REPS {
-        return Err(ValidationError::RepsExceedLimit { reps, limit: MAX_REPS });
+        return Err(ValidationError::RepsExceedLimit {
+            reps,
+            limit: MAX_REPS,
+        });
     }
 
     Ok(())
@@ -124,6 +147,7 @@ pub fn validate_reps(reps: u32) -> Result<(), ValidationError> {
 ///
 /// # Returns
 /// `Ok(())` if valid, otherwise a `ValidationError`
+#[allow(dead_code)]
 pub fn validate_set_number(set_number: u32) -> Result<(), ValidationError> {
     if set_number == 0 {
         return Err(ValidationError::ZeroSetNumber);
@@ -139,13 +163,19 @@ pub fn validate_set_number(set_number: u32) -> Result<(), ValidationError> {
 ///
 /// # Returns
 /// `Ok(())` if all validations pass, otherwise the first `ValidationError` encountered
+#[allow(dead_code)]
 pub fn validate_completed_set(set: &CompletedSet) -> Result<(), ValidationError> {
     validate_set_number(set.set_number)?;
     validate_reps(set.reps)?;
     validate_rpe(set.rpe)?;
 
     // Validate weight if this is a weighted set
-    if let SetType::Weighted { weight, min_weight, increment } = set.set_type {
+    if let SetType::Weighted {
+        weight,
+        min_weight,
+        increment,
+    } = set.set_type
+    {
         validate_weight(weight, min_weight, increment)?;
     }
 
@@ -379,7 +409,10 @@ mod tests {
         assert_eq!(format!("{}", err), "Weight 15.0kg is below minimum 20.0kg");
 
         let err = ValidationError::RpeOutOfBounds { rpe: 11.0 };
-        assert_eq!(format!("{}", err), "RPE 11.0 is outside valid range (1.0 to 10.0)");
+        assert_eq!(
+            format!("{}", err),
+            "RPE 11.0 is outside valid range (1.0 to 10.0)"
+        );
 
         let err = ValidationError::ZeroReps;
         assert_eq!(format!("{}", err), "Number of reps must be greater than 0");

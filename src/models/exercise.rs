@@ -6,6 +6,7 @@ use serde::{Deserialize, Serialize};
 /// configuration (which doesn't include actual weight), whereas `SetType`
 /// represents a completed set (which includes the weight used).
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
+#[allow(dead_code)]
 pub enum SetTypeConfig {
     /// Configuration for weighted exercises
     Weighted {
@@ -23,6 +24,7 @@ pub enum SetTypeConfig {
 /// Contains the exercise name and the type of sets it uses,
 /// which determines what fields are tracked for each set.
 #[derive(Clone, Debug, Serialize, Deserialize)]
+#[allow(dead_code)]
 pub struct ExerciseMetadata {
     /// Display name of the exercise (e.g., "Bench Press", "Pull-ups")
     pub name: String,
@@ -46,7 +48,10 @@ mod tests {
 
         assert_eq!(exercise.name, "Bench Press");
         match exercise.set_type_config {
-            SetTypeConfig::Weighted { min_weight, increment } => {
+            SetTypeConfig::Weighted {
+                min_weight,
+                increment,
+            } => {
                 assert_eq!(min_weight, 20.0);
                 assert_eq!(increment, 2.5);
             }
@@ -81,7 +86,8 @@ mod tests {
         };
 
         let json = serde_json::to_string(&original).expect("Serialization failed");
-        let deserialized: ExerciseMetadata = serde_json::from_str(&json).expect("Deserialization failed");
+        let deserialized: ExerciseMetadata =
+            serde_json::from_str(&json).expect("Deserialization failed");
 
         assert_eq!(deserialized.name, original.name);
         assert_eq!(deserialized.set_type_config, original.set_type_config);
@@ -95,7 +101,8 @@ mod tests {
         };
 
         let json = serde_json::to_string(&original).expect("Serialization failed");
-        let deserialized: ExerciseMetadata = serde_json::from_str(&json).expect("Deserialization failed");
+        let deserialized: ExerciseMetadata =
+            serde_json::from_str(&json).expect("Deserialization failed");
 
         assert_eq!(deserialized.name, original.name);
         assert_eq!(deserialized.set_type_config, original.set_type_config);

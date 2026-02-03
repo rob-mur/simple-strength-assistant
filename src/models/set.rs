@@ -5,6 +5,7 @@ use serde::{Deserialize, Serialize};
 /// The enum forces compile-time handling of both exercise types, ensuring
 /// that weight-related fields are only present for weighted exercises.
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
+#[allow(dead_code)]
 pub enum SetType {
     /// A weighted exercise with specific weight configuration
     Weighted {
@@ -24,6 +25,7 @@ pub enum SetType {
 /// Tracks all relevant metrics for a single set, including reps performed,
 /// RPE (Rate of Perceived Exertion), and the type of set (weighted or bodyweight).
 #[derive(Clone, Debug, Serialize, Deserialize)]
+#[allow(dead_code)]
 pub struct CompletedSet {
     /// Sequential set number (1, 2, 3, ...)
     pub set_number: u32,
@@ -48,7 +50,11 @@ mod tests {
         };
 
         match set_type {
-            SetType::Weighted { weight, min_weight, increment } => {
+            SetType::Weighted {
+                weight,
+                min_weight,
+                increment,
+            } => {
                 assert_eq!(weight, 100.0);
                 assert_eq!(min_weight, 20.0);
                 assert_eq!(increment, 2.5);
@@ -83,7 +89,8 @@ mod tests {
         };
 
         let json = serde_json::to_string(&original_set).expect("Serialization failed");
-        let deserialized: CompletedSet = serde_json::from_str(&json).expect("Deserialization failed");
+        let deserialized: CompletedSet =
+            serde_json::from_str(&json).expect("Deserialization failed");
 
         assert_eq!(deserialized.set_number, original_set.set_number);
         assert_eq!(deserialized.reps, original_set.reps);
@@ -101,7 +108,8 @@ mod tests {
         };
 
         let json = serde_json::to_string(&original_set).expect("Serialization failed");
-        let deserialized: CompletedSet = serde_json::from_str(&json).expect("Deserialization failed");
+        let deserialized: CompletedSet =
+            serde_json::from_str(&json).expect("Deserialization failed");
 
         assert_eq!(deserialized.set_number, original_set.set_number);
         assert_eq!(deserialized.reps, original_set.reps);
