@@ -21,7 +21,7 @@ pub enum SetType {
 ///
 /// Tracks all relevant metrics for a single set, including reps performed,
 /// RPE (Rate of Perceived Exertion), and the type of set (weighted or bodyweight).
-#[derive(Clone, Debug, Serialize, Deserialize)]
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
 #[allow(dead_code)]
 pub struct CompletedSet {
     /// Sequential set number (1, 2, 3, ...)
