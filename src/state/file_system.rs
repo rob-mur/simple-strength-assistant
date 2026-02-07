@@ -5,6 +5,9 @@ use wasm_bindgen::prelude::*;
 use wasm_bindgen_futures::JsFuture;
 use web_sys::{js_sys, window};
 
+const MAX_FILE_SIZE: usize = 100 * 1024 * 1024; // 100MB
+const SQLITE_MAGIC_NUMBER: &[u8] = b"SQLite format 3\0";
+
 #[derive(Error, Debug, Clone)]
 pub enum FileSystemError {
     #[error("File System Access API not supported")]
@@ -19,14 +22,17 @@ pub enum FileSystemError {
     #[error("Failed to write file: {0}")]
     WriteError(String),
 
-    #[error("Failed to access cached handle: {0}")]
-    CacheError(String),
-
     #[error("JavaScript error: {0}")]
     JsError(String),
 
     #[error("No file handle available")]
     NoHandle,
+
+    #[error("File is too large (max {} MB)", MAX_FILE_SIZE / 1024 / 1024)]
+    FileTooLarge,
+
+    #[error("File is not a valid SQLite database")]
+    InvalidFormat,
 }
 
 impl From<JsValue> for FileSystemError {
@@ -34,8 +40,6 @@ impl From<JsValue> for FileSystemError {
         FileSystemError::JsError(format!("{:?}", err))
     }
 }
-
-const HANDLE_CACHE_KEY: &str = "db_file_handle";
 
 #[derive(Clone, Serialize, Deserialize)]
 pub struct FileHandle {
@@ -67,127 +71,10 @@ impl FileSystemManager {
     }
 
     pub async fn check_cached_handle(&mut self) -> Result<bool, FileSystemError> {
-        if self.use_fallback {
-            return Ok(false);
-        }
-
-        match self.restore_handle_from_cache().await {
-            Ok(Some(handle)) => {
-                if self.verify_permission(&handle).await? {
-                    self.handle = Some(handle);
-                    Ok(true)
-                } else {
-                    Ok(false)
-                }
-            }
-            Ok(None) => Ok(false),
-            Err(e) => {
-                log::warn!("Failed to restore cached handle: {}", e);
-                Ok(false)
-            }
-        }
-    }
-
-    async fn restore_handle_from_cache(&self) -> Result<Option<JsValue>, FileSystemError> {
-        let window = window().ok_or(FileSystemError::NotSupported)?;
-        let navigator = window.navigator();
-
-        let storage = js_sys::Reflect::get(&navigator, &JsValue::from_str("storage"))
-            .map_err(|_| FileSystemError::NotSupported)?;
-
-        if storage.is_undefined() {
-            return Ok(None);
-        }
-
-        let get_directory = js_sys::Reflect::get(&storage, &JsValue::from_str("getDirectory"))
-            .map_err(|_| FileSystemError::NotSupported)?;
-
-        if get_directory.is_undefined() {
-            return Ok(None);
-        }
-
-        let get_dir_fn = get_directory
-            .dyn_ref::<js_sys::Function>()
-            .ok_or(FileSystemError::NotSupported)?;
-
-        let promise = get_dir_fn
-            .call0(&storage)
-            .map_err(|e| FileSystemError::CacheError(format!("{:?}", e)))?;
-
-        let opfs_root = JsFuture::from(js_sys::Promise::from(promise))
-            .await
-            .map_err(|e| FileSystemError::CacheError(format!("{:?}", e)))?;
-
-        let get_file_handle_result =
-            js_sys::Reflect::get(&opfs_root, &JsValue::from_str("getFileHandle"))
-                .map_err(|_| FileSystemError::NotSupported)?;
-        let get_file_handle = get_file_handle_result
-            .dyn_ref::<js_sys::Function>()
-            .ok_or(FileSystemError::NotSupported)?;
-
-        let options = js_sys::Object::new();
-        js_sys::Reflect::set(
-            &options,
-            &JsValue::from_str("create"),
-            &JsValue::from_bool(false),
-        )
-        .map_err(|_| FileSystemError::CacheError("Failed to set option".to_string()))?;
-
-        match get_file_handle.call2(&opfs_root, &JsValue::from_str(HANDLE_CACHE_KEY), &options) {
-            Ok(promise) => match JsFuture::from(js_sys::Promise::from(promise)).await {
-                Ok(handle) => Ok(Some(handle)),
-                Err(_) => Ok(None),
-            },
-            Err(_) => Ok(None),
-        }
-    }
-
-    async fn verify_permission(&self, handle: &JsValue) -> Result<bool, FileSystemError> {
-        let query_permission_result =
-            js_sys::Reflect::get(handle, &JsValue::from_str("queryPermission")).map_err(|_| {
-                FileSystemError::JsError("Failed to get queryPermission".to_string())
-            })?;
-        let query_permission = query_permission_result
-            .dyn_ref::<js_sys::Function>()
-            .ok_or(FileSystemError::JsError(
-                "queryPermission not a function".to_string(),
-            ))?;
-
-        let options = js_sys::Object::new();
-        js_sys::Reflect::set(
-            &options,
-            &JsValue::from_str("mode"),
-            &JsValue::from_str("readwrite"),
-        )
-        .map_err(|_| FileSystemError::JsError("Failed to set permission mode".to_string()))?;
-
-        let promise = query_permission.call1(handle, &options)?;
-        let result = JsFuture::from(js_sys::Promise::from(promise)).await?;
-
-        if let Some(status) = result.as_string()
-            && status == "granted"
-        {
-            return Ok(true);
-        }
-
-        let request_permission_result =
-            js_sys::Reflect::get(handle, &JsValue::from_str("requestPermission")).map_err(
-                |_| FileSystemError::JsError("Failed to get requestPermission".to_string()),
-            )?;
-        let request_permission = request_permission_result
-            .dyn_ref::<js_sys::Function>()
-            .ok_or(FileSystemError::JsError(
-                "requestPermission not a function".to_string(),
-            ))?;
-
-        let promise = request_permission.call1(handle, &options)?;
-        let result = JsFuture::from(js_sys::Promise::from(promise)).await?;
-
-        if let Some(status) = result.as_string() {
-            Ok(status == "granted")
-        } else {
-            Ok(false)
-        }
+        // TODO: Implement proper file handle caching using IndexedDB
+        // File System Access API handles cannot be directly serialized to OPFS
+        // For now, users will need to re-select their file on each page load
+        Ok(false)
     }
 
     pub async fn prompt_for_file(&mut self) -> Result<FileHandle, FileSystemError> {
@@ -244,24 +131,9 @@ impl FileSystemManager {
             .await
             .map_err(|_| FileSystemError::UserCancelled)?;
 
-        self.cache_handle(&handle).await?;
         self.handle = Some(handle);
 
-        Ok(FileHandle { cached: true })
-    }
-
-    async fn cache_handle(&self, _handle: &JsValue) -> Result<(), FileSystemError> {
-        let window = window().ok_or(FileSystemError::NotSupported)?;
-        let navigator = window.navigator();
-
-        let storage = js_sys::Reflect::get(&navigator, &JsValue::from_str("storage"))
-            .map_err(|_| FileSystemError::NotSupported)?;
-
-        if storage.is_undefined() {
-            return Ok(());
-        }
-
-        Ok(())
+        Ok(FileHandle { cached: false })
     }
 
     async fn use_fallback_storage(&mut self) -> Result<FileHandle, FileSystemError> {
@@ -289,6 +161,16 @@ impl FileSystemManager {
         let promise = get_file.call0(handle)?;
         let file = JsFuture::from(js_sys::Promise::from(promise)).await?;
 
+        // Check file size before reading
+        let size_result = js_sys::Reflect::get(&file, &JsValue::from_str("size"))?;
+        let size = size_result.as_f64().ok_or(FileSystemError::ReadError(
+            "Failed to get file size".to_string(),
+        ))? as usize;
+
+        if size > MAX_FILE_SIZE {
+            return Err(FileSystemError::FileTooLarge);
+        }
+
         let array_buffer_result = js_sys::Reflect::get(&file, &JsValue::from_str("arrayBuffer"))?;
         let array_buffer_method =
             array_buffer_result
@@ -303,6 +185,14 @@ impl FileSystemManager {
         let uint8_array = js_sys::Uint8Array::new(&array_buffer);
         let mut buffer = vec![0; uint8_array.length() as usize];
         uint8_array.copy_to(&mut buffer);
+
+        // Validate SQLite format if file is not empty
+        if !buffer.is_empty()
+            && buffer.len() >= SQLITE_MAGIC_NUMBER.len()
+            && !buffer.starts_with(SQLITE_MAGIC_NUMBER)
+        {
+            return Err(FileSystemError::InvalidFormat);
+        }
 
         Ok(buffer)
     }

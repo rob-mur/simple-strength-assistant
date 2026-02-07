@@ -60,27 +60,48 @@ impl WorkoutState {
     }
 
     pub fn initialization_state(&self) -> InitializationState {
-        self.inner.borrow().initialization_state
+        self.inner
+            .try_borrow()
+            .map(|state| state.initialization_state)
+            .unwrap_or(InitializationState::Error)
     }
 
     pub fn current_session(&self) -> Option<WorkoutSession> {
-        self.inner.borrow().current_session.clone()
+        self.inner
+            .try_borrow()
+            .ok()
+            .and_then(|state| state.current_session.clone())
     }
 
     pub fn error_message(&self) -> Option<String> {
-        self.inner.borrow().error_message.clone()
+        self.inner
+            .try_borrow()
+            .ok()
+            .and_then(|state| state.error_message.clone())
     }
 
     fn set_initialization_state(&self, state: InitializationState) {
-        self.inner.borrow_mut().initialization_state = state;
+        if let Ok(mut inner) = self.inner.try_borrow_mut() {
+            inner.initialization_state = state;
+        } else {
+            log::error!("Failed to borrow WorkoutState mutably to set initialization state");
+        }
     }
 
     fn set_current_session(&self, session: Option<WorkoutSession>) {
-        self.inner.borrow_mut().current_session = session;
+        if let Ok(mut inner) = self.inner.try_borrow_mut() {
+            inner.current_session = session;
+        } else {
+            log::error!("Failed to borrow WorkoutState mutably to set current session");
+        }
     }
 
     fn set_error_message(&self, message: Option<String>) {
-        self.inner.borrow_mut().error_message = message;
+        if let Ok(mut inner) = self.inner.try_borrow_mut() {
+            inner.error_message = message;
+        } else {
+            log::error!("Failed to borrow WorkoutState mutably to set error message");
+        }
     }
 }
 
@@ -125,8 +146,14 @@ impl WorkoutStateManager {
             .await
             .map_err(|e| format!("Failed to initialize database: {}", e))?;
 
-        state.inner.borrow_mut().database = Some(database);
-        state.inner.borrow_mut().file_manager = Some(file_manager);
+        {
+            let mut inner = state
+                .inner
+                .try_borrow_mut()
+                .map_err(|e| format!("Failed to borrow state mutably: {}", e))?;
+            inner.database = Some(database);
+            inner.file_manager = Some(file_manager);
+        }
         state.set_initialization_state(InitializationState::Ready);
 
         Ok(())
@@ -138,7 +165,8 @@ impl WorkoutStateManager {
     ) -> Result<(), String> {
         let db = state
             .inner
-            .borrow()
+            .try_borrow()
+            .map_err(|e| format!("Failed to borrow state: {}", e))?
             .database
             .clone()
             .ok_or("Database not initialized".to_string())?;
@@ -173,7 +201,8 @@ impl WorkoutStateManager {
 
         let db = state
             .inner
-            .borrow()
+            .try_borrow()
+            .map_err(|e| format!("Failed to borrow state: {}", e))?
             .database
             .clone()
             .ok_or("Database not initialized".to_string())?;
@@ -191,7 +220,9 @@ impl WorkoutStateManager {
 
         state.set_current_session(Some(session));
 
-        Self::save_database(state).await?;
+        // Note: Database is not saved here to avoid saving after every set.
+        // The database will be saved when the session is completed.
+        // If needed, implement debounced auto-save in the future.
 
         Ok(())
     }
@@ -203,7 +234,8 @@ impl WorkoutStateManager {
 
         let db = state
             .inner
-            .borrow()
+            .try_borrow()
+            .map_err(|e| format!("Failed to borrow state: {}", e))?
             .database
             .clone()
             .ok_or("Database not initialized".to_string())?;
@@ -220,19 +252,24 @@ impl WorkoutStateManager {
     }
 
     async fn save_database(state: &WorkoutState) -> Result<(), String> {
-        let db = state
-            .inner
-            .borrow()
-            .database
-            .clone()
-            .ok_or("Database not initialized".to_string())?;
+        let (db, file_manager) = {
+            let inner = state
+                .inner
+                .try_borrow()
+                .map_err(|e| format!("Failed to borrow state: {}", e))?;
 
-        let file_manager = state
-            .inner
-            .borrow()
-            .file_manager
-            .clone()
-            .ok_or("File manager not initialized".to_string())?;
+            let db = inner
+                .database
+                .clone()
+                .ok_or("Database not initialized".to_string())?;
+
+            let file_manager = inner
+                .file_manager
+                .clone()
+                .ok_or("File manager not initialized".to_string())?;
+
+            (db, file_manager)
+        };
 
         let data = db
             .export()
