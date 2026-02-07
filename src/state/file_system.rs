@@ -5,6 +5,18 @@ use wasm_bindgen::prelude::*;
 use wasm_bindgen_futures::JsFuture;
 use web_sys::{js_sys, window};
 
+#[wasm_bindgen(module = "/public/file-handle-storage.js")]
+extern "C" {
+    #[wasm_bindgen(js_name = storeFileHandle)]
+    async fn store_file_handle(handle: JsValue) -> JsValue;
+
+    #[wasm_bindgen(js_name = retrieveFileHandle)]
+    async fn retrieve_file_handle() -> JsValue;
+
+    #[wasm_bindgen(js_name = clearFileHandle)]
+    async fn clear_file_handle() -> JsValue;
+}
+
 const MAX_FILE_SIZE: usize = 100 * 1024 * 1024; // 100MB
 const SQLITE_MAGIC_NUMBER: &[u8] = b"SQLite format 3\0";
 
@@ -71,10 +83,19 @@ impl FileSystemManager {
     }
 
     pub async fn check_cached_handle(&mut self) -> Result<bool, FileSystemError> {
-        // TODO: Implement proper file handle caching using IndexedDB
-        // File System Access API handles cannot be directly serialized to OPFS
-        // For now, users will need to re-select their file on each page load
-        Ok(false)
+        if self.use_fallback {
+            // Fallback storage doesn't need handle caching
+            return Ok(true);
+        }
+
+        let handle = retrieve_file_handle().await;
+
+        if !handle.is_null() && !handle.is_undefined() {
+            self.handle = Some(handle);
+            Ok(true)
+        } else {
+            Ok(false)
+        }
     }
 
     pub async fn prompt_for_file(&mut self) -> Result<FileHandle, FileSystemError> {
@@ -131,12 +152,18 @@ impl FileSystemManager {
             .await
             .map_err(|_| FileSystemError::UserCancelled)?;
 
+        // Store the handle in IndexedDB for persistence
+        let store_result = store_file_handle(handle.clone()).await;
+        if !store_result.is_truthy() {
+            log::warn!("Failed to persist file handle to IndexedDB");
+        }
+
         self.handle = Some(handle);
 
-        Ok(FileHandle { cached: false })
+        Ok(FileHandle { cached: true })
     }
 
-    async fn use_fallback_storage(&mut self) -> Result<FileHandle, FileSystemError> {
+    pub async fn use_fallback_storage(&mut self) -> Result<FileHandle, FileSystemError> {
         log::info!("Using IndexedDB/OPFS fallback storage");
         self.use_fallback = true;
         Ok(FileHandle { cached: false })
