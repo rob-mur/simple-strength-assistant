@@ -132,16 +132,41 @@ fn WorkoutInterface(state: WorkoutState) -> Element {
     }
 }
 
+const MAX_EXERCISE_NAME_LENGTH: usize = 100;
+
+fn validate_exercise_name(name: &str) -> Result<(), String> {
+    if name.trim().is_empty() {
+        return Err("Exercise name cannot be empty".to_string());
+    }
+    if name.len() > MAX_EXERCISE_NAME_LENGTH {
+        return Err(format!(
+            "Exercise name must be {} characters or less",
+            MAX_EXERCISE_NAME_LENGTH
+        ));
+    }
+    Ok(())
+}
+
 #[component]
 fn StartSessionView(state: WorkoutState) -> Element {
     let mut exercise_name = use_signal(|| "Bench Press".to_string());
     let mut is_weighted = use_signal(|| true);
     let mut min_weight = use_signal(|| 45.0);
     let mut increment = use_signal(|| 5.0);
+    let mut validation_error = use_signal(|| None::<String>);
 
     let start_session = move |_| {
+        let name = exercise_name().trim().to_string();
+
+        if let Err(e) = validate_exercise_name(&name) {
+            validation_error.set(Some(e));
+            return;
+        }
+
+        validation_error.set(None);
+
         let exercise = ExerciseMetadata {
-            name: exercise_name(),
+            name,
             set_type_config: if is_weighted() {
                 SetTypeConfig::Weighted {
                     min_weight: min_weight(),
@@ -181,10 +206,27 @@ fn StartSessionView(state: WorkoutState) -> Element {
                             }
                         }
                         input {
-                            class: "input input-bordered",
+                            class: if validation_error().is_some() {
+                                "input input-bordered input-error"
+                            } else {
+                                "input input-bordered"
+                            },
                             r#type: "text",
                             value: "{exercise_name}",
-                            oninput: move |e| exercise_name.set(e.value())
+                            maxlength: MAX_EXERCISE_NAME_LENGTH,
+                            oninput: move |e| {
+                                exercise_name.set(e.value());
+                                validation_error.set(None);
+                            }
+                        }
+                        if let Some(error) = validation_error() {
+                            label {
+                                class: "label",
+                                span {
+                                    class: "label-text-alt text-error",
+                                    "{error}"
+                                }
+                            }
                         }
                     }
                     div {

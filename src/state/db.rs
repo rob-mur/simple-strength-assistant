@@ -24,7 +24,7 @@ impl From<JsValue> for DatabaseError {
     }
 }
 
-#[wasm_bindgen(module = "/public/db-worker.js")]
+#[wasm_bindgen(module = "/public/db-module.js")]
 extern "C" {
     #[wasm_bindgen(js_name = initDatabase)]
     async fn init_database(file_data: Option<Vec<u8>>) -> JsValue;
@@ -53,8 +53,8 @@ impl Database {
         let result = init_database(file_data).await;
 
         if result.is_truthy() {
-            self.initialized = true;
             self.create_tables().await?;
+            self.initialized = true;
             Ok(())
         } else {
             Err(DatabaseError::InitializationError(

@@ -90,8 +90,19 @@ export async function executeTransaction(queries) {
 
         const results = [];
         for (const { sql, params } of queries) {
-            const result = await executeQuery(sql, params);
-            results.push(result);
+            // Use db.run() for proper transaction support instead of db.exec()
+            // db.exec() doesn't respect transaction boundaries properly in sql.js
+            const stmt = db.prepare(sql);
+            stmt.bind(params || []);
+
+            const result = [];
+            while (stmt.step()) {
+                const row = stmt.getAsObject();
+                result.push(row);
+            }
+            stmt.free();
+
+            results.push(result.length > 0 ? result : null);
         }
 
         db.run('COMMIT');
