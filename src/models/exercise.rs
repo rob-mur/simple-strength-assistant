@@ -23,7 +23,7 @@ pub enum SetTypeConfig {
 ///
 /// Contains the exercise name and the type of sets it uses,
 /// which determines what fields are tracked for each set.
-#[derive(Clone, Debug, Serialize, Deserialize)]
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
 #[allow(dead_code)]
 pub struct ExerciseMetadata {
     /// Display name of the exercise (e.g., "Bench Press", "Pull-ups")

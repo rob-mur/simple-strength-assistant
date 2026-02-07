@@ -1,10 +1,13 @@
 {pkgs, ...}: {
+  devcontainer.enable = true;
   packages = with pkgs; [
     git
     gh
     dioxus-cli
     wasm-bindgen-cli
     binaryen
+    devcontainer
+    claude-code
   ];
 
   languages.rust = {
