@@ -3,6 +3,15 @@ use crate::state::{Database, FileSystemManager};
 use std::cell::RefCell;
 use std::rc::Rc;
 
+// Initial prediction constants
+const DEFAULT_WEIGHTED_REPS: u32 = 8;
+const DEFAULT_BODYWEIGHT_REPS: u32 = 10;
+const DEFAULT_RPE: f32 = 7.0;
+const RPE_THRESHOLD_HIGH: f32 = 8.0;
+const RPE_THRESHOLD_LOW: f32 = 7.0;
+const RPE_REDUCTION: f32 = 0.5;
+const RPE_MINIMUM: f32 = 6.0;
+
 #[derive(Clone, Debug, PartialEq)]
 pub struct PredictedParameters {
     pub weight: Option<f32>,
@@ -109,6 +118,18 @@ pub struct WorkoutStateManager;
 
 impl WorkoutStateManager {
     pub async fn setup_database(state: &WorkoutState) -> Result<(), String> {
+        // Check current state to prevent concurrent initialization
+        let current_state = state.initialization_state();
+        match current_state {
+            InitializationState::Initializing => {
+                return Err("Database initialization already in progress".to_string());
+            }
+            InitializationState::Ready => {
+                return Ok(());
+            }
+            _ => {}
+        }
+
         state.set_initialization_state(InitializationState::Initializing);
 
         let mut file_manager = FileSystemManager::new();
@@ -288,13 +309,13 @@ impl WorkoutStateManager {
         match exercise.set_type_config {
             crate::models::SetTypeConfig::Weighted { min_weight, .. } => PredictedParameters {
                 weight: Some(min_weight),
-                reps: 8,
-                rpe: 7.0,
+                reps: DEFAULT_WEIGHTED_REPS,
+                rpe: DEFAULT_RPE,
             },
             crate::models::SetTypeConfig::Bodyweight => PredictedParameters {
                 weight: None,
-                reps: 10,
-                rpe: 7.0,
+                reps: DEFAULT_BODYWEIGHT_REPS,
+                rpe: DEFAULT_RPE,
             },
         }
     }
@@ -306,13 +327,10 @@ impl WorkoutStateManager {
 
         let last_set = &session.completed_sets[session.completed_sets.len() - 1];
 
-        let _avg_rpe = session.completed_sets.iter().map(|s| s.rpe).sum::<f32>()
-            / session.completed_sets.len() as f32;
-
-        let predicted_rpe = if last_set.rpe < 8.0 {
+        let predicted_rpe = if last_set.rpe < RPE_THRESHOLD_HIGH {
             last_set.rpe
         } else {
-            (last_set.rpe - 0.5).max(6.0)
+            (last_set.rpe - RPE_REDUCTION).max(RPE_MINIMUM)
         };
 
         match (&last_set.set_type, &session.exercise.set_type_config) {
@@ -320,7 +338,7 @@ impl WorkoutStateManager {
                 SetType::Weighted { weight },
                 crate::models::SetTypeConfig::Weighted { increment, .. },
             ) => {
-                let predicted_weight = if last_set.rpe < 7.0 {
+                let predicted_weight = if last_set.rpe < RPE_THRESHOLD_LOW {
                     weight + increment
                 } else {
                     *weight

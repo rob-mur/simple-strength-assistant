@@ -9,7 +9,7 @@ async function ensureSQLLoaded() {
     }
 
     SQL = await window.initSqlJs({
-        locateFile: file => `https://cdn.jsdelivr.net/npm/sql.js@1.8.0/dist/${file}`
+        locateFile: file => `public/${file}`
     });
 
     return SQL;
@@ -73,9 +73,7 @@ export async function executeQuery(sql, params) {
 
         return { changes: db.getRowsModified() };
     } catch (error) {
-        console.error('Query execution failed:', error);
-        console.error('SQL:', sql);
-        console.error('Params:', params);
+        console.error('Query execution failed:', error.message || error);
         throw error;
     }
 }
@@ -108,7 +106,19 @@ export async function executeTransaction(queries) {
         db.run('COMMIT');
         return results;
     } catch (error) {
-        db.run('ROLLBACK');
+        // Attempt to rollback, but preserve the original error
+        try {
+            db.run('ROLLBACK');
+        } catch (rollbackError) {
+            console.error('ROLLBACK failed:', rollbackError);
+            // Create a combined error message
+            const combinedError = new Error(
+                `Transaction failed: ${error.message}. Additionally, ROLLBACK failed: ${rollbackError.message}`
+            );
+            combinedError.originalError = error;
+            combinedError.rollbackError = rollbackError;
+            throw combinedError;
+        }
         console.error('Transaction failed:', error);
         throw error;
     }
