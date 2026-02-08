@@ -50,16 +50,19 @@ impl Database {
     }
 
     pub async fn init(&mut self, file_data: Option<Vec<u8>>) -> Result<(), DatabaseError> {
+        web_sys::console::log_1(&"[DB] Calling JS initDatabase...".into());
         let result = init_database(file_data).await;
 
         if result.is_truthy() {
+            web_sys::console::log_1(&"[DB] initDatabase succeeded, creating tables...".into());
             self.create_tables().await?;
             self.initialized = true;
+            web_sys::console::log_1(&"[DB] Tables created successfully".into());
             Ok(())
         } else {
-            Err(DatabaseError::InitializationError(
-                "Failed to initialize SQLite database".to_string(),
-            ))
+            let error_msg = "Failed to initialize SQLite database - JS returned false".to_string();
+            web_sys::console::error_1(&error_msg.clone().into());
+            Err(DatabaseError::InitializationError(error_msg))
         }
     }
 
@@ -96,9 +99,19 @@ impl Database {
             )
         "#;
 
+        let create_index = r#"
+            CREATE INDEX IF NOT EXISTS idx_sets_session_id
+            ON completed_sets(session_id)
+        "#;
+
+        web_sys::console::log_1(&"[DB] Creating sessions table...".into());
         self.execute(create_sessions, &[]).await?;
+        web_sys::console::log_1(&"[DB] Creating completed_sets table...".into());
         self.execute(create_sets, &[]).await?;
+        web_sys::console::log_1(&"[DB] Creating exercises table...".into());
         self.execute(create_exercises, &[]).await?;
+        web_sys::console::log_1(&"[DB] Creating index on session_id...".into());
+        self.execute(create_index, &[]).await?;
 
         Ok(())
     }

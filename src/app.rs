@@ -80,31 +80,57 @@ pub fn App() -> Element {
                         }
                     }
                     InitializationState::Error => {
+                        let state_for_retry = workout_state.clone();
                         rsx! {
                             div {
                                 class: "flex items-center justify-center h-full",
                                 div {
-                                    class: "alert alert-error max-w-md",
-                                    svg {
-                                        xmlns: "http://www.w3.org/2000/svg",
-                                        class: "stroke-current shrink-0 h-6 w-6",
-                                        fill: "none",
-                                        view_box: "0 0 24 24",
-                                        path {
-                                            stroke_linecap: "round",
-                                            stroke_linejoin: "round",
-                                            stroke_width: "2",
-                                            d: "M10 14l2-2m0 0l2-2m-2 2l-2-2m2 2l2 2m7-2a9 9 0 11-18 0 9 9 0 0118 0z"
-                                        }
-                                    }
+                                    class: "card bg-base-100 shadow-xl max-w-md",
                                     div {
-                                        h3 {
-                                            class: "font-bold",
-                                            "Error"
+                                        class: "card-body",
+                                        div {
+                                            class: "alert alert-error mb-4",
+                                            svg {
+                                                xmlns: "http://www.w3.org/2000/svg",
+                                                class: "stroke-current shrink-0 h-6 w-6",
+                                                fill: "none",
+                                                view_box: "0 0 24 24",
+                                                path {
+                                                    stroke_linecap: "round",
+                                                    stroke_linejoin: "round",
+                                                    stroke_width: "2",
+                                                    d: "M10 14l2-2m0 0l2-2m-2 2l-2-2m2 2l2 2m7-2a9 9 0 11-18 0 9 9 0 0118 0z"
+                                                }
+                                            }
+                                            div {
+                                                h3 {
+                                                    class: "font-bold",
+                                                    "Initialization Error"
+                                                }
+                                                p {
+                                                    class: "text-sm mt-2",
+                                                    {workout_state.error_message().unwrap_or_else(|| "Unknown error occurred".to_string())}
+                                                }
+                                            }
                                         }
-                                        p {
-                                            class: "text-sm",
-                                            {workout_state.error_message().unwrap_or_else(|| "Unknown error occurred".to_string())}
+                                        div {
+                                            class: "card-actions justify-end",
+                                            button {
+                                                class: "btn btn-primary",
+                                                onclick: move |_| {
+                                                    let state = state_for_retry.clone();
+                                                    spawn(async move {
+                                                        // Reset error state
+                                                        state.set_error_message(None);
+                                                        state.set_initialization_state(InitializationState::NotInitialized);
+                                                        // Retry initialization
+                                                        if let Err(e) = WorkoutStateManager::setup_database(&state).await {
+                                                            WorkoutStateManager::handle_error(&state, e);
+                                                        }
+                                                    });
+                                                },
+                                                "Retry"
+                                            }
                                         }
                                     }
                                 }
