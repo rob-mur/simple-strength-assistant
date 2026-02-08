@@ -118,19 +118,25 @@ pub struct WorkoutStateManager;
 
 impl WorkoutStateManager {
     pub async fn setup_database(state: &WorkoutState) -> Result<(), String> {
-        // Check current state to prevent concurrent initialization
-        let current_state = state.initialization_state();
-        match current_state {
-            InitializationState::Initializing => {
-                return Err("Database initialization already in progress".to_string());
-            }
-            InitializationState::Ready => {
-                return Ok(());
-            }
-            _ => {}
-        }
+        // Atomically check and set initialization state to prevent race conditions
+        {
+            let mut inner = state
+                .inner
+                .try_borrow_mut()
+                .map_err(|_| "Failed to access state: already borrowed".to_string())?;
 
-        state.set_initialization_state(InitializationState::Initializing);
+            match inner.initialization_state {
+                InitializationState::Initializing => {
+                    return Err("Database initialization already in progress".to_string());
+                }
+                InitializationState::Ready => {
+                    return Ok(());
+                }
+                _ => {}
+            }
+
+            inner.initialization_state = InitializationState::Initializing;
+        }
 
         let mut file_manager = FileSystemManager::new();
 

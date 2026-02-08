@@ -1,6 +1,7 @@
 [application]
 name = "simple-strength-assistant"
 out_dir = "dist"
+asset_dir = "public"
 
 [web.app]
 title = "Strength Assistant"
