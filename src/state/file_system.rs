@@ -190,9 +190,18 @@ impl FileSystemManager {
 
         // Check file size before reading
         let size_result = js_sys::Reflect::get(&file, &JsValue::from_str("size"))?;
-        let size = size_result.as_f64().ok_or(FileSystemError::ReadError(
+        let size_f64 = size_result.as_f64().ok_or(FileSystemError::ReadError(
             "Failed to get file size".to_string(),
-        ))? as usize;
+        ))?;
+
+        // Validate size is within valid range before converting to usize
+        if size_f64 < 0.0 || size_f64 > usize::MAX as f64 {
+            return Err(FileSystemError::ReadError(
+                "File size out of valid range".to_string(),
+            ));
+        }
+
+        let size = size_f64 as usize;
 
         if size > MAX_FILE_SIZE {
             return Err(FileSystemError::FileTooLarge);

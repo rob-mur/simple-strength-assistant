@@ -9,7 +9,7 @@ async function ensureSQLLoaded() {
     }
 
     SQL = await window.initSqlJs({
-        locateFile: file => `public/${file}`
+        locateFile: file => file
     });
 
     return SQL;
