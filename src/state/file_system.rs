@@ -28,6 +28,9 @@ pub enum FileSystemError {
     #[error("User cancelled file selection")]
     UserCancelled,
 
+    #[error("Permission denied. Please grant file access to continue.")]
+    PermissionDenied,
+
     #[error("Failed to read file: {0}")]
     ReadError(String),
 
@@ -84,25 +87,35 @@ impl FileSystemManager {
 
     pub async fn check_cached_handle(&mut self) -> Result<bool, FileSystemError> {
         if self.use_fallback {
+            web_sys::console::log_1(
+                &"[FileSystem] Using fallback storage (IndexedDB/LocalStorage)".into(),
+            );
             // Fallback storage doesn't need handle caching
             return Ok(true);
         }
 
+        web_sys::console::log_1(&"[FileSystem] Checking for cached file handle...".into());
         let handle = retrieve_file_handle().await;
 
         if !handle.is_null() && !handle.is_undefined() {
+            web_sys::console::log_1(&"[FileSystem] Found cached handle".into());
             self.handle = Some(handle);
             Ok(true)
         } else {
+            web_sys::console::log_1(&"[FileSystem] No cached handle found".into());
             Ok(false)
         }
     }
 
     pub async fn prompt_for_file(&mut self) -> Result<FileHandle, FileSystemError> {
         if self.use_fallback {
+            web_sys::console::log_1(
+                &"[FileSystem] Using fallback storage for file operations".into(),
+            );
             return self.use_fallback_storage().await;
         }
 
+        web_sys::console::log_1(&"[FileSystem] Opening file picker dialog...".into());
         let window = window().ok_or(FileSystemError::NotSupported)?;
 
         let show_save_file_picker =
@@ -144,18 +157,52 @@ impl FileSystemManager {
             &JsValue::from_str("workout_data.sqlite"),
         )?;
 
-        let promise = picker_fn
-            .call1(&window, &options)
-            .map_err(|_| FileSystemError::UserCancelled)?;
+        let promise = picker_fn.call1(&window, &options).map_err(|e| {
+            let error_string = format!("{:?}", e);
+            web_sys::console::log_1(&"[FileSystem] File picker error".into());
+            web_sys::console::log_1(&format!("[FileSystem] Error: {}", error_string).into());
+
+            // Check if it's a permission error
+            if error_string.to_lowercase().contains("permission")
+                || error_string.to_lowercase().contains("notallowederror")
+            {
+                FileSystemError::PermissionDenied
+            } else {
+                FileSystemError::UserCancelled
+            }
+        })?;
 
         let handle = JsFuture::from(js_sys::Promise::from(promise))
             .await
-            .map_err(|_| FileSystemError::UserCancelled)?;
+            .map_err(|e| {
+                let error_string = format!("{:?}", e);
+                web_sys::console::log_1(
+                    &"[FileSystem] Failed to get file handle from promise".into(),
+                );
+                web_sys::console::error_1(&format!("[FileSystem] Error: {}", error_string).into());
 
+                // Check if it's a permission error
+                if error_string.to_lowercase().contains("permission")
+                    || error_string.to_lowercase().contains("notallowederror")
+                {
+                    FileSystemError::PermissionDenied
+                } else {
+                    FileSystemError::UserCancelled
+                }
+            })?;
+
+        web_sys::console::log_1(
+            &"[FileSystem] File handle obtained, storing in IndexedDB...".into(),
+        );
         // Store the handle in IndexedDB for persistence
         let store_result = store_file_handle(handle.clone()).await;
         if !store_result.is_truthy() {
+            web_sys::console::warn_1(
+                &"[FileSystem] Failed to persist file handle to IndexedDB".into(),
+            );
             log::warn!("Failed to persist file handle to IndexedDB");
+        } else {
+            web_sys::console::log_1(&"[FileSystem] File handle stored successfully".into());
         }
 
         self.handle = Some(handle);

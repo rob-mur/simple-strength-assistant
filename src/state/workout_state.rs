@@ -89,7 +89,7 @@ impl WorkoutState {
             .and_then(|state| state.error_message.clone())
     }
 
-    fn set_initialization_state(&self, state: InitializationState) {
+    pub fn set_initialization_state(&self, state: InitializationState) {
         if let Ok(mut inner) = self.inner.try_borrow_mut() {
             inner.initialization_state = state;
         } else {
@@ -97,7 +97,7 @@ impl WorkoutState {
         }
     }
 
-    fn set_current_session(&self, session: Option<WorkoutSession>) {
+    pub fn set_current_session(&self, session: Option<WorkoutSession>) {
         if let Ok(mut inner) = self.inner.try_borrow_mut() {
             inner.current_session = session;
         } else {
@@ -105,7 +105,7 @@ impl WorkoutState {
         }
     }
 
-    fn set_error_message(&self, message: Option<String>) {
+    pub fn set_error_message(&self, message: Option<String>) {
         if let Ok(mut inner) = self.inner.try_borrow_mut() {
             inner.error_message = message;
         } else {
@@ -118,6 +118,8 @@ pub struct WorkoutStateManager;
 
 impl WorkoutStateManager {
     pub async fn setup_database(state: &WorkoutState) -> Result<(), String> {
+        web_sys::console::log_1(&"[DB Init] Starting database setup...".into());
+
         // Atomically check and set initialization state to prevent race conditions
         {
             let mut inner = state
@@ -127,9 +129,11 @@ impl WorkoutStateManager {
 
             match inner.initialization_state {
                 InitializationState::Initializing => {
+                    web_sys::console::log_1(&"[DB Init] Already in progress, skipping".into());
                     return Err("Database initialization already in progress".to_string());
                 }
                 InitializationState::Ready => {
+                    web_sys::console::log_1(&"[DB Init] Already initialized, skipping".into());
                     return Ok(());
                 }
                 _ => {}
@@ -138,51 +142,78 @@ impl WorkoutStateManager {
             inner.initialization_state = InitializationState::Initializing;
         }
 
+        web_sys::console::log_1(&"[DB Init] Creating file manager...".into());
         let mut file_manager = FileSystemManager::new();
 
-        let has_cached = file_manager
-            .check_cached_handle()
-            .await
-            .map_err(|e| format!("Failed to check cached handle: {}", e))?;
+        web_sys::console::log_1(&"[DB Init] Checking for cached file handle...".into());
+        let has_cached = file_manager.check_cached_handle().await.map_err(|e| {
+            let msg = format!("Failed to check cached handle: {}", e);
+            web_sys::console::error_1(&msg.clone().into());
+            msg
+        })?;
+
+        web_sys::console::log_1(&format!("[DB Init] Has cached handle: {}", has_cached).into());
 
         if !has_cached {
+            web_sys::console::log_1(&"[DB Init] No cached handle, prompting for file...".into());
             state.set_initialization_state(InitializationState::SelectingFile);
 
-            file_manager
-                .prompt_for_file()
-                .await
-                .map_err(|e| format!("Failed to prompt for file: {}", e))?;
+            file_manager.prompt_for_file().await.map_err(|e| {
+                let msg = format!("Failed to prompt for file: {}", e);
+                web_sys::console::error_1(&msg.clone().into());
+                msg
+            })?;
+            web_sys::console::log_1(&"[DB Init] File selected successfully".into());
         }
 
         let file_data = if file_manager.has_handle() {
+            web_sys::console::log_1(&"[DB Init] Reading existing file...".into());
             match file_manager.read_file().await {
-                Ok(data) if !data.is_empty() => Some(data),
-                Ok(_) => None,
+                Ok(data) if !data.is_empty() => {
+                    web_sys::console::log_1(
+                        &format!("[DB Init] Read {} bytes from file", data.len()).into(),
+                    );
+                    Some(data)
+                }
+                Ok(_) => {
+                    web_sys::console::log_1(
+                        &"[DB Init] File is empty, creating new database".into(),
+                    );
+                    None
+                }
                 Err(e) => {
-                    log::warn!("Failed to read existing file: {}", e);
+                    let msg = format!("Failed to read existing file: {}", e);
+                    web_sys::console::warn_1(&msg.clone().into());
+                    log::warn!("{}", msg);
                     None
                 }
             }
         } else {
+            web_sys::console::log_1(&"[DB Init] No file handle, creating new database".into());
             None
         };
 
+        web_sys::console::log_1(&"[DB Init] Initializing database...".into());
         let mut database = Database::new();
-        database
-            .init(file_data)
-            .await
-            .map_err(|e| format!("Failed to initialize database: {}", e))?;
+        database.init(file_data).await.map_err(|e| {
+            let msg = format!("Failed to initialize database: {}", e);
+            web_sys::console::error_1(&msg.clone().into());
+            msg
+        })?;
+        web_sys::console::log_1(&"[DB Init] Database initialized successfully".into());
 
         {
-            let mut inner = state
-                .inner
-                .try_borrow_mut()
-                .map_err(|e| format!("Failed to borrow state mutably: {}", e))?;
+            let mut inner = state.inner.try_borrow_mut().map_err(|e| {
+                let msg = format!("Failed to borrow state mutably: {}", e);
+                web_sys::console::error_1(&msg.clone().into());
+                msg
+            })?;
             inner.database = Some(database);
             inner.file_manager = Some(file_manager);
         }
         state.set_initialization_state(InitializationState::Ready);
 
+        web_sys::console::log_1(&"[DB Init] Setup complete! State is now Ready".into());
         Ok(())
     }
 
@@ -247,9 +278,17 @@ impl WorkoutStateManager {
 
         state.set_current_session(Some(session));
 
-        // Note: Database is not saved here to avoid saving after every set.
-        // The database will be saved when the session is completed.
-        // If needed, implement debounced auto-save in the future.
+        // Auto-save after each set to prevent data loss if browser closes
+        web_sys::console::log_1(&"[Workout] Auto-saving database after set...".into());
+        Self::save_database(state)
+            .await
+            .map_err(|e| {
+                web_sys::console::warn_1(&format!("[Workout] Auto-save failed: {}", e).into());
+                // Don't fail the entire operation if auto-save fails
+                // The set is still recorded in memory and will be saved on session completion
+                log::warn!("Auto-save failed but set logged in memory: {}", e);
+            })
+            .ok();
 
         Ok(())
     }
