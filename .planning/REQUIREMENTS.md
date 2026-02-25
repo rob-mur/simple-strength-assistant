@@ -56,25 +56,25 @@
 
 | Requirement | Phase | Status |
 |-------------|-------|--------|
-| DB-01 | TBD | Pending |
-| DB-02 | TBD | Pending |
-| DB-03 | TBD | Pending |
-| DB-04 | TBD | Pending |
-| DB-05 | TBD | Pending |
-| DB-06 | TBD | Pending |
-| DEV-01 | TBD | Pending |
-| DEV-02 | TBD | Pending |
-| DEV-03 | TBD | Pending |
-| DEV-04 | TBD | Pending |
-| ERR-01 | TBD | Pending |
-| ERR-02 | TBD | Pending |
-| ERR-03 | TBD | Pending |
-| ERR-04 | TBD | Pending |
+| DEV-01 | Phase 1 | Pending |
+| DEV-02 | Phase 1 | Pending |
+| DEV-03 | Phase 1 | Pending |
+| DEV-04 | Phase 1 | Pending |
+| DB-01 | Phase 2 | Pending |
+| DB-02 | Phase 2 | Pending |
+| DB-04 | Phase 2 | Pending |
+| ERR-01 | Phase 2 | Pending |
+| ERR-02 | Phase 2 | Pending |
+| ERR-04 | Phase 2 | Pending |
+| DB-03 | Phase 3 | Pending |
+| DB-05 | Phase 3 | Pending |
+| DB-06 | Phase 3 | Pending |
+| ERR-03 | Phase 3 | Pending |
 
 **Coverage:**
 - v1 requirements: 14 total
-- Mapped to phases: 0 (will be assigned during roadmap creation)
-- Unmapped: 14 ⚠️
+- Mapped to phases: 14
+- Unmapped: 0 ✓
 
 ---
 *Requirements defined: 2026-02-25*

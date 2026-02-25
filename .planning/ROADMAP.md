@@ -1,0 +1,68 @@
+# Roadmap: Simple Strength Assistant - File Picker Fix
+
+## Overview
+
+Fix the broken file picker that's preventing users from selecting where to store their workout database. We'll set up the development environment to capture errors, debug the File System Access API integration, fix the root cause, and verify the complete database initialization flow works reliably.
+
+## Phases
+
+- [ ] **Phase 1: Development Environment** - Get app running locally with full debugging capabilities
+- [ ] **Phase 2: Debug and Fix File Picker** - Identify and fix the file picker issue
+- [ ] **Phase 3: Verify and Polish** - Test complete flow and edge cases
+
+## Phase Details
+
+### Phase 1: Development Environment
+**Goal**: Development environment runs with browser console access for debugging
+**Depends on**: Nothing (first phase)
+**Requirements**: DEV-01, DEV-02, DEV-03, DEV-04
+**Success Criteria** (what must be TRUE):
+  1. `dx build` or equivalent dev command runs without errors
+  2. Browser loads the app and UI renders
+  3. Console logs show initialization steps clearly
+  4. WASM module loads successfully
+**Plans**: TBD
+
+Plans:
+- [ ] 01-01: Setup dev environment and capture console logs
+
+### Phase 2: Debug and Fix File Picker
+**Goal**: File picker appears when triggered and user can select database file
+**Depends on**: Phase 1
+**Requirements**: DB-01, DB-02, DB-04, ERR-01, ERR-02, ERR-04
+**Success Criteria** (what must be TRUE):
+  1. File picker dialog appears when user needs to select database
+  2. User can select .sqlite or .db file from filesystem
+  3. File System Access API permission prompt appears correctly
+  4. Selected file handle is accessible from Rust code
+**Plans**: TBD
+
+Plans:
+- [ ] 02-01: Debug file picker error and identify root cause
+- [ ] 02-02: Fix file picker implementation
+
+### Phase 3: Verify and Polish
+**Goal**: Complete database initialization flow works end-to-end with proper error handling
+**Depends on**: Phase 2
+**Requirements**: DB-03, DB-05, DB-06, ERR-03
+**Success Criteria** (what must be TRUE):
+  1. Selected file handle persists across browser refresh
+  2. Database initializes successfully after file selection
+  3. LocalStorage fallback works when API unavailable
+  4. User-friendly error messages for common failure modes
+**Plans**: TBD
+
+Plans:
+- [ ] 03-01: Test end-to-end flow and polish error handling
+
+## Progress
+
+| Phase | Plans Complete | Status | Completed |
+|-------|----------------|--------|-----------|
+| 1. Development Environment | 0/1 | Not started | - |
+| 2. Debug and Fix File Picker | 0/2 | Not started | - |
+| 3. Verify and Polish | 0/1 | Not started | - |
+
+---
+*Roadmap created: 2026-02-25*
+*Last updated: 2026-02-25 after initial definition*
