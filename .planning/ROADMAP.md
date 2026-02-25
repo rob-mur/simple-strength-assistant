@@ -17,14 +17,14 @@ Fix the broken file picker that's preventing users from selecting where to store
 **Depends on**: Nothing (first phase)
 **Requirements**: DEV-01, DEV-02, DEV-03, DEV-04
 **Success Criteria** (what must be TRUE):
-  1. `dx build` or equivalent dev command runs without errors
+  1. `dx serve` runs without errors and serves app in browser
   2. Browser loads the app and UI renders
   3. Console logs show initialization steps clearly
   4. WASM module loads successfully
-**Plans**: TBD
+**Plans**: 1 plan
 
 Plans:
-- [ ] 01-01: Setup dev environment and capture console logs
+- [ ] 01-01-PLAN.md — Initialize Dioxus logger and verify dev environment with console debugging
 
 ### Phase 2: Debug and Fix File Picker
 **Goal**: File picker appears when triggered and user can select database file
