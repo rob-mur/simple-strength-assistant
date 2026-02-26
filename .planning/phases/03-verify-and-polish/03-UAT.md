@@ -9,13 +9,13 @@ updated: 2026-02-26T17:00:00Z
 ## Current Test
 <!-- OVERWRITE each test - shows where we are -->
 
-number: 2
-name: File Handle Persistence (Chrome)
+number: 7
+name: PWA Install Prompt (Mobile)
 expected: |
-  1. Open app in Chrome (fresh session)
-  2. Select database file, grant permission
-  3. Refresh the page (F5)
-  4. App should automatically initialize to Ready state without re-prompting for file selection.
+  1. Deploy to Vercel.
+  2. Open on mobile device.
+  3. Verify manifest.json loads without 401 error (using 'crossorigin="use-credentials"').
+  4. Verify PWA install prompt/banner appears in the SelectingFile state.
 awaiting: user response
 
 ## Tests

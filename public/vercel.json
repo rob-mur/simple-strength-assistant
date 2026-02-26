@@ -9,12 +9,8 @@
   "installCommand": "true",
   "headers": [
     {
-      "source": "/(.*).wasm",
+      "source": "/(.*)",
       "headers": [
-        {
-          "key": "Content-Type",
-          "value": "application/wasm"
-        },
         {
           "key": "Cross-Origin-Embedder-Policy",
           "value": "require-corp"
@@ -22,6 +18,24 @@
         {
           "key": "Cross-Origin-Opener-Policy",
           "value": "same-origin"
+        }
+      ]
+    },
+    {
+      "source": "/(.*).wasm",
+      "headers": [
+        {
+          "key": "Content-Type",
+          "value": "application/wasm"
+        }
+      ]
+    },
+    {
+      "source": "/manifest.json",
+      "headers": [
+        {
+          "key": "Content-Type",
+          "value": "application/manifest+json"
         }
       ]
     }
