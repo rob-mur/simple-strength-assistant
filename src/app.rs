@@ -2,6 +2,72 @@ use crate::models::{CompletedSet, ExerciseMetadata, SetType, SetTypeConfig};
 use crate::state::{InitializationState, WorkoutState, WorkoutStateManager};
 use dioxus::prelude::*;
 
+struct ErrorInfo {
+    title: String,
+    message: String,
+    recovery_tip: Option<String>,
+    retry_label: String,
+}
+
+fn parse_error_for_ui(error_msg: &str) -> ErrorInfo {
+    let error_lower = error_msg.to_lowercase();
+
+    if error_lower.contains("not a valid sqlite database") || error_lower.contains("invalid format")
+    {
+        ErrorInfo {
+            title: "Invalid File Format".to_string(),
+            message: "The selected file is not a valid SQLite database.".to_string(),
+            recovery_tip: Some(
+                "Please select a .sqlite or .db file, or create a new database file.".to_string(),
+            ),
+            retry_label: "Select Different File".to_string(),
+        }
+    } else if error_lower.contains("permission denied") || error_lower.contains("notallowederror") {
+        ErrorInfo {
+            title: "Permission Denied".to_string(),
+            message: "File access permission was not granted.".to_string(),
+            recovery_tip: Some(
+                "Grant permission to access the file, or use browser storage instead.".to_string(),
+            ),
+            retry_label: "Grant Permission".to_string(),
+        }
+    } else if error_lower.contains("user cancelled") {
+        ErrorInfo {
+            title: "File Selection Cancelled".to_string(),
+            message: "No database file was selected.".to_string(),
+            recovery_tip: Some(
+                "Click below to select where to store your workout data.".to_string(),
+            ),
+            retry_label: "Select File".to_string(),
+        }
+    } else if error_lower.contains("file is too large") || error_lower.contains("filetoolarge") {
+        ErrorInfo {
+            title: "File Too Large".to_string(),
+            message: "The selected database file exceeds the 100 MB limit.".to_string(),
+            recovery_tip: Some(
+                "Try selecting a smaller file or export your data to start fresh.".to_string(),
+            ),
+            retry_label: "Select Different File".to_string(),
+        }
+    } else if error_lower.contains("failed to initialize database") {
+        ErrorInfo {
+            title: "Database Initialization Failed".to_string(),
+            message: "Could not set up the database. The file may be corrupted.".to_string(),
+            recovery_tip: Some(
+                "Try selecting a different file or creating a new database.".to_string(),
+            ),
+            retry_label: "Try Again".to_string(),
+        }
+    } else {
+        ErrorInfo {
+            title: "Initialization Error".to_string(),
+            message: error_msg.to_string(),
+            recovery_tip: Some("Check your browser console for details and try again.".to_string()),
+            retry_label: "Retry".to_string(),
+        }
+    }
+}
+
 #[component]
 pub fn App() -> Element {
     let workout_state = use_context_provider(WorkoutState::new);
@@ -146,6 +212,9 @@ pub fn App() -> Element {
                         }
                     }
                     InitializationState::Error => {
+                        let error_msg = workout_state.error_message().unwrap_or_else(|| "Unknown error occurred".to_string());
+                        let error_info = parse_error_for_ui(&error_msg);
+
                         rsx! {
                             div {
                                 class: "flex items-center justify-center h-full",
@@ -170,11 +239,21 @@ pub fn App() -> Element {
                                             div {
                                                 h3 {
                                                     class: "font-bold",
-                                                    "Initialization Error"
+                                                    {error_info.title}
                                                 }
                                                 p {
                                                     class: "text-sm mt-2",
-                                                    {workout_state.error_message().unwrap_or_else(|| "Unknown error occurred".to_string())}
+                                                    {error_info.message}
+                                                }
+                                                if let Some(tip) = error_info.recovery_tip {
+                                                    p {
+                                                        class: "text-sm mt-3 flex items-start gap-2",
+                                                        span {
+                                                            class: "text-base",
+                                                            "💡"
+                                                        }
+                                                        span { {tip} }
+                                                    }
                                                 }
                                             }
                                         }
@@ -193,7 +272,7 @@ pub fn App() -> Element {
                                                         }
                                                     });
                                                 },
-                                                "Retry"
+                                                {error_info.retry_label}
                                             }
                                         }
                                     }
