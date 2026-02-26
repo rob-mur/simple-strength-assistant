@@ -41,6 +41,31 @@ export async function storeFileHandle(handle) {
     }
 }
 
+// Request readwrite permission and store handle only if granted
+// MUST be called during a user gesture (immediately after showOpenFilePicker)
+export async function requestWritePermissionAndStore(handle) {
+    try {
+        console.log('[FileHandleStorage] Requesting readwrite permission...');
+
+        // Request readwrite permission (must be done during user gesture)
+        const permission = await handle.requestPermission({ mode: 'readwrite' });
+        console.log('[FileHandleStorage] Permission result:', permission);
+
+        if (permission === 'granted') {
+            console.log('[FileHandleStorage] Write permission granted, storing handle...');
+            // Now store the handle with full readwrite permission
+            await storeFileHandle(handle);
+            return true;
+        } else {
+            console.warn('[FileHandleStorage] Write permission not granted:', permission);
+            return false;
+        }
+    } catch (error) {
+        console.error('[FileHandleStorage] Failed to request write permission:', error);
+        return false;
+    }
+}
+
 export async function retrieveFileHandle() {
     try {
         console.log('[FileHandleStorage] Opening IndexedDB...');
@@ -121,5 +146,6 @@ export async function clearFileHandle() {
 window.fileHandleStorage = {
     storeFileHandle,
     retrieveFileHandle,
-    clearFileHandle
+    clearFileHandle,
+    requestWritePermissionAndStore
 };

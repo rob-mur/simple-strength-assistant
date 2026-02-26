@@ -15,6 +15,9 @@ extern "C" {
 
     #[wasm_bindgen(js_name = clearFileHandle)]
     async fn clear_file_handle() -> JsValue;
+
+    #[wasm_bindgen(js_name = requestWritePermissionAndStore)]
+    async fn request_write_permission_and_store(handle: JsValue) -> JsValue;
 }
 
 const MAX_FILE_SIZE: usize = 100 * 1024 * 1024; // 100MB
@@ -240,17 +243,21 @@ impl FileSystemManager {
         let handle = handle_array.get(0);
 
         web_sys::console::log_1(
-            &"[FileSystem] File handle obtained, storing in IndexedDB...".into(),
+            &"[FileSystem] File handle obtained, requesting readwrite permission...".into(),
         );
-        // Store the handle in IndexedDB for persistence
-        let store_result = store_file_handle(handle.clone()).await;
+
+        // Request readwrite permission and store handle (must be done during user gesture)
+        let store_result = request_write_permission_and_store(handle.clone()).await;
         if !store_result.is_truthy() {
             web_sys::console::warn_1(
-                &"[FileSystem] Failed to persist file handle to IndexedDB".into(),
+                &"[FileSystem] Failed to get readwrite permission or persist handle".into(),
             );
-            log::warn!("Failed to persist file handle to IndexedDB");
+            log::warn!("Failed to get readwrite permission or persist file handle");
+            // Even if storage fails, we can still use the handle in this session
         } else {
-            web_sys::console::log_1(&"[FileSystem] File handle stored successfully".into());
+            web_sys::console::log_1(
+                &"[FileSystem] Readwrite permission granted and handle stored successfully".into(),
+            );
         }
 
         self.handle = Some(handle);
