@@ -8,9 +8,9 @@
 ### Database Setup
 
 - [ ] **DB-01**: File picker dialog appears when user needs to select database location
-- [ ] **DB-02**: User can successfully select a .sqlite or .db file from their filesystem
+- [x] **DB-02**: User can successfully select a .sqlite or .db file from their filesystem
 - [ ] **DB-03**: Selected file handle persists across browser sessions (via IndexedDB)
-- [ ] **DB-04**: User can grant File System Access API permissions when prompted
+- [x] **DB-04**: User can grant File System Access API permissions when prompted
 - [ ] **DB-05**: Database initialization completes successfully after file selection
 - [ ] **DB-06**: LocalStorage fallback works when File System Access API unavailable
 
@@ -24,7 +24,7 @@
 ### Error Handling
 
 - [ ] **ERR-01**: File picker errors are logged to console with clear messages
-- [ ] **ERR-02**: Permission denied shows user-friendly error message
+- [x] **ERR-02**: Permission denied shows user-friendly error message
 - [ ] **ERR-03**: File format validation errors are surfaced to user
 - [ ] **ERR-04**: WASM-JS boundary errors include stack traces
 
@@ -61,10 +61,10 @@
 | DEV-03 | Phase 1 | Complete |
 | DEV-04 | Phase 1 | Complete |
 | DB-01 | Phase 2 | Pending |
-| DB-02 | Phase 2 | Pending |
-| DB-04 | Phase 2 | Pending |
+| DB-02 | Phase 2 | Complete |
+| DB-04 | Phase 2 | Complete |
 | ERR-01 | Phase 2 | Pending |
-| ERR-02 | Phase 2 | Pending |
+| ERR-02 | Phase 2 | Complete |
 | ERR-04 | Phase 2 | Pending |
 | DB-03 | Phase 3 | Pending |
 | DB-05 | Phase 3 | Pending |
