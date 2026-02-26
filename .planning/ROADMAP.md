@@ -7,7 +7,7 @@ Fix the broken file picker that's preventing users from selecting where to store
 ## Phases
 
 - [x] **Phase 1: Development Environment** - Get app running locally with full debugging capabilities (completed 2026-02-26)
-- [ ] **Phase 2: Debug and Fix File Picker** - Identify and fix the file picker issue
+- [x] **Phase 2: Debug and Fix File Picker** - Identify and fix the file picker issue (completed 2026-02-26)
 - [ ] **Phase 3: Verify and Polish** - Test complete flow and edge cases
 
 ## Phase Details
@@ -35,11 +35,12 @@ Plans:
   2. User can select .sqlite or .db file from filesystem
   3. File System Access API permission prompt appears correctly
   4. Selected file handle is accessible from Rust code
-**Plans**: 2 plans
+**Plans**: 3 plans
 
 Plans:
 - [x] 02-01-PLAN.md — Fix user gesture requirement by adding button to SelectingFile UI and preventing auto-prompt
-- [ ] 02-02-PLAN.md — Add permission state verification for cached handles with queryPermission/requestPermission
+- [x] 02-02-PLAN.md — Add permission state verification for cached handles with queryPermission/requestPermission
+- [x] 02-03-PLAN.md — Refactor WorkoutState for reactivity and fix error flow (gap closure)
 
 ### Phase 3: Verify and Polish
 **Goal**: Complete database initialization flow works end-to-end with proper error handling
@@ -60,7 +61,7 @@ Plans:
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
 | 1. Development Environment | 1/1 | Complete   | 2026-02-26 |
-| 2. Debug and Fix File Picker | 1/2 | In Progress | - |
+| 2. Debug and Fix File Picker | 3/3 | Complete | 2026-02-26 |
 | 3. Verify and Polish | 0/1 | Not started | - |
 
 ---

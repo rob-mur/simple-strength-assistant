@@ -70,6 +70,12 @@ pub struct FileSystemManager {
     use_fallback: bool,
 }
 
+impl PartialEq for FileSystemManager {
+    fn eq(&self, other: &Self) -> bool {
+        self.use_fallback == other.use_fallback && self.handle.is_some() == other.handle.is_some()
+    }
+}
+
 impl FileSystemManager {
     pub fn new() -> Self {
         Self {

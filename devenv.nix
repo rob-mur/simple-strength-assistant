@@ -8,6 +8,7 @@
     binaryen
     devcontainer
     claude-code
+    gemini-cli-bin
   ];
 
   languages.rust = {

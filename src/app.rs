@@ -5,14 +5,11 @@ use dioxus::prelude::*;
 #[component]
 pub fn App() -> Element {
     let workout_state = use_context_provider(WorkoutState::new);
-    let _init_state = use_signal(|| workout_state.initialization_state());
 
-    let state_for_init = workout_state.clone();
     use_effect(move || {
-        let state = state_for_init.clone();
         spawn(async move {
-            if let Err(e) = WorkoutStateManager::setup_database(&state).await {
-                WorkoutStateManager::handle_error(&state, e);
+            if let Err(e) = WorkoutStateManager::setup_database(&workout_state).await {
+                WorkoutStateManager::handle_error(&workout_state, e);
             }
         });
     });
@@ -51,7 +48,6 @@ pub fn App() -> Element {
                         }
                     }
                     InitializationState::SelectingFile => {
-                        let state_for_select = workout_state.clone();
                         rsx! {
                             div {
                                 class: "flex items-center justify-center h-full",
@@ -75,7 +71,6 @@ pub fn App() -> Element {
                                             button {
                                                 class: "btn btn-primary",
                                                 onclick: move |_| {
-                                                    let state_clone = state_for_select.clone();
                                                     spawn(async move {
                                                         web_sys::console::log_1(&"[UI] User clicked file selection button - has user gesture".into());
                                                         let mut file_manager = crate::state::FileSystemManager::new();
@@ -85,7 +80,7 @@ pub fn App() -> Element {
                                                                 web_sys::console::log_1(&"[UI] File selected successfully".into());
 
                                                                 // Continue initialization inline - file_manager already has handle from prompt_for_file
-                                                                state_clone.set_initialization_state(InitializationState::Initializing);
+                                                                workout_state.set_initialization_state(InitializationState::Initializing);
 
                                                                 // Read file data if handle exists
                                                                 let file_data = if file_manager.has_handle() {
@@ -116,23 +111,23 @@ pub fn App() -> Element {
                                                                         web_sys::console::log_1(&"[UI] Database initialized successfully".into());
 
                                                                         // Store database and file manager in state
-                                                                        state_clone.set_database(database);
-                                                                        state_clone.set_file_manager(file_manager);
-                                                                        state_clone.set_initialization_state(InitializationState::Ready);
+                                                                        workout_state.set_database(database);
+                                                                        workout_state.set_file_manager(file_manager);
+                                                                        workout_state.set_initialization_state(InitializationState::Ready);
 
                                                                         web_sys::console::log_1(&"[UI] Setup complete! State is now Ready".into());
                                                                     }
                                                                     Err(e) => {
                                                                         let error_msg = format!("Database initialization failed: {}", e);
                                                                         web_sys::console::error_1(&error_msg.clone().into());
-                                                                        crate::state::WorkoutStateManager::handle_error(&state_clone, error_msg);
+                                                                        WorkoutStateManager::handle_error(&workout_state, error_msg);
                                                                     }
                                                                 }
                                                             }
                                                             Err(e) => {
                                                                 let error_msg = format!("File selection failed: {}", e);
                                                                 web_sys::console::error_1(&error_msg.clone().into());
-                                                                crate::state::WorkoutStateManager::handle_error(&state_clone, error_msg);
+                                                                WorkoutStateManager::handle_error(&workout_state, error_msg);
                                                             }
                                                         }
                                                     });
@@ -151,7 +146,6 @@ pub fn App() -> Element {
                         }
                     }
                     InitializationState::Error => {
-                        let state_for_retry = workout_state.clone();
                         rsx! {
                             div {
                                 class: "flex items-center justify-center h-full",
@@ -189,14 +183,13 @@ pub fn App() -> Element {
                                             button {
                                                 class: "btn btn-primary",
                                                 onclick: move |_| {
-                                                    let state = state_for_retry.clone();
                                                     spawn(async move {
                                                         // Reset error state
-                                                        state.set_error_message(None);
-                                                        state.set_initialization_state(InitializationState::NotInitialized);
+                                                        workout_state.set_error_message(None);
+                                                        workout_state.set_initialization_state(InitializationState::NotInitialized);
                                                         // Retry initialization
-                                                        if let Err(e) = WorkoutStateManager::setup_database(&state).await {
-                                                            WorkoutStateManager::handle_error(&state, e);
+                                                        if let Err(e) = WorkoutStateManager::setup_database(&workout_state).await {
+                                                            WorkoutStateManager::handle_error(&workout_state, e);
                                                         }
                                                     });
                                                 },

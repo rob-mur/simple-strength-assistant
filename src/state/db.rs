@@ -39,7 +39,7 @@ extern "C" {
     async fn export_database() -> JsValue;
 }
 
-#[derive(Clone)]
+#[derive(Clone, PartialEq)]
 pub struct Database {
     initialized: bool,
 }

@@ -1,7 +1,7 @@
 use crate::models::{CompletedSet, ExerciseMetadata, SetType};
 use crate::state::{Database, FileSystemManager};
-use std::cell::RefCell;
-use std::rc::Rc;
+
+use dioxus::prelude::*;
 
 // Initial prediction constants
 const DEFAULT_WEIGHTED_REPS: u32 = 8;
@@ -27,8 +27,9 @@ pub struct WorkoutSession {
     pub predicted: PredictedParameters,
 }
 
-#[derive(Clone, Copy, PartialEq, Debug)]
+#[derive(Clone, Copy, PartialEq, Debug, Default)]
 pub enum InitializationState {
+    #[default]
     NotInitialized,
     Initializing,
     SelectingFile,
@@ -36,97 +37,69 @@ pub enum InitializationState {
     Error,
 }
 
-#[derive(Clone)]
+#[derive(Clone, Copy, PartialEq)]
 pub struct WorkoutState {
-    inner: Rc<RefCell<WorkoutStateInner>>,
-}
-
-impl PartialEq for WorkoutState {
-    fn eq(&self, other: &Self) -> bool {
-        Rc::ptr_eq(&self.inner, &other.inner)
-    }
-}
-
-struct WorkoutStateInner {
-    pub initialization_state: InitializationState,
-    pub current_session: Option<WorkoutSession>,
-    pub error_message: Option<String>,
-    database: Option<Database>,
-    file_manager: Option<FileSystemManager>,
+    initialization_state: Signal<InitializationState>,
+    current_session: Signal<Option<WorkoutSession>>,
+    error_message: Signal<Option<String>>,
+    database: Signal<Option<Database>>,
+    file_manager: Signal<Option<FileSystemManager>>,
 }
 
 impl WorkoutState {
     pub fn new() -> Self {
         Self {
-            inner: Rc::new(RefCell::new(WorkoutStateInner {
-                initialization_state: InitializationState::NotInitialized,
-                current_session: None,
-                error_message: None,
-                database: None,
-                file_manager: None,
-            })),
+            initialization_state: Signal::new(InitializationState::NotInitialized),
+            current_session: Signal::new(None),
+            error_message: Signal::new(None),
+            database: Signal::new(None),
+            file_manager: Signal::new(None),
         }
     }
 
     pub fn initialization_state(&self) -> InitializationState {
-        self.inner
-            .try_borrow()
-            .map(|state| state.initialization_state)
-            .unwrap_or(InitializationState::Error)
+        (self.initialization_state)()
     }
 
     pub fn current_session(&self) -> Option<WorkoutSession> {
-        self.inner
-            .try_borrow()
-            .ok()
-            .and_then(|state| state.current_session.clone())
+        (self.current_session)()
     }
 
     pub fn error_message(&self) -> Option<String> {
-        self.inner
-            .try_borrow()
-            .ok()
-            .and_then(|state| state.error_message.clone())
+        (self.error_message)()
     }
 
     pub fn set_initialization_state(&self, state: InitializationState) {
-        if let Ok(mut inner) = self.inner.try_borrow_mut() {
-            inner.initialization_state = state;
-        } else {
-            log::error!("Failed to borrow WorkoutState mutably to set initialization state");
-        }
+        let mut sig = self.initialization_state;
+        sig.set(state);
     }
 
     pub fn set_current_session(&self, session: Option<WorkoutSession>) {
-        if let Ok(mut inner) = self.inner.try_borrow_mut() {
-            inner.current_session = session;
-        } else {
-            log::error!("Failed to borrow WorkoutState mutably to set current session");
-        }
+        let mut sig = self.current_session;
+        sig.set(session);
     }
 
     pub fn set_error_message(&self, message: Option<String>) {
-        if let Ok(mut inner) = self.inner.try_borrow_mut() {
-            inner.error_message = message;
-        } else {
-            log::error!("Failed to borrow WorkoutState mutably to set error message");
-        }
+        let mut sig = self.error_message;
+        sig.set(message);
     }
 
     pub fn set_database(&self, database: Database) {
-        if let Ok(mut inner) = self.inner.try_borrow_mut() {
-            inner.database = Some(database);
-        } else {
-            log::error!("Failed to borrow WorkoutState mutably to set database");
-        }
+        let mut sig = self.database;
+        sig.set(Some(database));
     }
 
     pub fn set_file_manager(&self, file_manager: FileSystemManager) {
-        if let Ok(mut inner) = self.inner.try_borrow_mut() {
-            inner.file_manager = Some(file_manager);
-        } else {
-            log::error!("Failed to borrow WorkoutState mutably to set file manager");
-        }
+        let mut sig = self.file_manager;
+        sig.set(Some(file_manager));
+    }
+
+    pub fn database(&self) -> Option<Database> {
+        (self.database)()
+    }
+
+    pub fn file_manager(&self) -> Option<FileSystemManager> {
+        (self.file_manager)()
     }
 }
 
@@ -136,27 +109,19 @@ impl WorkoutStateManager {
     pub async fn setup_database(state: &WorkoutState) -> Result<(), String> {
         web_sys::console::log_1(&"[DB Init] Starting database setup...".into());
 
-        // Atomically check and set initialization state to prevent race conditions
-        {
-            let mut inner = state
-                .inner
-                .try_borrow_mut()
-                .map_err(|_| "Failed to access state: already borrowed".to_string())?;
-
-            match inner.initialization_state {
-                InitializationState::Initializing => {
-                    web_sys::console::log_1(&"[DB Init] Already in progress, skipping".into());
-                    return Err("Database initialization already in progress".to_string());
-                }
-                InitializationState::Ready => {
-                    web_sys::console::log_1(&"[DB Init] Already initialized, skipping".into());
-                    return Ok(());
-                }
-                _ => {}
+        match state.initialization_state() {
+            InitializationState::Initializing => {
+                web_sys::console::log_1(&"[DB Init] Already in progress, skipping".into());
+                return Err("Database initialization already in progress".to_string());
             }
-
-            inner.initialization_state = InitializationState::Initializing;
+            InitializationState::Ready => {
+                web_sys::console::log_1(&"[DB Init] Already initialized, skipping".into());
+                return Ok(());
+            }
+            _ => {}
         }
+
+        state.set_initialization_state(InitializationState::Initializing);
 
         web_sys::console::log_1(&"[DB Init] Creating file manager...".into());
         let mut file_manager = FileSystemManager::new();
@@ -179,9 +144,8 @@ impl WorkoutStateManager {
             );
             state.set_initialization_state(InitializationState::SelectingFile);
 
-            // Return early - UI will call prompt_for_file from button onclick
-            // which provides the required user gesture (transient activation)
-            return Err("Waiting for user to select file - not an error, normal flow".to_string());
+            // Return OK - UI will call prompt_for_file from button onclick
+            return Ok(());
         }
 
         let file_data = if file_manager.has_handle() {
@@ -220,15 +184,8 @@ impl WorkoutStateManager {
         })?;
         web_sys::console::log_1(&"[DB Init] Database initialized successfully".into());
 
-        {
-            let mut inner = state.inner.try_borrow_mut().map_err(|e| {
-                let msg = format!("Failed to borrow state mutably: {}", e);
-                web_sys::console::error_1(&msg.clone().into());
-                msg
-            })?;
-            inner.database = Some(database);
-            inner.file_manager = Some(file_manager);
-        }
+        state.set_database(database);
+        state.set_file_manager(file_manager);
         state.set_initialization_state(InitializationState::Ready);
 
         web_sys::console::log_1(&"[DB Init] Setup complete! State is now Ready".into());
@@ -240,11 +197,7 @@ impl WorkoutStateManager {
         exercise: ExerciseMetadata,
     ) -> Result<(), String> {
         let db = state
-            .inner
-            .try_borrow()
-            .map_err(|e| format!("Failed to borrow state: {}", e))?
-            .database
-            .clone()
+            .database()
             .ok_or("Database not initialized".to_string())?;
 
         db.save_exercise(&exercise)
@@ -276,11 +229,7 @@ impl WorkoutStateManager {
         let session_id = session.session_id.ok_or("Session not persisted")?;
 
         let db = state
-            .inner
-            .try_borrow()
-            .map_err(|e| format!("Failed to borrow state: {}", e))?
-            .database
-            .clone()
+            .database()
             .ok_or("Database not initialized".to_string())?;
 
         crate::models::validate_completed_set(&set, &session.exercise)
@@ -317,11 +266,7 @@ impl WorkoutStateManager {
         let session_id = session.session_id.ok_or("Session not persisted")?;
 
         let db = state
-            .inner
-            .try_borrow()
-            .map_err(|e| format!("Failed to borrow state: {}", e))?
-            .database
-            .clone()
+            .database()
             .ok_or("Database not initialized".to_string())?;
 
         db.complete_session(session_id)
@@ -336,24 +281,13 @@ impl WorkoutStateManager {
     }
 
     async fn save_database(state: &WorkoutState) -> Result<(), String> {
-        let (db, file_manager) = {
-            let inner = state
-                .inner
-                .try_borrow()
-                .map_err(|e| format!("Failed to borrow state: {}", e))?;
+        let db = state
+            .database()
+            .ok_or("Database not initialized".to_string())?;
 
-            let db = inner
-                .database
-                .clone()
-                .ok_or("Database not initialized".to_string())?;
-
-            let file_manager = inner
-                .file_manager
-                .clone()
-                .ok_or("File manager not initialized".to_string())?;
-
-            (db, file_manager)
-        };
+        let file_manager = state
+            .file_manager()
+            .ok_or("File manager not initialized".to_string())?;
 
         let data = db
             .export()
