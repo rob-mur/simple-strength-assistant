@@ -113,7 +113,7 @@ impl Database {
         Ok(())
     }
 
-    async fn execute(&self, sql: &str, params: &[JsValue]) -> Result<JsValue, DatabaseError> {
+    pub async fn execute(&self, sql: &str, params: &[JsValue]) -> Result<JsValue, DatabaseError> {
         if !self.initialized {
             return Err(DatabaseError::NotInitialized);
         }
@@ -144,16 +144,22 @@ impl Database {
 
     pub async fn create_session(&self, exercise_name: &str) -> Result<i64, DatabaseError> {
         let sql = "INSERT INTO sessions (exercise_name, started_at) VALUES (?, ?) RETURNING id";
-        let now = js_sys::Date::now() as i64;
+        let now = js_sys::Date::now();
 
-        let params = vec![
-            JsValue::from_str(exercise_name),
-            JsValue::from_f64(now as f64),
-        ];
+        let params = vec![JsValue::from_str(exercise_name), JsValue::from_f64(now)];
 
         let result = self.execute(sql, &params).await?;
 
-        let id = js_sys::Reflect::get(&result, &JsValue::from_str("id"))?
+        let array = result
+            .dyn_ref::<js_sys::Array>()
+            .ok_or_else(|| DatabaseError::QueryError("Expected array result".to_string()))?;
+
+        if array.length() == 0 {
+            return Err(DatabaseError::QueryError("No rows returned".to_string()));
+        }
+
+        let first_row = array.get(0);
+        let id = js_sys::Reflect::get(&first_row, &JsValue::from_str("id"))?
             .as_f64()
             .ok_or_else(|| DatabaseError::QueryError("Failed to get session id".to_string()))?
             as i64;
@@ -163,12 +169,9 @@ impl Database {
 
     pub async fn complete_session(&self, session_id: i64) -> Result<(), DatabaseError> {
         let sql = "UPDATE sessions SET completed_at = ? WHERE id = ?";
-        let now = js_sys::Date::now() as i64;
+        let now = js_sys::Date::now();
 
-        let params = vec![
-            JsValue::from_f64(now as f64),
-            JsValue::from_f64(session_id as f64),
-        ];
+        let params = vec![JsValue::from_f64(now), JsValue::from_f64(session_id as f64)];
 
         self.execute(sql, &params).await?;
         Ok(())
@@ -203,7 +206,16 @@ impl Database {
 
         let result = self.execute(sql, &params).await?;
 
-        let id = js_sys::Reflect::get(&result, &JsValue::from_str("id"))?
+        let array = result
+            .dyn_ref::<js_sys::Array>()
+            .ok_or_else(|| DatabaseError::QueryError("Expected array result".to_string()))?;
+
+        if array.length() == 0 {
+            return Err(DatabaseError::QueryError("No rows returned".to_string()));
+        }
+
+        let first_row = array.get(0);
+        let id = js_sys::Reflect::get(&first_row, &JsValue::from_str("id"))?
             .as_f64()
             .ok_or_else(|| DatabaseError::QueryError("Failed to get set id".to_string()))?
             as i64;

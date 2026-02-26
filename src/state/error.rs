@@ -13,9 +13,6 @@ pub enum WorkoutError {
     #[error("Database initialization already in progress")]
     InitializationInProgress,
 
-    #[error("Database already initialized")]
-    AlreadyInitialized,
-
     #[error("Database not initialized")]
     NotInitialized,
 
@@ -39,21 +36,4 @@ pub enum WorkoutError {
 
     #[error("Failed to complete session: {0}")]
     CompleteSessionError(String),
-}
-
-impl From<String> for WorkoutError {
-    fn from(s: String) -> Self {
-        if s.contains("Database initialization already in progress") {
-            WorkoutError::InitializationInProgress
-        } else if s.contains("Database already initialized") {
-            WorkoutError::AlreadyInitialized
-        } else if s.contains("No active session") {
-            WorkoutError::NoActiveSession
-        } else if s.contains("Session not persisted") {
-            WorkoutError::SessionNotPersisted
-        } else {
-            // This is a bit of a hack, but better than nothing for now
-            WorkoutError::Database(DatabaseError::InitializationError(s))
-        }
-    }
 }

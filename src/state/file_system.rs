@@ -323,7 +323,7 @@ impl FileSystemManager {
 
     /// Switches the manager to use fallback storage (IndexedDB/LocalStorage).
     /// Used when the File System Access API is not available or desired.
-    pub async fn use_fallback_storage(&mut self) -> Result<(), FileSystemError> {
+    pub fn use_fallback_storage(&mut self) -> Result<(), FileSystemError> {
         log::info!("Using IndexedDB/OPFS fallback storage");
         self.use_fallback = true;
         Ok(())
