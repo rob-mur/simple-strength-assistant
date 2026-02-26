@@ -426,7 +426,7 @@ pub fn App() -> Element {
                         rsx! {
                             div {
                                 {storage_mode_banner}
-                                WorkoutInterface { state: workout_state.clone() }
+                                WorkoutInterface { state: workout_state }
                             }
                         }
                     }
@@ -533,11 +533,11 @@ fn WorkoutInterface(state: WorkoutState) -> Element {
 
     if let Some(session) = current_session {
         rsx! {
-            ActiveSession { state: state.clone(), session }
+            ActiveSession { state: state, session }
         }
     } else {
         rsx! {
-            StartSessionView { state: state.clone() }
+            StartSessionView { state: state }
         }
     }
 }
@@ -587,7 +587,7 @@ fn StartSessionView(state: WorkoutState) -> Element {
             },
         };
 
-        let state_clone = state.clone();
+        let state_clone = state;
         spawn(async move {
             if let Err(e) = WorkoutStateManager::start_session(&state_clone, exercise).await {
                 WorkoutStateManager::handle_error(&state_clone, e);
@@ -728,7 +728,7 @@ fn ActiveSession(state: WorkoutState, session: crate::state::WorkoutSession) -> 
             .unwrap_or_default()
     });
 
-    let state_for_log = state.clone();
+    let state_for_log = state;
     let session_for_log = session_clone.clone();
     let log_set = move |_| {
         let session = &session_for_log;
@@ -751,7 +751,7 @@ fn ActiveSession(state: WorkoutState, session: crate::state::WorkoutSession) -> 
             },
         };
 
-        let state_clone = state_for_log.clone();
+        let state_clone = state_for_log;
         spawn(async move {
             if let Err(e) = WorkoutStateManager::log_set(&state_clone, set).await {
                 WorkoutStateManager::handle_error(&state_clone, e);
@@ -759,9 +759,9 @@ fn ActiveSession(state: WorkoutState, session: crate::state::WorkoutSession) -> 
         });
     };
 
-    let state_for_complete = state.clone();
+    let state_for_complete = state;
     let complete_session = move |_| {
-        let state_clone = state_for_complete.clone();
+        let state_clone = state_for_complete;
         spawn(async move {
             if let Err(e) = WorkoutStateManager::complete_session(&state_clone).await {
                 WorkoutStateManager::handle_error(&state_clone, e);

@@ -645,6 +645,9 @@ fi
 
 <step name="git_tag">
 
+**CRITICAL: CI-Only Action**
+> ⚠ **Note:** Skip this step if the project uses an automated CI release system (e.g., semantic-release, GitHub Actions). Manually creating tags can conflict with the CI system's release process.
+
 Create git tag:
 
 ```bash

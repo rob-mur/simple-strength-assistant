@@ -263,10 +263,10 @@ impl FileSystemManager {
             web_sys::console::error_1(&format!("[FileSystem] Error details: {}", error_string).into());
 
             // Capture stack trace for WASM-JS boundary errors (ERR-04)
-            if let Ok(stack) = js_sys::Reflect::get(&e, &"stack".into()) {
-                if !stack.is_undefined() {
-                    web_sys::console::error_1(&format!("[FileSystem] Stack trace: {:?}", stack).into());
-                }
+            if let Ok(stack) = js_sys::Reflect::get(&e, &"stack".into())
+                && !stack.is_undefined()
+            {
+                web_sys::console::error_1(&format!("[FileSystem] Stack trace: {:?}", stack).into());
             }
 
             let error_lower = error_string.to_lowercase();
@@ -293,10 +293,10 @@ impl FileSystemManager {
                 web_sys::console::error_1(&format!("[FileSystem] Error details: {}", error_string).into());
 
                 // Capture stack trace for WASM-JS boundary errors (ERR-04)
-                if let Ok(stack) = js_sys::Reflect::get(&e, &"stack".into()) {
-                    if !stack.is_undefined() {
-                        web_sys::console::error_1(&format!("[FileSystem] Stack trace: {:?}", stack).into());
-                    }
+                if let Ok(stack) = js_sys::Reflect::get(&e, &"stack".into())
+                    && !stack.is_undefined()
+                {
+                    web_sys::console::error_1(&format!("[FileSystem] Stack trace: {:?}", stack).into());
                 }
 
                 let error_lower = error_string.to_lowercase();
