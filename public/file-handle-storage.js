@@ -158,22 +158,20 @@ export async function createNewDatabaseFile() {
         const handle = await window.showSaveFilePicker(options);
         console.log('[FileHandleStorage] File handle created for new database');
 
-        // Request readwrite permission immediately (during gesture)
-        const permission = await handle.requestPermission({ mode: 'readwrite' });
-        console.log('[FileHandleStorage] Permission result:', permission);
-
-        if (permission !== 'granted') {
-            throw new Error('Permission not granted');
-        }
-
         // Create empty file (write 0 bytes to initialize)
         const writable = await handle.createWritable();
         await writable.close();
         console.log('[FileHandleStorage] Empty file created successfully');
 
-        // Store handle for persistence
-        await storeFileHandle(handle);
-        console.log('[FileHandleStorage] Handle stored in IndexedDB');
+        // Request permission and store handle (reuse working pattern from open flow)
+        // CRITICAL: Must be called during user gesture to show permission prompt
+        const stored = await requestWritePermissionAndStore(handle);
+
+        if (!stored) {
+            throw new Error('Failed to request permission or store handle');
+        }
+
+        console.log('[FileHandleStorage] Permission granted and handle stored successfully');
 
         return { success: true, handle };
     } catch (error) {
