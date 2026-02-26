@@ -55,8 +55,11 @@ impl Database {
 
         if result.is_truthy() {
             web_sys::console::log_1(&"[DB] initDatabase succeeded, creating tables...".into());
-            self.create_tables().await?;
             self.initialized = true;
+            if let Err(e) = self.create_tables().await {
+                self.initialized = false;
+                return Err(e);
+            }
             web_sys::console::log_1(&"[DB] Tables created successfully".into());
             Ok(())
         } else {
