@@ -7,7 +7,7 @@
 
 ### Database Setup
 
-- [ ] **DB-01**: File picker dialog appears when user needs to select database location
+- [x] **DB-01**: File picker dialog appears when user needs to select database location
 - [x] **DB-02**: User can successfully select a .sqlite or .db file from their filesystem
 - [ ] **DB-03**: Selected file handle persists across browser sessions (via IndexedDB)
 - [x] **DB-04**: User can grant File System Access API permissions when prompted
@@ -23,10 +23,10 @@
 
 ### Error Handling
 
-- [ ] **ERR-01**: File picker errors are logged to console with clear messages
+- [x] **ERR-01**: File picker errors are logged to console with clear messages
 - [x] **ERR-02**: Permission denied shows user-friendly error message
 - [ ] **ERR-03**: File format validation errors are surfaced to user
-- [ ] **ERR-04**: WASM-JS boundary errors include stack traces
+- [x] **ERR-04**: WASM-JS boundary errors include stack traces
 
 ## v2 Requirements
 
@@ -60,12 +60,12 @@
 | DEV-02 | Phase 1 | Complete |
 | DEV-03 | Phase 1 | Complete |
 | DEV-04 | Phase 1 | Complete |
-| DB-01 | Phase 2 | Pending |
+| DB-01 | Phase 2 | Complete |
 | DB-02 | Phase 2 | Complete |
 | DB-04 | Phase 2 | Complete |
-| ERR-01 | Phase 2 | Pending |
+| ERR-01 | Phase 2 | Complete |
 | ERR-02 | Phase 2 | Complete |
-| ERR-04 | Phase 2 | Pending |
+| ERR-04 | Phase 2 | Complete |
 | DB-03 | Phase 3 | Pending |
 | DB-05 | Phase 3 | Pending |
 | DB-06 | Phase 3 | Pending |
@@ -78,4 +78,4 @@
 
 ---
 *Requirements defined: 2026-02-25*
-*Last updated: 2026-02-25 after initial definition*
+*Last updated: 2026-02-26 after completing Phase 2 Plan 1 (DB-01, ERR-01, ERR-04)*

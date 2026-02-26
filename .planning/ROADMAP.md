@@ -24,7 +24,7 @@ Fix the broken file picker that's preventing users from selecting where to store
 **Plans**: 1 plan
 
 Plans:
-- [ ] 01-01-PLAN.md — Initialize Dioxus logger and verify dev environment with console debugging
+- [x] 01-01-PLAN.md — Initialize Dioxus logger and verify dev environment with console debugging
 
 ### Phase 2: Debug and Fix File Picker
 **Goal**: File picker appears when triggered and user can select database file
@@ -38,7 +38,7 @@ Plans:
 **Plans**: 2 plans
 
 Plans:
-- [ ] 02-01-PLAN.md — Fix user gesture requirement by adding button to SelectingFile UI and preventing auto-prompt
+- [x] 02-01-PLAN.md — Fix user gesture requirement by adding button to SelectingFile UI and preventing auto-prompt
 - [ ] 02-02-PLAN.md — Add permission state verification for cached handles with queryPermission/requestPermission
 
 ### Phase 3: Verify and Polish
@@ -60,9 +60,9 @@ Plans:
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
 | 1. Development Environment | 1/1 | Complete   | 2026-02-26 |
-| 2. Debug and Fix File Picker | 0/2 | Not started | - |
+| 2. Debug and Fix File Picker | 1/2 | In Progress | - |
 | 3. Verify and Polish | 0/1 | Not started | - |
 
 ---
 *Roadmap created: 2026-02-25*
-*Last updated: 2026-02-25 after initial definition*
+*Last updated: 2026-02-26 after completing Phase 2 Plan 1*
