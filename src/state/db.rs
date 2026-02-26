@@ -144,12 +144,9 @@ impl Database {
 
     pub async fn create_session(&self, exercise_name: &str) -> Result<i64, DatabaseError> {
         let sql = "INSERT INTO sessions (exercise_name, started_at) VALUES (?, ?) RETURNING id";
-        let now = js_sys::Date::now() as i64;
+        let now = js_sys::Date::now();
 
-        let params = vec![
-            JsValue::from_str(exercise_name),
-            JsValue::from_f64(now as f64),
-        ];
+        let params = vec![JsValue::from_str(exercise_name), JsValue::from_f64(now)];
 
         let result = self.execute(sql, &params).await?;
 
@@ -172,12 +169,9 @@ impl Database {
 
     pub async fn complete_session(&self, session_id: i64) -> Result<(), DatabaseError> {
         let sql = "UPDATE sessions SET completed_at = ? WHERE id = ?";
-        let now = js_sys::Date::now() as i64;
+        let now = js_sys::Date::now();
 
-        let params = vec![
-            JsValue::from_f64(now as f64),
-            JsValue::from_f64(session_id as f64),
-        ];
+        let params = vec![JsValue::from_f64(now), JsValue::from_f64(session_id as f64)];
 
         self.execute(sql, &params).await?;
         Ok(())

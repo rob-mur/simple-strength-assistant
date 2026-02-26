@@ -21,6 +21,7 @@ devenv.local.yaml
 
 # ai
 .claude/
+.gemini/
 .specify/
 specs/
 

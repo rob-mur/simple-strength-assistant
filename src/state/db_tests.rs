@@ -1,5 +1,3 @@
-#![cfg(test)]
-
 use crate::models::{CompletedSet, ExerciseMetadata, SetType, SetTypeConfig};
 use crate::state::Database;
 use wasm_bindgen_test::*;

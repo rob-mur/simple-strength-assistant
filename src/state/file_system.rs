@@ -133,7 +133,7 @@ impl FileSystemManager {
     pub async fn create_new_file(&mut self) -> Result<(), FileSystemError> {
         if self.use_fallback {
             log::debug!("[FileSystem] Using fallback storage for new database");
-            return self.use_fallback_storage().await;
+            return self.use_fallback_storage();
         }
 
         log::debug!("[FileSystem] Creating new database file...");
@@ -208,7 +208,7 @@ impl FileSystemManager {
     pub async fn prompt_for_file(&mut self) -> Result<(), FileSystemError> {
         if self.use_fallback {
             log::debug!("[FileSystem] Using fallback storage for file operations");
-            return self.use_fallback_storage().await;
+            return self.use_fallback_storage();
         }
 
         log::debug!("[FileSystem] Opening file picker dialog...");
@@ -323,7 +323,7 @@ impl FileSystemManager {
 
     /// Switches the manager to use fallback storage (IndexedDB/LocalStorage).
     /// Used when the File System Access API is not available or desired.
-    pub async fn use_fallback_storage(&mut self) -> Result<(), FileSystemError> {
+    pub fn use_fallback_storage(&mut self) -> Result<(), FileSystemError> {
         log::info!("Using IndexedDB/OPFS fallback storage");
         self.use_fallback = true;
         Ok(())
