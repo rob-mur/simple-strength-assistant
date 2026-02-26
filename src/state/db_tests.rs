@@ -267,6 +267,22 @@ async fn test_export_import_round_trip() {
     let mut db2 = Database::new();
     db2.init(Some(exported)).await.expect("Import failed");
 
+    // Verify imported data
+    let result = db2
+        .execute("SELECT count(*) as count FROM completed_sets", &[])
+        .await
+        .expect("Select query failed");
+    use wasm_bindgen::JsCast;
+    let array = result
+        .dyn_ref::<js_sys::Array>()
+        .expect("Result should be an array");
+    let first_row = array.get(0);
+    let count = js_sys::Reflect::get(&first_row, &wasm_bindgen::JsValue::from_str("count"))
+        .expect("Failed to get count property")
+        .as_f64()
+        .expect("Count should be a number") as i64;
+    assert_eq!(count, 1, "Expected exactly 1 set in the imported database");
+
     // Verify we can create a new session in the imported database
     let new_session = db2.create_session("Bench Press").await;
 

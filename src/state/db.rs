@@ -113,7 +113,7 @@ impl Database {
         Ok(())
     }
 
-    async fn execute(&self, sql: &str, params: &[JsValue]) -> Result<JsValue, DatabaseError> {
+    pub async fn execute(&self, sql: &str, params: &[JsValue]) -> Result<JsValue, DatabaseError> {
         if !self.initialized {
             return Err(DatabaseError::NotInitialized);
         }
@@ -153,7 +153,16 @@ impl Database {
 
         let result = self.execute(sql, &params).await?;
 
-        let id = js_sys::Reflect::get(&result, &JsValue::from_str("id"))?
+        let array = result
+            .dyn_ref::<js_sys::Array>()
+            .ok_or_else(|| DatabaseError::QueryError("Expected array result".to_string()))?;
+
+        if array.length() == 0 {
+            return Err(DatabaseError::QueryError("No rows returned".to_string()));
+        }
+
+        let first_row = array.get(0);
+        let id = js_sys::Reflect::get(&first_row, &JsValue::from_str("id"))?
             .as_f64()
             .ok_or_else(|| DatabaseError::QueryError("Failed to get session id".to_string()))?
             as i64;
@@ -203,7 +212,16 @@ impl Database {
 
         let result = self.execute(sql, &params).await?;
 
-        let id = js_sys::Reflect::get(&result, &JsValue::from_str("id"))?
+        let array = result
+            .dyn_ref::<js_sys::Array>()
+            .ok_or_else(|| DatabaseError::QueryError("Expected array result".to_string()))?;
+
+        if array.length() == 0 {
+            return Err(DatabaseError::QueryError("No rows returned".to_string()));
+        }
+
+        let first_row = array.get(0);
+        let id = js_sys::Reflect::get(&first_row, &JsValue::from_str("id"))?
             .as_f64()
             .ok_or_else(|| DatabaseError::QueryError("Failed to get set id".to_string()))?
             as i64;

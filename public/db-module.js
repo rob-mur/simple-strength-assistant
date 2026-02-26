@@ -38,86 +38,34 @@ export async function executeQuery(sql, params) {
         throw new Error('Database not initialized');
     }
 
+    let stmt;
     try {
-        const results = db.exec(sql, params);
-
-        if (results.length === 0) {
-            return null;
+        stmt = db.prepare(sql);
+        if (params && params.length > 0) {
+            stmt.bind(params);
         }
 
-        const result = results[0];
-        const columns = result.columns;
-        const values = result.values;
+        const rows = [];
+        while (stmt.step()) {
+            rows.push(stmt.getAsObject());
+        }
 
-        if (sql.trim().toUpperCase().startsWith('SELECT') || sql.includes('RETURNING')) {
-            if (values.length === 0) {
-                return [];
-            }
+        const columnNames = stmt.getColumnNames();
+        stmt.free();
 
-            const rows = values.map(row => {
-                const obj = {};
-                columns.forEach((col, idx) => {
-                    obj[col] = row[idx];
-                });
-                return obj;
-            });
-
-            if (sql.includes('RETURNING')) {
-                return rows[0];
-            }
-
+        // If the statement returns columns, we return the rows
+        // (even if empty, we return []). 
+        // If it doesn't return columns, we return { changes: db.getRowsModified() }.
+        if (columnNames.length > 0) {
             return rows;
         }
 
         return { changes: db.getRowsModified() };
     } catch (error) {
+        if (stmt) {
+            try { stmt.free(); } catch(e) {}
+        }
         console.error('Query execution failed:', error.message || error);
-        throw error;
-    }
-}
-
-export async function executeTransaction(queries) {
-    if (!db) {
-        throw new Error('Database not initialized');
-    }
-
-    try {
-        db.run('BEGIN TRANSACTION');
-
-        const results = [];
-        for (const { sql, params } of queries) {
-            // Use db.run() for proper transaction support instead of db.exec()
-            // db.exec() doesn't respect transaction boundaries properly in sql.js
-            const stmt = db.prepare(sql);
-            stmt.bind(params || []);
-
-            const result = [];
-            while (stmt.step()) {
-                const row = stmt.getAsObject();
-                result.push(row);
-            }
-            stmt.free();
-
-            results.push(result.length > 0 ? result : null);
-        }
-
-        db.run('COMMIT');
-        return results;
-    } catch (error) {
-        // Attempt to rollback, but preserve the original error
-        try {
-            db.run('ROLLBACK');
-        } catch (rollbackError) {
-            console.error('ROLLBACK failed:', rollbackError);
-            // Create a combined error message
-            const combinedError = new Error(
-                `Transaction failed: ${error.message}. Additionally, ROLLBACK failed: ${rollbackError.message}`
-            );
-            combinedError.originalError = error;
-            combinedError.rollbackError = rollbackError;
-            throw combinedError;
-        }
-        console.error('Transaction failed:', error);
         throw error;
     }
 }
@@ -135,10 +83,3 @@ export async function exportDatabase() {
         throw error;
     }
 }
-
-window.dbBridge = {
-    initDatabase,
-    executeQuery,
-    executeTransaction,
-    exportDatabase
-};

@@ -41,6 +41,7 @@ pub struct WorkoutState {
     initialization_state: Signal<InitializationState>,
     current_session: Signal<Option<WorkoutSession>>,
     error: Signal<Option<WorkoutError>>,
+    save_error: Signal<Option<String>>,
     database: Signal<Option<Database>>,
     file_manager: Signal<Option<FileSystemManager>>,
     last_save_time: Signal<f64>,
@@ -52,6 +53,7 @@ impl WorkoutState {
             initialization_state: Signal::new(InitializationState::NotInitialized),
             current_session: Signal::new(None),
             error: Signal::new(None),
+            save_error: Signal::new(None),
             database: Signal::new(None),
             file_manager: Signal::new(None),
             last_save_time: Signal::new(0.0),
@@ -70,6 +72,10 @@ impl WorkoutState {
         (self.error)()
     }
 
+    pub fn save_error(&self) -> Option<String> {
+        (self.save_error)()
+    }
+
     pub fn set_initialization_state(&self, state: InitializationState) {
         let mut sig = self.initialization_state;
         sig.set(state);
@@ -82,6 +88,11 @@ impl WorkoutState {
 
     pub fn set_error(&self, error: Option<WorkoutError>) {
         let mut sig = self.error;
+        sig.set(error);
+    }
+
+    pub fn set_save_error(&self, error: Option<String>) {
+        let mut sig = self.save_error;
         sig.set(error);
     }
 
@@ -272,12 +283,18 @@ impl WorkoutStateManager {
         if now - state.last_save_time() > 5000.0 {
             log::debug!("[Workout] Auto-saving database (debounced)...");
             state.set_last_save_time(now);
-            Self::save_database(state)
-                .await
-                .map_err(|e| {
+            match Self::save_database(state).await {
+                Ok(_) => {
+                    state.set_save_error(None);
+                }
+                Err(e) => {
                     log::warn!("Auto-save failed but set logged in memory: {}", e);
-                })
-                .ok();
+                    state.set_save_error(Some(format!(
+                        "Auto-save failed: {}. Your latest data is only saved locally in memory.",
+                        e
+                    )));
+                }
+            }
         } else {
             log::debug!("[Workout] Skipping auto-save (debounced)");
         }
