@@ -155,15 +155,17 @@ impl WorkoutStateManager {
         web_sys::console::log_1(&format!("[DB Init] Has cached handle: {}", has_cached).into());
 
         if !has_cached {
-            web_sys::console::log_1(&"[DB Init] No cached handle, prompting for file...".into());
+            web_sys::console::log_1(
+                &"[DB Init] No cached handle, transitioning to SelectingFile state".into(),
+            );
+            web_sys::console::log_1(
+                &"[DB Init] File picker requires user gesture - waiting for button click".into(),
+            );
             state.set_initialization_state(InitializationState::SelectingFile);
 
-            file_manager.prompt_for_file().await.map_err(|e| {
-                let msg = format!("Failed to prompt for file: {}", e);
-                web_sys::console::error_1(&msg.clone().into());
-                msg
-            })?;
-            web_sys::console::log_1(&"[DB Init] File selected successfully".into());
+            // Return early - UI will call prompt_for_file from button onclick
+            // which provides the required user gesture (transient activation)
+            return Err("Waiting for user to select file - not an error, normal flow".to_string());
         }
 
         let file_data = if file_manager.has_handle() {

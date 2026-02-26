@@ -43,6 +43,7 @@ export async function storeFileHandle(handle) {
 
 export async function retrieveFileHandle() {
     try {
+        console.log('[FileHandleStorage] Opening IndexedDB...');
         const db = await openDB();
         const transaction = db.transaction(STORE_NAME, 'readonly');
         const store = transaction.objectStore(STORE_NAME);
@@ -56,29 +57,55 @@ export async function retrieveFileHandle() {
         db.close();
 
         if (!handle) {
+            console.log('[FileHandleStorage] No handle in IndexedDB');
             return null;
         }
 
-        // Verify we still have permission to access the handle
+        console.log('[FileHandleStorage] Handle found, checking permission state...');
+
+        // CRITICAL: Check permission state before returning handle
         const options = { mode: 'readwrite' };
         const permission = await handle.queryPermission(options);
+        console.log('[FileHandleStorage] Permission state:', permission);
 
         if (permission === 'granted') {
+            console.log('[FileHandleStorage] Permission granted, handle ready to use');
             return handle;
         }
 
-        // Try to request permission
-        const requestedPermission = await handle.requestPermission(options);
-        if (requestedPermission === 'granted') {
-            return handle;
+        if (permission === 'prompt') {
+            // Permission expired or not yet granted
+            // Chrome 122+ may auto-grant if user previously chose "Remember this choice"
+            console.log('[FileHandleStorage] Permission expired, requesting...');
+
+            try {
+                const requestedPermission = await handle.requestPermission(options);
+                console.log('[FileHandleStorage] Permission request result:', requestedPermission);
+
+                if (requestedPermission === 'granted') {
+                    console.log('[FileHandleStorage] Permission granted after request');
+                    return handle;
+                }
+
+                console.warn('[FileHandleStorage] User denied permission request');
+                await clearFileHandle();
+                return null;
+            } catch (error) {
+                console.error('[FileHandleStorage] requestPermission failed:', error);
+                // requestPermission can fail if called without user gesture in some browsers
+                // Return null and let Rust code handle re-prompting from button click
+                return null;
+            }
         }
 
-        // Permission denied, remove the stale handle
+        // permission === 'denied'
+        console.warn('[FileHandleStorage] Permission permanently denied, clearing stale handle');
         await clearFileHandle();
         return null;
+
     } catch (error) {
-        console.error('Failed to retrieve file handle:', error);
-        // If there's an error (e.g., handle no longer valid), clear it
+        console.error('[FileHandleStorage] Error retrieving handle:', error);
+        // Handle may be invalid (file deleted, drive disconnected, etc.)
         await clearFileHandle();
         return null;
     }
