@@ -86,34 +86,29 @@ export async function retrieveFileHandle() {
             return null;
         }
 
-        console.log('[FileHandleStorage] Handle found, checking permission state...');
+        console.log('[FileHandleStorage] Handle found, validating by attempting file access...');
 
-        // CRITICAL: Check permission state before returning handle
-        const options = { mode: 'readwrite' };
-        const permission = await handle.queryPermission(options);
-        console.log('[FileHandleStorage] Permission state:', permission);
-
-        if (permission === 'granted') {
-            console.log('[FileHandleStorage] Permission granted, handle ready to use');
+        // CRITICAL: Instead of queryPermission (unreliable on mobile Chrome),
+        // validate the handle by actually trying to use it.
+        // If we can read the file, the permission is valid.
+        // This works on both desktop and mobile Chrome without requiring user gesture.
+        try {
+            const file = await handle.getFile();
+            console.log('[FileHandleStorage] Handle validated successfully (permission is valid)');
             return handle;
-        }
+        } catch (error) {
+            // Handle is stale, permission denied, or file no longer accessible
+            console.warn('[FileHandleStorage] Handle validation failed:', error.name, error.message);
 
-        if (permission === 'prompt') {
-            // Permission expired or not yet granted
-            // CRITICAL: requestPermission() REQUIRES a user gesture (button click, etc.)
-            // During page load (auto-init), there is no user gesture context
-            // Browsers will reject the call with an error or throw an exception
-            // Solution: Clear the stale handle and force user to manually select file again
-            console.warn('[FileHandleStorage] Permission state is prompt (requires user gesture)');
-            console.log('[FileHandleStorage] Cannot auto-restore - user must select file again');
+            if (error.name === 'NotAllowedError' || error.name === 'SecurityError') {
+                console.log('[FileHandleStorage] Permission denied or revoked, clearing handle');
+            } else {
+                console.log('[FileHandleStorage] Handle is stale or invalid, clearing');
+            }
+
             await clearFileHandle();
             return null;
         }
-
-        // permission === 'denied'
-        console.warn('[FileHandleStorage] Permission permanently denied, clearing stale handle');
-        await clearFileHandle();
-        return null;
 
     } catch (error) {
         console.error('[FileHandleStorage] Error retrieving handle:', error);
