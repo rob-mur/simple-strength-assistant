@@ -143,9 +143,53 @@ export async function clearFileHandle() {
     }
 }
 
+export async function createNewDatabaseFile() {
+    try {
+        console.log('[FileHandleStorage] Opening save file picker for new database...');
+
+        const options = {
+            types: [{
+                description: 'SQLite Database',
+                accept: { 'application/x-sqlite3': ['.sqlite', '.db'] }
+            }],
+            suggestedName: 'workout-data.sqlite'
+        };
+
+        const handle = await window.showSaveFilePicker(options);
+        console.log('[FileHandleStorage] File handle created for new database');
+
+        // Request readwrite permission immediately (during gesture)
+        const permission = await handle.requestPermission({ mode: 'readwrite' });
+        console.log('[FileHandleStorage] Permission result:', permission);
+
+        if (permission !== 'granted') {
+            throw new Error('Permission not granted');
+        }
+
+        // Create empty file (write 0 bytes to initialize)
+        const writable = await handle.createWritable();
+        await writable.close();
+        console.log('[FileHandleStorage] Empty file created successfully');
+
+        // Store handle for persistence
+        await storeFileHandle(handle);
+        console.log('[FileHandleStorage] Handle stored in IndexedDB');
+
+        return { success: true, handle };
+    } catch (error) {
+        console.error('[FileHandleStorage] Failed to create new database file:', error);
+        return {
+            success: false,
+            error: error.name || 'Error',
+            message: error.message || String(error)
+        };
+    }
+}
+
 window.fileHandleStorage = {
     storeFileHandle,
     retrieveFileHandle,
     clearFileHandle,
-    requestWritePermissionAndStore
+    requestWritePermissionAndStore,
+    createNewDatabaseFile
 };

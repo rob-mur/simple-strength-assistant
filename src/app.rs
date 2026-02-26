@@ -122,30 +122,104 @@ pub fn App() -> Element {
                                     div {
                                         class: "card-body",
                                         h2 {
-                                            class: "card-title",
-                                            "Select Database File"
+                                            class: "card-title text-xl mb-2",
+                                            "Choose Database Setup"
                                         }
                                         p {
-                                            "Please select or create a database file to store your workout data."
-                                        }
-                                        p {
-                                            class: "text-sm text-gray-600 mt-2",
+                                            class: "text-sm text-gray-600 mb-6",
                                             "Your data will be stored locally on your device and remain completely private."
                                         }
+
+                                        // Create New Database Button
                                         div {
-                                            class: "card-actions justify-end mt-4",
+                                            class: "mb-4",
                                             button {
-                                                class: "btn btn-primary",
+                                                class: "btn btn-primary btn-block justify-start h-auto py-4",
                                                 onclick: move |_| {
                                                     spawn(async move {
-                                                        web_sys::console::log_1(&"[UI] User clicked file selection button - has user gesture".into());
+                                                        web_sys::console::log_1(&"[UI] User clicked create new database - has user gesture".into());
+                                                        let mut file_manager = crate::state::FileSystemManager::new();
+
+                                                        match file_manager.create_new_file().await {
+                                                            Ok(_) => {
+                                                                web_sys::console::log_1(&"[UI] New database file created successfully".into());
+
+                                                                // Continue initialization inline
+                                                                workout_state.set_initialization_state(InitializationState::Initializing);
+
+                                                                // New file is always empty
+                                                                web_sys::console::log_1(&"[UI] Initializing new database...".into());
+                                                                let mut database = crate::state::Database::new();
+                                                                match database.init(None).await {
+                                                                    Ok(_) => {
+                                                                        web_sys::console::log_1(&"[UI] New database initialized successfully".into());
+
+                                                                        // Store database and file manager in state
+                                                                        workout_state.set_database(database);
+                                                                        workout_state.set_file_manager(file_manager);
+                                                                        workout_state.set_initialization_state(InitializationState::Ready);
+
+                                                                        web_sys::console::log_1(&"[UI] Setup complete! State is now Ready".into());
+                                                                    }
+                                                                    Err(e) => {
+                                                                        let error_msg = format!("Database initialization failed: {}", e);
+                                                                        web_sys::console::error_1(&error_msg.clone().into());
+                                                                        WorkoutStateManager::handle_error(&workout_state, error_msg);
+                                                                    }
+                                                                }
+                                                            }
+                                                            Err(e) => {
+                                                                let error_msg = format!("Failed to create new database: {}", e);
+                                                                web_sys::console::error_1(&error_msg.clone().into());
+                                                                WorkoutStateManager::handle_error(&workout_state, error_msg);
+                                                            }
+                                                        }
+                                                    });
+                                                },
+                                                div {
+                                                    class: "flex items-start gap-3",
+                                                    svg {
+                                                        xmlns: "http://www.w3.org/2000/svg",
+                                                        fill: "none",
+                                                        view_box: "0 0 24 24",
+                                                        class: "w-6 h-6 flex-shrink-0 mt-1",
+                                                        stroke: "currentColor",
+                                                        stroke_width: "2",
+                                                        path {
+                                                            stroke_linecap: "round",
+                                                            stroke_linejoin: "round",
+                                                            d: "M12 4v16m8-8H4"
+                                                        }
+                                                    }
+                                                    div {
+                                                        class: "text-left",
+                                                        div {
+                                                            class: "font-bold text-base",
+                                                            "Create New Database"
+                                                        }
+                                                        div {
+                                                            class: "text-sm opacity-90 mt-1",
+                                                            "Start fresh with an empty workout database"
+                                                        }
+                                                    }
+                                                }
+                                            }
+                                        }
+
+                                        // Open Existing Database Button
+                                        div {
+                                            button {
+                                                class: "btn btn-outline btn-block justify-start h-auto py-4",
+                                                onclick: move |_| {
+                                                    spawn(async move {
+                                                        web_sys::console::log_1(&"[UI] User clicked open existing database - has user gesture".into());
                                                         let mut file_manager = crate::state::FileSystemManager::new();
 
                                                         match file_manager.prompt_for_file().await {
                                                             Ok(_) => {
                                                                 web_sys::console::log_1(&"[UI] File selected successfully".into());
 
-                                                                // Continue initialization inline - file_manager already has handle from prompt_for_file
+                                                                // Continue initialization inline
                                                                 workout_state.set_initialization_state(InitializationState::Initializing);
 
                                                                 // Read file data if handle exists
@@ -161,12 +235,10 @@ pub fn App() -> Element {
                                                                             Some(data)
                                                                         }
                                                                         Err(e) => {
-                                                                            // Don't silently treat read errors as "empty file"
-                                                                            // If we can't read the file, show error to user
                                                                             let error_msg = format!("Failed to read selected file: {}", e);
                                                                             web_sys::console::error_1(&error_msg.clone().into());
                                                                             WorkoutStateManager::handle_error(&workout_state, error_msg);
-                                                                            return; // Exit early, don't try to initialize
+                                                                            return;
                                                                         }
                                                                     }
                                                                 } else {
@@ -203,7 +275,33 @@ pub fn App() -> Element {
                                                         }
                                                     });
                                                 },
-                                                "Select Database Location"
+                                                div {
+                                                    class: "flex items-start gap-3",
+                                                    svg {
+                                                        xmlns: "http://www.w3.org/2000/svg",
+                                                        fill: "none",
+                                                        view_box: "0 0 24 24",
+                                                        class: "w-6 h-6 flex-shrink-0 mt-1",
+                                                        stroke: "currentColor",
+                                                        stroke_width: "2",
+                                                        path {
+                                                            stroke_linecap: "round",
+                                                            stroke_linejoin: "round",
+                                                            d: "M3 7v10a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-6l-2-2H5a2 2 0 00-2 2z"
+                                                        }
+                                                    }
+                                                    div {
+                                                        class: "text-left",
+                                                        div {
+                                                            class: "font-bold text-base",
+                                                            "Open Existing Database"
+                                                        }
+                                                        div {
+                                                            class: "text-sm opacity-90 mt-1",
+                                                            "Continue with your existing workout data"
+                                                        }
+                                                    }
+                                                }
                                             }
                                         }
                                     }

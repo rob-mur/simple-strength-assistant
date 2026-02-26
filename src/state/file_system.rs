@@ -18,6 +18,9 @@ extern "C" {
 
     #[wasm_bindgen(js_name = requestWritePermissionAndStore)]
     async fn request_write_permission_and_store(handle: JsValue) -> JsValue;
+
+    #[wasm_bindgen(js_name = createNewDatabaseFile)]
+    async fn create_new_database_file() -> JsValue;
 }
 
 const MAX_FILE_SIZE: usize = 100 * 1024 * 1024; // 100MB
@@ -124,6 +127,81 @@ impl FileSystemManager {
             web_sys::console::log_1(&"[FileSystem] User will need to select file location".into());
             Ok(false)
         }
+    }
+
+    pub async fn create_new_file(&mut self) -> Result<FileHandle, FileSystemError> {
+        if self.use_fallback {
+            web_sys::console::log_1(&"[FileSystem] Using fallback storage for new database".into());
+            return self.use_fallback_storage().await;
+        }
+
+        web_sys::console::log_1(&"[FileSystem] Creating new database file...".into());
+
+        // create_new_database_file returns { success: bool, handle?: FileHandle, error?: string, message?: string }
+        let result = create_new_database_file().await;
+
+        // Check success field
+        let success = js_sys::Reflect::get(&result, &JsValue::from_str("success"))
+            .map(|v| v.as_bool().unwrap_or(false))
+            .unwrap_or(false);
+
+        if !success {
+            // Extract error details
+            let error_name = js_sys::Reflect::get(&result, &JsValue::from_str("error"))
+                .ok()
+                .and_then(|v| v.as_string())
+                .unwrap_or_else(|| "Unknown".to_string());
+
+            let error_message = js_sys::Reflect::get(&result, &JsValue::from_str("message"))
+                .ok()
+                .and_then(|v| v.as_string())
+                .unwrap_or_else(|| "Unknown error".to_string());
+
+            web_sys::console::error_1(
+                &format!(
+                    "[FileSystem] createNewDatabaseFile failed: {} - {}",
+                    error_name, error_message
+                )
+                .into(),
+            );
+
+            let error_lower = format!("{} {}", error_name, error_message).to_lowercase();
+
+            if error_lower.contains("securityerror") || error_lower.contains("user gesture") {
+                web_sys::console::error_1(&"[FileSystem] CAUSE: File picker requires user gesture (must be called from button click)".into());
+                return Err(FileSystemError::SecurityError);
+            } else if error_lower.contains("notallowederror") || error_lower.contains("permission")
+            {
+                web_sys::console::error_1(&"[FileSystem] CAUSE: User denied permission".into());
+                return Err(FileSystemError::PermissionDenied);
+            } else if error_lower.contains("abort") {
+                web_sys::console::log_1(&"[FileSystem] User cancelled file creation dialog".into());
+                return Err(FileSystemError::UserCancelled);
+            } else {
+                return Err(FileSystemError::JsError(format!(
+                    "{}: {}",
+                    error_name, error_message
+                )));
+            }
+        }
+
+        // Extract handle
+        let handle = js_sys::Reflect::get(&result, &JsValue::from_str("handle"))
+            .map_err(|_| FileSystemError::JsError("No handle in response".to_string()))?;
+
+        if handle.is_undefined() || handle.is_null() {
+            web_sys::console::error_1(
+                &"[FileSystem] No handle returned despite success=true".into(),
+            );
+            return Err(FileSystemError::JsError(
+                "No handle in response".to_string(),
+            ));
+        }
+
+        web_sys::console::log_1(&"[FileSystem] New database file created successfully".into());
+        self.handle = Some(handle);
+
+        Ok(FileHandle { cached: true })
     }
 
     pub async fn prompt_for_file(&mut self) -> Result<FileHandle, FileSystemError> {
