@@ -135,6 +135,12 @@ impl WorkoutStateManager {
 
         web_sys::console::log_1(&format!("[DB Init] Has cached handle: {}", has_cached).into());
 
+        if has_cached {
+            // Store it even if we might fail later (e.g. permission check)
+            // This allows the Error UI to see we have a handle and re-request permission.
+            state.set_file_manager(file_manager.clone());
+        }
+
         if !has_cached {
             web_sys::console::log_1(
                 &"[DB Init] No cached handle, transitioning to SelectingFile state".into(),
@@ -172,6 +178,13 @@ impl WorkoutStateManager {
                     // If we can't read the cached file handle, return error
                     let msg = format!("Failed to read cached file handle: {}", e);
                     web_sys::console::error_1(&msg.clone().into());
+                    
+                    // If the format is invalid, clear the cached handle from IndexedDB
+                    // This prevents the loop where "Retry" keeps finding the same bad handle.
+                    if msg.to_lowercase().contains("not a valid sqlite database") || msg.to_lowercase().contains("invalid format") {
+                        let _ = file_manager.clear_handle().await;
+                    }
+                    
                     return Err(msg);
                 }
             }

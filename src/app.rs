@@ -305,6 +305,15 @@ pub fn App() -> Element {
                                                                         Err(e) => {
                                                                             let error_msg = format!("Failed to read selected file: {}", e);
                                                                             web_sys::console::error_1(&error_msg.clone().into());
+                                                                            
+                                                                            // Clear the handle if it's invalid so it doesn't stay cached
+                                                                            if error_msg.to_lowercase().contains("not a valid sqlite database") || error_msg.to_lowercase().contains("invalid format") {
+                                                                                let mut fm_clone = file_manager.clone();
+                                                                                spawn(async move {
+                                                                                    let _ = fm_clone.clear_handle().await;
+                                                                                });
+                                                                            }
+                                                                            
                                                                             WorkoutStateManager::handle_error(&workout_state, error_msg);
                                                                             return;
                                                                         }
@@ -425,6 +434,10 @@ pub fn App() -> Element {
                         let error_msg = workout_state.error_message().unwrap_or_else(|| "Unknown error occurred".to_string());
                         let error_info = parse_error_for_ui(&error_msg);
 
+                        // Check if we have a handle but need permission
+                        let has_handle = workout_state.file_manager().map(|fm| fm.has_handle()).unwrap_or(false);
+                        let is_permission_error = error_msg.to_lowercase().contains("permission denied") || error_msg.to_lowercase().contains("notallowederror");
+
                         rsx! {
                             div {
                                 class: "flex items-center justify-center h-full",
@@ -473,6 +486,18 @@ pub fn App() -> Element {
                                                 class: "btn btn-primary",
                                                 onclick: move |_| {
                                                     spawn(async move {
+                                                        if has_handle && is_permission_error {
+                                                            web_sys::console::log_1(&"[UI] Re-requesting permission for existing handle...".into());
+                                                            if let Some(fm) = workout_state.file_manager() {
+                                                                if let Err(e) = fm.request_permission().await {
+                                                                    web_sys::console::error_1(&format!("[UI] Permission re-request failed: {:?}", e).into());
+                                                                    WorkoutStateManager::handle_error(&workout_state, e.to_string());
+                                                                    return;
+                                                                }
+                                                                web_sys::console::log_1(&"[UI] Permission granted! Retrying initialization...".into());
+                                                            }
+                                                        }
+                                                        
                                                         // Reset error state
                                                         workout_state.set_error_message(None);
                                                         workout_state.set_initialization_state(InitializationState::NotInitialized);
@@ -482,7 +507,13 @@ pub fn App() -> Element {
                                                         }
                                                     });
                                                 },
-                                                {error_info.retry_label}
+                                                {
+                                                    if has_handle && is_permission_error {
+                                                        "Grant Permission"
+                                                    } else {
+                                                        error_info.retry_label.as_str()
+                                                    }
+                                                }
                                             }
                                         }
                                     }

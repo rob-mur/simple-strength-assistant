@@ -356,17 +356,31 @@ impl FileSystemManager {
 
         let handle = self.handle.as_ref().ok_or(FileSystemError::NoHandle)?;
 
-        let get_file_result = js_sys::Reflect::get(handle, &JsValue::from_str("getFile"))
-            .map_err(|_| FileSystemError::ReadError("Failed to get getFile method".to_string()))?;
-        let get_file =
-            get_file_result
-                .dyn_ref::<js_sys::Function>()
-                .ok_or(FileSystemError::ReadError(
-                    "getFile not a function".to_string(),
-                ))?;
+        let get_file_result = js_sys::Reflect::get(handle, &JsValue::from_str("getFile")).map_err(|_| {
+            FileSystemError::ReadError("Failed to get getFile method".to_string())
+        })?;
+        let get_file = get_file_result.dyn_ref::<js_sys::Function>().ok_or(
+            FileSystemError::ReadError("getFile not a function".to_string()),
+        )?;
 
-        let promise = get_file.call0(handle)?;
-        let file = JsFuture::from(js_sys::Promise::from(promise)).await?;
+        let promise = get_file.call0(handle).map_err(|e| {
+            let err_str = format!("{:?}", e);
+            if err_str.contains("NotAllowedError") {
+                FileSystemError::PermissionDenied
+            } else {
+                FileSystemError::from(e)
+            }
+        })?;
+        let file = JsFuture::from(js_sys::Promise::from(promise))
+            .await
+            .map_err(|e| {
+                let err_str = format!("{:?}", e);
+                if err_str.contains("NotAllowedError") {
+                    FileSystemError::PermissionDenied
+                } else {
+                    FileSystemError::from(e)
+                }
+            })?;
 
         // Check file size before reading
         let size_result = js_sys::Reflect::get(&file, &JsValue::from_str("size"))?;
@@ -395,8 +409,24 @@ impl FileSystemManager {
                     "arrayBuffer not a function".to_string(),
                 ))?;
 
-        let promise = array_buffer_method.call0(&file)?;
-        let array_buffer = JsFuture::from(js_sys::Promise::from(promise)).await?;
+        let promise = array_buffer_method.call0(&file).map_err(|e| {
+            let err_str = format!("{:?}", e);
+            if err_str.contains("NotAllowedError") {
+                FileSystemError::PermissionDenied
+            } else {
+                FileSystemError::from(e)
+            }
+        })?;
+        let array_buffer = JsFuture::from(js_sys::Promise::from(promise))
+            .await
+            .map_err(|e| {
+                let err_str = format!("{:?}", e);
+                if err_str.contains("NotAllowedError") {
+                    FileSystemError::PermissionDenied
+                } else {
+                    FileSystemError::from(e)
+                }
+            })?;
 
         let uint8_array = js_sys::Uint8Array::new(&array_buffer);
         let mut buffer = vec![0; uint8_array.length() as usize];
@@ -435,8 +465,24 @@ impl FileSystemManager {
             FileSystemError::WriteError("createWritable not a function".to_string()),
         )?;
 
-        let promise = create_writable.call0(handle)?;
-        let writable = JsFuture::from(js_sys::Promise::from(promise)).await?;
+        let promise = create_writable.call0(handle).map_err(|e| {
+            let err_str = format!("{:?}", e);
+            if err_str.contains("NotAllowedError") {
+                FileSystemError::PermissionDenied
+            } else {
+                FileSystemError::from(e)
+            }
+        })?;
+        let writable = JsFuture::from(js_sys::Promise::from(promise))
+            .await
+            .map_err(|e| {
+                let err_str = format!("{:?}", e);
+                if err_str.contains("NotAllowedError") {
+                    FileSystemError::PermissionDenied
+                } else {
+                    FileSystemError::from(e)
+                }
+            })?;
 
         let uint8_array = js_sys::Uint8Array::new_with_length(data.len() as u32);
         uint8_array.copy_from(data);
@@ -449,8 +495,24 @@ impl FileSystemManager {
                     "write not a function".to_string(),
                 ))?;
 
-        let promise = write_method.call1(&writable, &uint8_array)?;
-        JsFuture::from(js_sys::Promise::from(promise)).await?;
+        let promise = write_method.call1(&writable, &uint8_array).map_err(|e| {
+            let err_str = format!("{:?}", e);
+            if err_str.contains("NotAllowedError") {
+                FileSystemError::PermissionDenied
+            } else {
+                FileSystemError::from(e)
+            }
+        })?;
+        JsFuture::from(js_sys::Promise::from(promise))
+            .await
+            .map_err(|e| {
+                let err_str = format!("{:?}", e);
+                if err_str.contains("NotAllowedError") {
+                    FileSystemError::PermissionDenied
+                } else {
+                    FileSystemError::from(e)
+                }
+            })?;
 
         let close_result = js_sys::Reflect::get(&writable, &JsValue::from_str("close"))?;
         let close_method =
@@ -463,6 +525,22 @@ impl FileSystemManager {
         let promise = close_method.call0(&writable)?;
         JsFuture::from(js_sys::Promise::from(promise)).await?;
 
+        Ok(())
+    }
+
+    pub async fn request_permission(&self) -> Result<(), FileSystemError> {
+        let handle = self.handle.as_ref().ok_or(FileSystemError::NoHandle)?;
+        let result = request_write_permission_and_store(handle.clone()).await;
+        if result.is_truthy() {
+            Ok(())
+        } else {
+            Err(FileSystemError::PermissionDenied)
+        }
+    }
+
+    pub async fn clear_handle(&mut self) -> Result<(), FileSystemError> {
+        clear_file_handle().await;
+        self.handle = None;
         Ok(())
     }
 

@@ -86,30 +86,22 @@ export async function retrieveFileHandle() {
             return null;
         }
 
-        console.log('[FileHandleStorage] Handle found, validating by attempting file access...');
+        console.log('[FileHandleStorage] Handle found in IndexedDB, checking permission state...');
 
-        // CRITICAL: Instead of queryPermission (unreliable on mobile Chrome),
-        // validate the handle by actually trying to use it.
-        // If we can read the file, the permission is valid.
-        // This works on both desktop and mobile Chrome without requiring user gesture.
         try {
-            const file = await handle.getFile();
-            console.log('[FileHandleStorage] Handle validated successfully (permission is valid)');
+            // Check current permission state
+            const state = await handle.queryPermission({ mode: 'readwrite' });
+            console.log('[FileHandleStorage] Current permission state:', state);
+            
+            // Return the handle regardless of state (granted or prompt).
+            // If prompt, we'll handle the NotAllowedError later and show a "Grant" button.
             return handle;
         } catch (error) {
-            // Handle is stale, permission denied, or file no longer accessible
+            // Handle is stale or invalid (e.g. file deleted or moved)
             console.warn('[FileHandleStorage] Handle validation failed:', error.name, error.message);
-
-            if (error.name === 'NotAllowedError' || error.name === 'SecurityError') {
-                console.log('[FileHandleStorage] Permission denied or revoked, clearing handle');
-            } else {
-                console.log('[FileHandleStorage] Handle is stale or invalid, clearing');
-            }
-
             await clearFileHandle();
             return null;
         }
-
     } catch (error) {
         console.error('[FileHandleStorage] Error retrieving handle:', error);
         // Handle may be invalid (file deleted, drive disconnected, etc.)
