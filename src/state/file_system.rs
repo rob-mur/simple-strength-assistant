@@ -86,10 +86,10 @@ impl FileSystemManager {
 
     fn is_file_system_api_supported() -> bool {
         if let Some(window) = window()
-            && let Ok(show_save_file_picker) =
-                js_sys::Reflect::get(&window, &JsValue::from_str("showSaveFilePicker"))
+            && let Ok(show_open_file_picker) =
+                js_sys::Reflect::get(&window, &JsValue::from_str("showOpenFilePicker"))
         {
-            return !show_save_file_picker.is_undefined();
+            return !show_open_file_picker.is_undefined();
         }
         false
     }
@@ -134,15 +134,23 @@ impl FileSystemManager {
         web_sys::console::log_1(&"[FileSystem] Opening file picker dialog...".into());
         let window = window().ok_or(FileSystemError::NotSupported)?;
 
-        let show_save_file_picker =
-            js_sys::Reflect::get(&window, &JsValue::from_str("showSaveFilePicker"))
+        let show_open_file_picker =
+            js_sys::Reflect::get(&window, &JsValue::from_str("showOpenFilePicker"))
                 .map_err(|_| FileSystemError::NotSupported)?;
 
-        let picker_fn = show_save_file_picker
+        let picker_fn = show_open_file_picker
             .dyn_ref::<js_sys::Function>()
             .ok_or(FileSystemError::NotSupported)?;
 
         let options = js_sys::Object::new();
+
+        // Set mode to 'readwrite' so we can both read existing data AND write to it
+        js_sys::Reflect::set(
+            &options,
+            &JsValue::from_str("mode"),
+            &JsValue::from_str("readwrite"),
+        )?;
+
         let types_array = js_sys::Array::new();
         let type_obj = js_sys::Object::new();
 
@@ -167,15 +175,10 @@ impl FileSystemManager {
         types_array.push(&type_obj);
 
         js_sys::Reflect::set(&options, &JsValue::from_str("types"), &types_array)?;
-        js_sys::Reflect::set(
-            &options,
-            &JsValue::from_str("suggestedName"),
-            &JsValue::from_str("workout_data.sqlite"),
-        )?;
 
         let promise = picker_fn.call1(&window, &options).map_err(|e| {
             let error_string = format!("{:?}", e);
-            web_sys::console::error_1(&"[FileSystem] showSaveFilePicker call failed".into());
+            web_sys::console::error_1(&"[FileSystem] showOpenFilePicker call failed".into());
             web_sys::console::error_1(&format!("[FileSystem] Error details: {}", error_string).into());
 
             // Capture stack trace for WASM-JS boundary errors (ERR-04)
@@ -201,7 +204,7 @@ impl FileSystemManager {
             }
         })?;
 
-        let handle = JsFuture::from(js_sys::Promise::from(promise))
+        let handle_array = JsFuture::from(js_sys::Promise::from(promise))
             .await
             .map_err(|e| {
                 let error_string = format!("{:?}", e);
@@ -230,6 +233,11 @@ impl FileSystemManager {
                     FileSystemError::JsError(error_string)
                 }
             })?;
+
+        // showOpenFilePicker returns an array of file handles
+        // We only allow selecting a single file, so get the first element
+        let handle_array = js_sys::Array::from(&handle_array);
+        let handle = handle_array.get(0);
 
         web_sys::console::log_1(
             &"[FileSystem] File handle obtained, storing in IndexedDB...".into(),
