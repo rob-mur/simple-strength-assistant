@@ -32,9 +32,6 @@ extern "C" {
     #[wasm_bindgen(js_name = executeQuery)]
     async fn execute_query(sql: &str, params: JsValue) -> JsValue;
 
-    #[wasm_bindgen(js_name = executeTransaction)]
-    async fn execute_transaction(queries: JsValue) -> JsValue;
-
     #[wasm_bindgen(js_name = exportDatabase)]
     async fn export_database() -> JsValue;
 }
@@ -50,21 +47,18 @@ impl Database {
     }
 
     pub async fn init(&mut self, file_data: Option<Vec<u8>>) -> Result<(), DatabaseError> {
-        web_sys::console::log_1(&"[DB] Calling JS initDatabase...".into());
+        log::debug!("[DB] Calling JS initDatabase...");
         let result = init_database(file_data).await;
 
         if result.is_truthy() {
-            web_sys::console::log_1(&"[DB] initDatabase succeeded, creating tables...".into());
+            log::debug!("[DB] initDatabase succeeded, creating tables...");
+            self.create_tables().await?;
             self.initialized = true;
-            if let Err(e) = self.create_tables().await {
-                self.initialized = false;
-                return Err(e);
-            }
-            web_sys::console::log_1(&"[DB] Tables created successfully".into());
+            log::debug!("[DB] Tables created successfully and database initialized");
             Ok(())
         } else {
             let error_msg = "Failed to initialize SQLite database - JS returned false".to_string();
-            web_sys::console::error_1(&error_msg.clone().into());
+            log::error!("{}", error_msg);
             Err(DatabaseError::InitializationError(error_msg))
         }
     }
@@ -107,14 +101,14 @@ impl Database {
             ON completed_sets(session_id)
         "#;
 
-        web_sys::console::log_1(&"[DB] Creating sessions table...".into());
-        self.execute(create_sessions, &[]).await?;
-        web_sys::console::log_1(&"[DB] Creating completed_sets table...".into());
-        self.execute(create_sets, &[]).await?;
-        web_sys::console::log_1(&"[DB] Creating exercises table...".into());
-        self.execute(create_exercises, &[]).await?;
-        web_sys::console::log_1(&"[DB] Creating index on session_id...".into());
-        self.execute(create_index, &[]).await?;
+        log::debug!("[DB] Creating sessions table...");
+        self.execute_internal(create_sessions, &[]).await?;
+        log::debug!("[DB] Creating completed_sets table...");
+        self.execute_internal(create_sets, &[]).await?;
+        log::debug!("[DB] Creating exercises table...");
+        self.execute_internal(create_exercises, &[]).await?;
+        log::debug!("[DB] Creating index on session_id...");
+        self.execute_internal(create_index, &[]).await?;
 
         Ok(())
     }
@@ -124,6 +118,14 @@ impl Database {
             return Err(DatabaseError::NotInitialized);
         }
 
+        self.execute_internal(sql, params).await
+    }
+
+    async fn execute_internal(
+        &self,
+        sql: &str,
+        params: &[JsValue],
+    ) -> Result<JsValue, DatabaseError> {
         let params_array = js_sys::Array::new();
         for param in params {
             params_array.push(param);

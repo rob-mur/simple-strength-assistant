@@ -1,6 +1,5 @@
 use crate::models::{CompletedSet, ExerciseMetadata, SetType};
-use crate::state::{Database, FileSystemManager};
-
+use crate::state::{Database, FileSystemManager, error::WorkoutError};
 use dioxus::prelude::*;
 
 // Initial prediction constants
@@ -41,9 +40,10 @@ pub enum InitializationState {
 pub struct WorkoutState {
     initialization_state: Signal<InitializationState>,
     current_session: Signal<Option<WorkoutSession>>,
-    error_message: Signal<Option<String>>,
+    error: Signal<Option<WorkoutError>>,
     database: Signal<Option<Database>>,
     file_manager: Signal<Option<FileSystemManager>>,
+    last_save_time: Signal<f64>,
 }
 
 impl WorkoutState {
@@ -51,9 +51,10 @@ impl WorkoutState {
         Self {
             initialization_state: Signal::new(InitializationState::NotInitialized),
             current_session: Signal::new(None),
-            error_message: Signal::new(None),
+            error: Signal::new(None),
             database: Signal::new(None),
             file_manager: Signal::new(None),
+            last_save_time: Signal::new(0.0),
         }
     }
 
@@ -65,8 +66,8 @@ impl WorkoutState {
         (self.current_session)()
     }
 
-    pub fn error_message(&self) -> Option<String> {
-        (self.error_message)()
+    pub fn error(&self) -> Option<WorkoutError> {
+        (self.error)()
     }
 
     pub fn set_initialization_state(&self, state: InitializationState) {
@@ -79,9 +80,9 @@ impl WorkoutState {
         sig.set(session);
     }
 
-    pub fn set_error_message(&self, message: Option<String>) {
-        let mut sig = self.error_message;
-        sig.set(message);
+    pub fn set_error(&self, error: Option<WorkoutError>) {
+        let mut sig = self.error;
+        sig.set(error);
     }
 
     pub fn set_database(&self, database: Database) {
@@ -101,21 +102,30 @@ impl WorkoutState {
     pub fn file_manager(&self) -> Option<FileSystemManager> {
         (self.file_manager)()
     }
+
+    pub fn last_save_time(&self) -> f64 {
+        (self.last_save_time)()
+    }
+
+    pub fn set_last_save_time(&self, time: f64) {
+        let mut sig = self.last_save_time;
+        sig.set(time);
+    }
 }
 
 pub struct WorkoutStateManager;
 
 impl WorkoutStateManager {
-    pub async fn setup_database(state: &WorkoutState) -> Result<(), String> {
-        web_sys::console::log_1(&"[DB Init] Starting database setup...".into());
+    pub async fn setup_database(state: &WorkoutState) -> Result<(), WorkoutError> {
+        log::debug!("[DB Init] Starting database setup...");
 
         match state.initialization_state() {
             InitializationState::Initializing => {
-                web_sys::console::log_1(&"[DB Init] Already in progress, skipping".into());
-                return Err("Database initialization already in progress".to_string());
+                log::debug!("[DB Init] Already in progress, skipping");
+                return Err(WorkoutError::InitializationInProgress);
             }
             InitializationState::Ready => {
-                web_sys::console::log_1(&"[DB Init] Already initialized, skipping".into());
+                log::debug!("[DB Init] Already initialized, skipping");
                 return Ok(());
             }
             _ => {}
@@ -123,17 +133,16 @@ impl WorkoutStateManager {
 
         state.set_initialization_state(InitializationState::Initializing);
 
-        web_sys::console::log_1(&"[DB Init] Creating file manager...".into());
+        log::debug!("[DB Init] Creating file manager...");
         let mut file_manager = FileSystemManager::new();
 
-        web_sys::console::log_1(&"[DB Init] Checking for cached file handle...".into());
+        log::debug!("[DB Init] Checking for cached file handle...");
         let has_cached = file_manager.check_cached_handle().await.map_err(|e| {
-            let msg = format!("Failed to check cached handle: {}", e);
-            web_sys::console::error_1(&msg.clone().into());
-            msg
+            log::error!("Failed to check cached handle: {}", e);
+            WorkoutError::FileSystem(e)
         })?;
 
-        web_sys::console::log_1(&format!("[DB Init] Has cached handle: {}", has_cached).into());
+        log::debug!("[DB Init] Has cached handle: {}", has_cached);
 
         if has_cached {
             // Store it even if we might fail later (e.g. permission check)
@@ -142,12 +151,8 @@ impl WorkoutStateManager {
         }
 
         if !has_cached {
-            web_sys::console::log_1(
-                &"[DB Init] No cached handle, transitioning to SelectingFile state".into(),
-            );
-            web_sys::console::log_1(
-                &"[DB Init] File picker requires user gesture - waiting for button click".into(),
-            );
+            log::debug!("[DB Init] No cached handle, transitioning to SelectingFile state");
+            log::debug!("[DB Init] File picker requires user gesture - waiting for button click");
             state.set_initialization_state(InitializationState::SelectingFile);
 
             // Return OK - UI will call prompt_for_file from button onclick
@@ -155,79 +160,72 @@ impl WorkoutStateManager {
         }
 
         let file_data = if file_manager.has_handle() {
-            web_sys::console::log_1(&"[DB Init] Reading file contents...".into());
+            log::debug!("[DB Init] Reading file contents...");
             match file_manager.read_file().await {
                 Ok(data) if data.is_empty() => {
-                    web_sys::console::log_1(
-                        &"[DB Init] File is empty (0 bytes), will create new database".into(),
-                    );
+                    log::debug!("[DB Init] File is empty (0 bytes), will create new database");
                     None
                 }
                 Ok(data) => {
-                    web_sys::console::log_1(
-                        &format!(
-                            "[DB Init] Read {} bytes from file, loading existing database",
-                            data.len()
-                        )
-                        .into(),
+                    log::debug!(
+                        "[DB Init] Read {} bytes from file, loading existing database",
+                        data.len()
                     );
                     Some(data)
                 }
                 Err(e) => {
                     // Don't silently treat read errors as "empty file"
                     // If we can't read the cached file handle, return error
-                    let msg = format!("Failed to read cached file handle: {}", e);
-                    web_sys::console::error_1(&msg.clone().into());
+                    log::error!("Failed to read cached file handle: {}", e);
 
                     // If the format is invalid, clear the cached handle from IndexedDB
                     // This prevents the loop where "Retry" keeps finding the same bad handle.
-                    if msg.to_lowercase().contains("not a valid sqlite database")
-                        || msg.to_lowercase().contains("invalid format")
-                    {
+                    if matches!(e, crate::state::FileSystemError::InvalidFormat) {
                         let _ = file_manager.clear_handle().await;
                     }
 
-                    return Err(msg);
+                    return Err(WorkoutError::FileSystem(e));
                 }
             }
         } else {
-            web_sys::console::log_1(&"[DB Init] No file handle, creating new database".into());
+            log::debug!("[DB Init] No file handle, creating new database");
             None
         };
 
-        web_sys::console::log_1(&"[DB Init] Initializing database...".into());
+        log::debug!("[DB Init] Initializing database...");
         let mut database = Database::new();
         database.init(file_data).await.map_err(|e| {
-            let msg = format!("Failed to initialize database: {}", e);
-            web_sys::console::error_1(&msg.clone().into());
-            msg
+            log::error!("Failed to initialize database: {}", e);
+            WorkoutError::Database(e)
         })?;
-        web_sys::console::log_1(&"[DB Init] Database initialized successfully".into());
+        log::debug!("[DB Init] Database initialized successfully");
 
         state.set_database(database);
         state.set_file_manager(file_manager);
         state.set_initialization_state(InitializationState::Ready);
 
-        web_sys::console::log_1(&"[DB Init] Setup complete! State is now Ready".into());
+        log::debug!("[DB Init] Setup complete! State is now Ready");
         Ok(())
     }
 
     pub async fn start_session(
         state: &WorkoutState,
         exercise: ExerciseMetadata,
-    ) -> Result<(), String> {
-        let db = state
-            .database()
-            .ok_or("Database not initialized".to_string())?;
+    ) -> Result<(), WorkoutError> {
+        let db = state.database().ok_or(WorkoutError::NotInitialized)?;
 
         db.save_exercise(&exercise)
             .await
-            .map_err(|e| format!("Failed to save exercise: {}", e))?;
+            .map_err(|e: crate::state::DatabaseError| {
+                WorkoutError::SaveExerciseError(e.to_string())
+            })?;
 
-        let session_id = db
-            .create_session(&exercise.name)
-            .await
-            .map_err(|e| format!("Failed to create session: {}", e))?;
+        let session_id =
+            db.create_session(&exercise.name)
+                .await
+                .map_err(|e: crate::state::DatabaseError| {
+                    WorkoutError::CreateSessionError(e.to_string())
+                })?;
 
         let predicted = Self::calculate_initial_predictions(&exercise);
 
@@ -243,55 +241,66 @@ impl WorkoutStateManager {
         Ok(())
     }
 
-    pub async fn log_set(state: &WorkoutState, set: CompletedSet) -> Result<(), String> {
-        let mut session = state.current_session().ok_or("No active session")?;
+    pub async fn log_set(state: &WorkoutState, set: CompletedSet) -> Result<(), WorkoutError> {
+        let mut session = state
+            .current_session()
+            .ok_or(WorkoutError::NoActiveSession)?;
 
-        let session_id = session.session_id.ok_or("Session not persisted")?;
+        let session_id = session
+            .session_id
+            .ok_or(WorkoutError::SessionNotPersisted)?;
 
-        let db = state
-            .database()
-            .ok_or("Database not initialized".to_string())?;
+        let db = state.database().ok_or(WorkoutError::NotInitialized)?;
 
         crate::models::validate_completed_set(&set, &session.exercise)
-            .map_err(|e| format!("Invalid set data: {}", e))?;
+            .map_err(|e| WorkoutError::InvalidSetData(e.to_string()))?;
 
-        let _set_id = db
-            .insert_set(session_id, &set)
-            .await
-            .map_err(|e| format!("Failed to insert set: {}", e))?;
+        let _set_id =
+            db.insert_set(session_id, &set)
+                .await
+                .map_err(|e: crate::state::DatabaseError| {
+                    WorkoutError::InsertSetError(e.to_string())
+                })?;
 
         session.completed_sets.push(set.clone());
         session.predicted = Self::calculate_next_predictions(&session);
 
         state.set_current_session(Some(session));
 
-        // Auto-save after each set to prevent data loss if browser closes
-        web_sys::console::log_1(&"[Workout] Auto-saving database after set...".into());
-        Self::save_database(state)
-            .await
-            .map_err(|e| {
-                web_sys::console::warn_1(&format!("[Workout] Auto-save failed: {}", e).into());
-                // Don't fail the entire operation if auto-save fails
-                // The set is still recorded in memory and will be saved on session completion
-                log::warn!("Auto-save failed but set logged in memory: {}", e);
-            })
-            .ok();
+        // Auto-save with debouncing (every 5 seconds) to prevent performance issues while minimizing data loss
+        let now = js_sys::Date::now();
+        if now - state.last_save_time() > 5000.0 {
+            log::debug!("[Workout] Auto-saving database (debounced)...");
+            state.set_last_save_time(now);
+            Self::save_database(state)
+                .await
+                .map_err(|e| {
+                    log::warn!("Auto-save failed but set logged in memory: {}", e);
+                })
+                .ok();
+        } else {
+            log::debug!("[Workout] Skipping auto-save (debounced)");
+        }
 
         Ok(())
     }
 
-    pub async fn complete_session(state: &WorkoutState) -> Result<(), String> {
-        let session = state.current_session().ok_or("No active session")?;
+    pub async fn complete_session(state: &WorkoutState) -> Result<(), WorkoutError> {
+        let session = state
+            .current_session()
+            .ok_or(WorkoutError::NoActiveSession)?;
 
-        let session_id = session.session_id.ok_or("Session not persisted")?;
+        let session_id = session
+            .session_id
+            .ok_or(WorkoutError::SessionNotPersisted)?;
 
-        let db = state
-            .database()
-            .ok_or("Database not initialized".to_string())?;
+        let db = state.database().ok_or(WorkoutError::NotInitialized)?;
 
         db.complete_session(session_id)
             .await
-            .map_err(|e| format!("Failed to complete session: {}", e))?;
+            .map_err(|e: crate::state::DatabaseError| {
+                WorkoutError::CompleteSessionError(e.to_string())
+            })?;
 
         Self::save_database(state).await?;
 
@@ -300,24 +309,19 @@ impl WorkoutStateManager {
         Ok(())
     }
 
-    async fn save_database(state: &WorkoutState) -> Result<(), String> {
-        let db = state
-            .database()
-            .ok_or("Database not initialized".to_string())?;
+    async fn save_database(state: &WorkoutState) -> Result<(), WorkoutError> {
+        let db = state.database().ok_or(WorkoutError::NotInitialized)?;
 
-        let file_manager = state
-            .file_manager()
-            .ok_or("File manager not initialized".to_string())?;
+        let file_manager = state.file_manager().ok_or(WorkoutError::FileSystem(
+            crate::state::FileSystemError::NoHandle,
+        ))?;
 
-        let data = db
-            .export()
-            .await
-            .map_err(|e| format!("Failed to export database: {}", e))?;
+        let data = db.export().await.map_err(WorkoutError::Database)?;
 
         file_manager
             .write_file(&data)
             .await
-            .map_err(|e| format!("Failed to write file: {}", e))?;
+            .map_err(WorkoutError::FileSystem)?;
 
         Ok(())
     }
@@ -376,9 +380,9 @@ impl WorkoutStateManager {
         }
     }
 
-    pub fn handle_error(state: &WorkoutState, error: String) {
+    pub fn handle_error(state: &WorkoutState, error: WorkoutError) {
         log::error!("Workout state error: {}", error);
-        state.set_error_message(Some(error));
+        state.set_error(Some(error));
         state.set_initialization_state(InitializationState::Error);
     }
 }

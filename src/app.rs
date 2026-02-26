@@ -1,5 +1,5 @@
 use crate::models::{CompletedSet, ExerciseMetadata, SetType, SetTypeConfig};
-use crate::state::{InitializationState, WorkoutState, WorkoutStateManager};
+use crate::state::{InitializationState, WorkoutError, WorkoutState, WorkoutStateManager};
 use dioxus::prelude::*;
 use wasm_bindgen::JsCast;
 
@@ -10,62 +10,54 @@ struct ErrorInfo {
     retry_label: String,
 }
 
-fn parse_error_for_ui(error_msg: &str) -> ErrorInfo {
-    let error_lower = error_msg.to_lowercase();
-
-    if error_lower.contains("not a valid sqlite database") || error_lower.contains("invalid format")
-    {
-        ErrorInfo {
+fn parse_error_for_ui(error: &WorkoutError) -> ErrorInfo {
+    match error {
+        WorkoutError::FileSystem(crate::state::FileSystemError::InvalidFormat) => ErrorInfo {
             title: "Invalid File Format".to_string(),
             message: "The selected file is not a valid SQLite database.".to_string(),
             recovery_tip: Some(
                 "Please select a .sqlite or .db file, or create a new database file.".to_string(),
             ),
             retry_label: "Select Different File".to_string(),
-        }
-    } else if error_lower.contains("permission denied") || error_lower.contains("notallowederror") {
-        ErrorInfo {
-            title: "Permission Denied".to_string(),
-            message: "File access permission was not granted.".to_string(),
-            recovery_tip: Some(
-                "Grant permission to access the file, or use browser storage instead.".to_string(),
-            ),
-            retry_label: "Grant Permission".to_string(),
-        }
-    } else if error_lower.contains("user cancelled") {
-        ErrorInfo {
-            title: "File Selection Cancelled".to_string(),
-            message: "No database file was selected.".to_string(),
-            recovery_tip: Some(
-                "Click below to select where to store your workout data.".to_string(),
-            ),
-            retry_label: "Select File".to_string(),
-        }
-    } else if error_lower.contains("file is too large") || error_lower.contains("filetoolarge") {
-        ErrorInfo {
-            title: "File Too Large".to_string(),
-            message: "The selected database file exceeds the 100 MB limit.".to_string(),
-            recovery_tip: Some(
-                "Try selecting a smaller file or export your data to start fresh.".to_string(),
-            ),
-            retry_label: "Select Different File".to_string(),
-        }
-    } else if error_lower.contains("failed to initialize database") {
-        ErrorInfo {
+        },
+        WorkoutError::Database(crate::state::DatabaseError::InitializationError(_)) => ErrorInfo {
             title: "Database Initialization Failed".to_string(),
             message: "Could not set up the database. The file may be corrupted.".to_string(),
             recovery_tip: Some(
                 "Try selecting a different file or creating a new database.".to_string(),
             ),
             retry_label: "Try Again".to_string(),
-        }
-    } else {
-        ErrorInfo {
-            title: "Initialization Error".to_string(),
-            message: error_msg.to_string(),
+        },
+        WorkoutError::FileSystem(crate::state::FileSystemError::PermissionDenied) => ErrorInfo {
+            title: "Permission Denied".to_string(),
+            message: "File access permission was not granted.".to_string(),
+            recovery_tip: Some(
+                "Grant permission to access the file, or use browser storage instead.".to_string(),
+            ),
+            retry_label: "Grant Permission".to_string(),
+        },
+        WorkoutError::FileSystem(crate::state::FileSystemError::UserCancelled) => ErrorInfo {
+            title: "File Selection Cancelled".to_string(),
+            message: "No database file was selected.".to_string(),
+            recovery_tip: Some(
+                "Click below to select where to store your workout data.".to_string(),
+            ),
+            retry_label: "Select File".to_string(),
+        },
+        WorkoutError::FileSystem(crate::state::FileSystemError::FileTooLarge) => ErrorInfo {
+            title: "File Too Large".to_string(),
+            message: "The selected database file exceeds the 100 MB limit.".to_string(),
+            recovery_tip: Some(
+                "Try selecting a smaller file or export your data to start fresh.".to_string(),
+            ),
+            retry_label: "Select Different File".to_string(),
+        },
+        _ => ErrorInfo {
+            title: "Error occurred".to_string(),
+            message: error.to_string(),
             recovery_tip: Some("Check your browser console for details and try again.".to_string()),
             retry_label: "Retry".to_string(),
-        }
+        },
     }
 }
 
@@ -205,41 +197,39 @@ pub fn App() -> Element {
                                                 class: "btn btn-primary btn-block justify-start h-auto py-4",
                                                 onclick: move |_| {
                                                     spawn(async move {
-                                                        web_sys::console::log_1(&"[UI] User clicked create new database - has user gesture".into());
+                                                        log::debug!("[UI] User clicked create new database - has user gesture");
                                                         let mut file_manager = crate::state::FileSystemManager::new();
 
                                                         match file_manager.create_new_file().await {
                                                             Ok(_) => {
-                                                                web_sys::console::log_1(&"[UI] New database file created successfully".into());
+                                                                log::debug!("[UI] New database file created successfully");
 
                                                                 // Continue initialization inline
                                                                 workout_state.set_initialization_state(InitializationState::Initializing);
 
                                                                 // New file is always empty
-                                                                web_sys::console::log_1(&"[UI] Initializing new database...".into());
+                                                                log::debug!("[UI] Initializing new database...");
                                                                 let mut database = crate::state::Database::new();
                                                                 match database.init(None).await {
                                                                     Ok(_) => {
-                                                                        web_sys::console::log_1(&"[UI] New database initialized successfully".into());
+                                                                        log::debug!("[UI] New database initialized successfully");
 
                                                                         // Store database and file manager in state
                                                                         workout_state.set_database(database);
                                                                         workout_state.set_file_manager(file_manager);
                                                                         workout_state.set_initialization_state(InitializationState::Ready);
 
-                                                                        web_sys::console::log_1(&"[UI] Setup complete! State is now Ready".into());
+                                                                        log::debug!("[UI] Setup complete! State is now Ready");
                                                                     }
                                                                     Err(e) => {
-                                                                        let error_msg = format!("Database initialization failed: {}", e);
-                                                                        web_sys::console::error_1(&error_msg.clone().into());
-                                                                        WorkoutStateManager::handle_error(&workout_state, error_msg);
+                                                                        log::error!("Database initialization failed: {}", e);
+                                                                        WorkoutStateManager::handle_error(&workout_state, WorkoutError::Database(e));
                                                                     }
                                                                 }
                                                             }
                                                             Err(e) => {
-                                                                let error_msg = format!("Failed to create new database: {}", e);
-                                                                web_sys::console::error_1(&error_msg.clone().into());
-                                                                WorkoutStateManager::handle_error(&workout_state, error_msg);
+                                                                log::error!("Failed to create new database: {}", e);
+                                                                WorkoutStateManager::handle_error(&workout_state, WorkoutError::FileSystem(e));
                                                             }
                                                         }
                                                     });
@@ -280,74 +270,71 @@ pub fn App() -> Element {
                                                 class: "btn btn-outline btn-block justify-start h-auto py-4",
                                                 onclick: move |_| {
                                                     spawn(async move {
-                                                        web_sys::console::log_1(&"[UI] User clicked open existing database - has user gesture".into());
+                                                        log::debug!("[UI] User clicked open existing database - has user gesture");
                                                         let mut file_manager = crate::state::FileSystemManager::new();
 
                                                         match file_manager.prompt_for_file().await {
                                                             Ok(_) => {
-                                                                web_sys::console::log_1(&"[UI] File selected successfully".into());
+                                                                log::debug!("[UI] File selected successfully");
 
                                                                 // Continue initialization inline
                                                                 workout_state.set_initialization_state(InitializationState::Initializing);
 
                                                                 // Read file data if handle exists
                                                                 let file_data = if file_manager.has_handle() {
-                                                                    web_sys::console::log_1(&"[UI] Reading file contents...".into());
+                                                                    log::debug!("[UI] Reading file contents...");
                                                                     match file_manager.read_file().await {
                                                                         Ok(data) if data.is_empty() => {
-                                                                            web_sys::console::log_1(&"[UI] File is empty (0 bytes), will create new database".into());
+                                                                            log::debug!("[UI] File is empty (0 bytes), will create new database");
                                                                             None
                                                                         }
                                                                         Ok(data) => {
-                                                                            web_sys::console::log_1(&format!("[UI] Read {} bytes from file, loading existing database", data.len()).into());
+                                                                            log::debug!("[UI] Read {} bytes from file, loading existing database", data.len());
                                                                             Some(data)
                                                                         }
                                                                         Err(e) => {
-                                                                            let error_msg = format!("Failed to read selected file: {}", e);
-                                                                            web_sys::console::error_1(&error_msg.clone().into());
+                                                                            log::error!("Failed to read selected file: {}", e);
 
                                                                             // Clear the handle if it's invalid so it doesn't stay cached
-                                                                            if error_msg.to_lowercase().contains("not a valid sqlite database") || error_msg.to_lowercase().contains("invalid format") {
+                                                                            if matches!(e, crate::state::FileSystemError::InvalidFormat) {
                                                                                 let mut fm_clone = file_manager.clone();
                                                                                 spawn(async move {
                                                                                     let _ = fm_clone.clear_handle().await;
                                                                                 });
                                                                             }
 
-                                                                            WorkoutStateManager::handle_error(&workout_state, error_msg);
+                                                                            WorkoutStateManager::handle_error(&workout_state, WorkoutError::FileSystem(e));
                                                                             return;
                                                                         }
                                                                     }
                                                                 } else {
-                                                                    web_sys::console::log_1(&"[UI] No file handle, will create new database in memory".into());
+                                                                    log::debug!("[UI] No file handle, will create new database in memory");
                                                                     None
                                                                 };
 
                                                                 // Initialize database
-                                                                web_sys::console::log_1(&"[UI] Initializing database...".into());
+                                                                log::debug!("[UI] Initializing database...");
                                                                 let mut database = crate::state::Database::new();
                                                                 match database.init(file_data).await {
                                                                     Ok(_) => {
-                                                                        web_sys::console::log_1(&"[UI] Database initialized successfully".into());
+                                                                        log::debug!("[UI] Database initialized successfully");
 
                                                                         // Store database and file manager in state
                                                                         workout_state.set_database(database);
                                                                         workout_state.set_file_manager(file_manager);
                                                                         workout_state.set_initialization_state(InitializationState::Ready);
 
-                                                                        web_sys::console::log_1(&"[UI] Setup complete! State is now Ready".into());
+                                                                        log::debug!("[UI] Setup complete! State is now Ready");
                                                                     }
                                                                     Err(e) => {
-                                                                        let error_msg = format!("Database initialization failed: {}", e);
-                                                                        web_sys::console::error_1(&error_msg.clone().into());
-                                                                        WorkoutStateManager::handle_error(&workout_state, error_msg);
+                                                                        log::error!("Database initialization failed: {}", e);
+                                                                        WorkoutStateManager::handle_error(&workout_state, WorkoutError::Database(e));
                                                                     }
                                                                 }
                                                             }
                                                             Err(e) => {
-                                                                let error_msg = format!("File selection failed: {}", e);
-                                                                web_sys::console::error_1(&error_msg.clone().into());
-                                                                WorkoutStateManager::handle_error(&workout_state, error_msg);
+                                                                log::error!("File selection failed: {}", e);
+                                                                WorkoutStateManager::handle_error(&workout_state, WorkoutError::FileSystem(e));
                                                             }
                                                         }
                                                     });
@@ -431,12 +418,12 @@ pub fn App() -> Element {
                         }
                     }
                     InitializationState::Error => {
-                        let error_msg = workout_state.error_message().unwrap_or_else(|| "Unknown error occurred".to_string());
-                        let error_info = parse_error_for_ui(&error_msg);
+                        let error = workout_state.error().unwrap_or(WorkoutError::Database(crate::state::DatabaseError::NotInitialized));
+                        let error_info = parse_error_for_ui(&error);
 
                         // Check if we have a handle but need permission
                         let has_handle = workout_state.file_manager().map(|fm| fm.has_handle()).unwrap_or(false);
-                        let is_permission_error = error_msg.to_lowercase().contains("permission denied") || error_msg.to_lowercase().contains("notallowederror");
+                        let is_permission_error = matches!(error, WorkoutError::FileSystem(crate::state::FileSystemError::PermissionDenied));
 
                         rsx! {
                             div {
@@ -487,19 +474,19 @@ pub fn App() -> Element {
                                                 onclick: move |_| {
                                                     spawn(async move {
                                                         if has_handle && is_permission_error {
-                                                            web_sys::console::log_1(&"[UI] Re-requesting permission for existing handle...".into());
+                                                            log::debug!("[UI] Re-requesting permission for existing handle...");
                                                             if let Some(fm) = workout_state.file_manager() {
                                                                 if let Err(e) = fm.request_permission().await {
-                                                                    web_sys::console::error_1(&format!("[UI] Permission re-request failed: {:?}", e).into());
-                                                                    WorkoutStateManager::handle_error(&workout_state, e.to_string());
+                                                                    log::error!("[UI] Permission re-request failed: {:?}", e);
+                                                                    WorkoutStateManager::handle_error(&workout_state, WorkoutError::FileSystem(e));
                                                                     return;
                                                                 }
-                                                                web_sys::console::log_1(&"[UI] Permission granted! Retrying initialization...".into());
+                                                                log::debug!("[UI] Permission granted! Retrying initialization...");
                                                             }
                                                         }
 
                                                         // Reset error state
-                                                        workout_state.set_error_message(None);
+                                                        workout_state.set_error(None);
                                                         workout_state.set_initialization_state(InitializationState::NotInitialized);
                                                         // Retry initialization
                                                         if let Err(e) = WorkoutStateManager::setup_database(&workout_state).await {
@@ -553,6 +540,9 @@ fn validate_exercise_name(name: &str) -> Result<(), String> {
             "Exercise name must be {} characters or less",
             MAX_EXERCISE_NAME_LENGTH
         ));
+    }
+    if name.contains('<') || name.contains('>') {
+        return Err("Exercise name cannot contain HTML characters".to_string());
     }
     Ok(())
 }

@@ -1,5 +1,4 @@
 use gloo_storage::{LocalStorage, Storage};
-use serde::{Deserialize, Serialize};
 use thiserror::Error;
 use wasm_bindgen::prelude::*;
 use wasm_bindgen_futures::JsFuture;
@@ -23,7 +22,12 @@ extern "C" {
     async fn create_new_database_file() -> JsValue;
 }
 
-const MAX_FILE_SIZE: usize = 100 * 1024 * 1024; // 100MB
+/// Maximum allowed size for the database file (100MB).
+/// Prevents excessive memory consumption when reading files.
+const MAX_FILE_SIZE: usize = 100 * 1024 * 1024;
+
+/// Standard SQLite file header magic number.
+/// Used to validate that the selected file is indeed a SQLite database.
 const SQLITE_MAGIC_NUMBER: &[u8] = b"SQLite format 3\0";
 
 #[derive(Error, Debug, Clone)]
@@ -65,11 +69,8 @@ impl From<JsValue> for FileSystemError {
     }
 }
 
-#[derive(Clone, Serialize, Deserialize)]
-pub struct FileHandle {
-    cached: bool,
-}
-
+/// Manages file system operations, supporting both the File System Access API
+/// and a fallback storage mechanism (IndexedDB/LocalStorage).
 #[derive(Clone)]
 pub struct FileSystemManager {
     handle: Option<JsValue>,
@@ -83,6 +84,8 @@ impl PartialEq for FileSystemManager {
 }
 
 impl FileSystemManager {
+    /// Creates a new FileSystemManager, automatically detecting if the
+    /// File System Access API is supported by the browser.
     pub fn new() -> Self {
         Self {
             handle: None,
@@ -100,42 +103,40 @@ impl FileSystemManager {
         false
     }
 
+    /// Checks if there is a previously used file handle stored in the browser's IndexedDB.
+    /// Returns true if a valid handle was retrieved and stored in this manager.
     pub async fn check_cached_handle(&mut self) -> Result<bool, FileSystemError> {
         if self.use_fallback {
-            web_sys::console::log_1(
-                &"[FileSystem] Using fallback storage (IndexedDB/LocalStorage)".into(),
-            );
+            log::debug!("[FileSystem] Using fallback storage (IndexedDB/LocalStorage)");
             // Fallback storage doesn't need handle caching
             return Ok(true);
         }
 
-        web_sys::console::log_1(&"[FileSystem] Checking for cached file handle...".into());
+        log::debug!("[FileSystem] Checking for cached file handle...");
         let handle = retrieve_file_handle().await;
 
         if !handle.is_null() && !handle.is_undefined() {
-            web_sys::console::log_1(
-                &"[FileSystem] Cached handle retrieved with valid permissions".into(),
-            );
+            log::debug!("[FileSystem] Cached handle retrieved with valid permissions");
             self.handle = Some(handle);
             Ok(true)
         } else {
             // Could be: (1) no handle in IndexedDB, or (2) handle exists but permission denied/requires gesture
             // Both cases require user to select file via button click
-            web_sys::console::log_1(
-                &"[FileSystem] No cached handle or permissions not granted".into(),
-            );
-            web_sys::console::log_1(&"[FileSystem] User will need to select file location".into());
+            log::debug!("[FileSystem] No cached handle or permissions not granted");
+            log::debug!("[FileSystem] User will need to select file location");
             Ok(false)
         }
     }
 
-    pub async fn create_new_file(&mut self) -> Result<FileHandle, FileSystemError> {
+    /// Prompts the user to create a new database file using the browser's save file picker.
+    /// The resulting handle is persisted for future sessions.
+    pub async fn create_new_file(&mut self) -> Result<(), FileSystemError> {
         if self.use_fallback {
-            web_sys::console::log_1(&"[FileSystem] Using fallback storage for new database".into());
+            log::debug!("[FileSystem] Using fallback storage for new database");
             return self.use_fallback_storage().await;
         }
 
-        web_sys::console::log_1(&"[FileSystem] Creating new database file...".into());
+        log::debug!("[FileSystem] Creating new database file...");
 
         // create_new_database_file returns { success: bool, handle?: FileHandle, error?: string, message?: string }
         let result = create_new_database_file().await;
@@ -157,25 +158,25 @@ impl FileSystemManager {
                 .and_then(|v| v.as_string())
                 .unwrap_or_else(|| "Unknown error".to_string());
 
-            web_sys::console::error_1(
-                &format!(
-                    "[FileSystem] createNewDatabaseFile failed: {} - {}",
-                    error_name, error_message
-                )
-                .into(),
+            log::error!(
+                "[FileSystem] createNewDatabaseFile failed: {} - {}",
+                error_name,
+                error_message
             );
 
             let error_lower = format!("{} {}", error_name, error_message).to_lowercase();
 
             if error_lower.contains("securityerror") || error_lower.contains("user gesture") {
-                web_sys::console::error_1(&"[FileSystem] CAUSE: File picker requires user gesture (must be called from button click)".into());
+                log::error!(
+                    "[FileSystem] CAUSE: File picker requires user gesture (must be called from button click)"
+                );
                 return Err(FileSystemError::SecurityError);
             } else if error_lower.contains("notallowederror") || error_lower.contains("permission")
             {
-                web_sys::console::error_1(&"[FileSystem] CAUSE: User denied permission".into());
+                log::error!("[FileSystem] CAUSE: User denied permission");
                 return Err(FileSystemError::PermissionDenied);
             } else if error_lower.contains("abort") {
-                web_sys::console::log_1(&"[FileSystem] User cancelled file creation dialog".into());
+                log::debug!("[FileSystem] User cancelled file creation dialog");
                 return Err(FileSystemError::UserCancelled);
             } else {
                 return Err(FileSystemError::JsError(format!(
@@ -190,29 +191,27 @@ impl FileSystemManager {
             .map_err(|_| FileSystemError::JsError("No handle in response".to_string()))?;
 
         if handle.is_undefined() || handle.is_null() {
-            web_sys::console::error_1(
-                &"[FileSystem] No handle returned despite success=true".into(),
-            );
+            log::error!("[FileSystem] No handle returned despite success=true");
             return Err(FileSystemError::JsError(
                 "No handle in response".to_string(),
             ));
         }
 
-        web_sys::console::log_1(&"[FileSystem] New database file created successfully".into());
+        log::debug!("[FileSystem] New database file created successfully");
         self.handle = Some(handle);
 
-        Ok(FileHandle { cached: true })
+        Ok(())
     }
 
-    pub async fn prompt_for_file(&mut self) -> Result<FileHandle, FileSystemError> {
+    /// Prompts the user to select an existing SQLite database file.
+    /// Validates the file and persists the handle for future sessions.
+    pub async fn prompt_for_file(&mut self) -> Result<(), FileSystemError> {
         if self.use_fallback {
-            web_sys::console::log_1(
-                &"[FileSystem] Using fallback storage for file operations".into(),
-            );
+            log::debug!("[FileSystem] Using fallback storage for file operations");
             return self.use_fallback_storage().await;
         }
 
-        web_sys::console::log_1(&"[FileSystem] Opening file picker dialog...".into());
+        log::debug!("[FileSystem] Opening file picker dialog...");
         let window = window().ok_or(FileSystemError::NotSupported)?;
 
         let show_open_file_picker =
@@ -259,26 +258,19 @@ impl FileSystemManager {
 
         let promise = picker_fn.call1(&window, &options).map_err(|e| {
             let error_string = format!("{:?}", e);
-            web_sys::console::error_1(&"[FileSystem] showOpenFilePicker call failed".into());
-            web_sys::console::error_1(&format!("[FileSystem] Error details: {}", error_string).into());
-
-            // Capture stack trace for WASM-JS boundary errors (ERR-04)
-            if let Ok(stack) = js_sys::Reflect::get(&e, &"stack".into())
-                && !stack.is_undefined()
-            {
-                web_sys::console::error_1(&format!("[FileSystem] Stack trace: {:?}", stack).into());
-            }
+            log::error!("[FileSystem] showOpenFilePicker call failed");
+            log::error!("[FileSystem] Error details: {}", error_string);
 
             let error_lower = error_string.to_lowercase();
 
             if error_lower.contains("securityerror") || error_lower.contains("user gesture") {
-                web_sys::console::error_1(&"[FileSystem] CAUSE: File picker requires user gesture (must be called from button click)".into());
+                log::error!("[FileSystem] CAUSE: File picker requires user gesture (must be called from button click)");
                 FileSystemError::SecurityError
             } else if error_lower.contains("notallowederror") || error_lower.contains("permission") {
-                web_sys::console::error_1(&"[FileSystem] CAUSE: User denied permission".into());
+                log::error!("[FileSystem] CAUSE: User denied permission");
                 FileSystemError::PermissionDenied
             } else if error_lower.contains("abort") {
-                web_sys::console::log_1(&"[FileSystem] User cancelled file picker dialog".into());
+                log::debug!("[FileSystem] User cancelled file picker dialog");
                 FileSystemError::UserCancelled
             } else {
                 FileSystemError::JsError(error_string)
@@ -289,26 +281,19 @@ impl FileSystemManager {
             .await
             .map_err(|e| {
                 let error_string = format!("{:?}", e);
-                web_sys::console::error_1(&"[FileSystem] File picker promise failed".into());
-                web_sys::console::error_1(&format!("[FileSystem] Error details: {}", error_string).into());
-
-                // Capture stack trace for WASM-JS boundary errors (ERR-04)
-                if let Ok(stack) = js_sys::Reflect::get(&e, &"stack".into())
-                    && !stack.is_undefined()
-                {
-                    web_sys::console::error_1(&format!("[FileSystem] Stack trace: {:?}", stack).into());
-                }
+                log::error!("[FileSystem] File picker promise failed");
+                log::error!("[FileSystem] Error details: {}", error_string);
 
                 let error_lower = error_string.to_lowercase();
 
                 if error_lower.contains("securityerror") || error_lower.contains("user gesture") {
-                    web_sys::console::error_1(&"[FileSystem] CAUSE: File picker requires user gesture (must be called from button click)".into());
+                    log::error!("[FileSystem] CAUSE: File picker requires user gesture (must be called from button click)");
                     FileSystemError::SecurityError
                 } else if error_lower.contains("notallowederror") || error_lower.contains("permission") {
-                    web_sys::console::error_1(&"[FileSystem] CAUSE: User denied permission".into());
+                    log::error!("[FileSystem] CAUSE: User denied permission");
                     FileSystemError::PermissionDenied
                 } else if error_lower.contains("abort") {
-                    web_sys::console::log_1(&"[FileSystem] User cancelled file picker dialog".into());
+                    log::debug!("[FileSystem] User cancelled file picker dialog");
                     FileSystemError::UserCancelled
                 } else {
                     FileSystemError::JsError(error_string)
@@ -320,35 +305,32 @@ impl FileSystemManager {
         let handle_array = js_sys::Array::from(&handle_array);
         let handle = handle_array.get(0);
 
-        web_sys::console::log_1(
-            &"[FileSystem] File handle obtained, requesting readwrite permission...".into(),
-        );
+        log::debug!("[FileSystem] File handle obtained, requesting readwrite permission...");
 
         // Request readwrite permission and store handle (must be done during user gesture)
         let store_result = request_write_permission_and_store(handle.clone()).await;
         if !store_result.is_truthy() {
-            web_sys::console::warn_1(
-                &"[FileSystem] Failed to get readwrite permission or persist handle".into(),
-            );
-            log::warn!("Failed to get readwrite permission or persist file handle");
+            log::warn!("[FileSystem] Failed to get readwrite permission or persist handle");
             // Even if storage fails, we can still use the handle in this session
         } else {
-            web_sys::console::log_1(
-                &"[FileSystem] Readwrite permission granted and handle stored successfully".into(),
-            );
+            log::debug!("[FileSystem] Readwrite permission granted and handle stored successfully");
         }
 
         self.handle = Some(handle);
 
-        Ok(FileHandle { cached: true })
+        Ok(())
     }
 
-    pub async fn use_fallback_storage(&mut self) -> Result<FileHandle, FileSystemError> {
+    /// Switches the manager to use fallback storage (IndexedDB/LocalStorage).
+    /// Used when the File System Access API is not available or desired.
+    pub async fn use_fallback_storage(&mut self) -> Result<(), FileSystemError> {
         log::info!("Using IndexedDB/OPFS fallback storage");
         self.use_fallback = true;
-        Ok(FileHandle { cached: false })
+        Ok(())
     }
 
+    /// Reads the entire contents of the managed file into a Vec<u8>.
+    /// Performs size and format validation (magic number check).
     pub async fn read_file(&self) -> Result<Vec<u8>, FileSystemError> {
         if self.use_fallback {
             return self.read_from_fallback().await;
@@ -447,11 +429,22 @@ impl FileSystemManager {
 
     async fn read_from_fallback(&self) -> Result<Vec<u8>, FileSystemError> {
         match LocalStorage::get::<Vec<u8>>("workout_db_data") {
-            Ok(data) => Ok(data),
+            Ok(data) => {
+                // Validate SQLite format if data is not empty
+                if !data.is_empty()
+                    && data.len() >= SQLITE_MAGIC_NUMBER.len()
+                    && !data.starts_with(SQLITE_MAGIC_NUMBER)
+                {
+                    return Err(FileSystemError::InvalidFormat);
+                }
+                Ok(data)
+            }
             Err(_) => Ok(Vec::new()),
         }
     }
 
+    /// Writes the provided data to the managed file.
+    /// For the File System Access API, it uses a writable stream to ensure atomic-like writes.
     pub async fn write_file(&self, data: &[u8]) -> Result<(), FileSystemError> {
         if self.use_fallback {
             return self.write_to_fallback(data).await;
@@ -489,7 +482,8 @@ impl FileSystemManager {
         let uint8_array = js_sys::Uint8Array::new_with_length(data.len() as u32);
         uint8_array.copy_from(data);
 
-        let write_result = js_sys::Reflect::get(&writable, &JsValue::from_str("write"))?;
+        let write_result = js_sys::Reflect::get(&writable, &JsValue::from_str("write"))
+            .map_err(FileSystemError::from)?;
         let write_method =
             write_result
                 .dyn_ref::<js_sys::Function>()
@@ -516,7 +510,8 @@ impl FileSystemManager {
                 }
             })?;
 
-        let close_result = js_sys::Reflect::get(&writable, &JsValue::from_str("close"))?;
+        let close_result = js_sys::Reflect::get(&writable, &JsValue::from_str("close"))
+            .map_err(FileSystemError::from)?;
         let close_method =
             close_result
                 .dyn_ref::<js_sys::Function>()
@@ -524,8 +519,24 @@ impl FileSystemManager {
                     "close not a function".to_string(),
                 ))?;
 
-        let promise = close_method.call0(&writable)?;
-        JsFuture::from(js_sys::Promise::from(promise)).await?;
+        let promise = close_method.call0(&writable).map_err(|e| {
+            let err_str = format!("{:?}", e);
+            if err_str.contains("NotAllowedError") {
+                FileSystemError::PermissionDenied
+            } else {
+                FileSystemError::from(e)
+            }
+        })?;
+        JsFuture::from(js_sys::Promise::from(promise))
+            .await
+            .map_err(|e| {
+                let err_str = format!("{:?}", e);
+                if err_str.contains("NotAllowedError") {
+                    FileSystemError::PermissionDenied
+                } else {
+                    FileSystemError::from(e)
+                }
+            })?;
 
         Ok(())
     }

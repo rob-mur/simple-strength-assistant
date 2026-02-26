@@ -22,10 +22,8 @@ export async function initDatabase(fileData) {
         if (fileData && fileData.length > 0) {
             const uint8Array = new Uint8Array(fileData);
             db = new SQL.Database(uint8Array);
-            console.log('Database loaded from file data');
         } else {
             db = new SQL.Database();
-            console.log('New database created');
         }
 
         return true;
