@@ -207,8 +207,47 @@ pub fn App() -> Element {
                         }
                     }
                     InitializationState::Ready => {
+                        let storage_mode_banner = if let Some(fm) = workout_state.file_manager() {
+                            if fm.is_using_fallback() {
+                                Some(rsx! {
+                                    div {
+                                        class: "alert alert-info mb-4",
+                                        svg {
+                                            xmlns: "http://www.w3.org/2000/svg",
+                                            fill: "none",
+                                            view_box: "0 0 24 24",
+                                            class: "stroke-current shrink-0 w-6 h-6",
+                                            path {
+                                                stroke_linecap: "round",
+                                                stroke_linejoin: "round",
+                                                stroke_width: "2",
+                                                d: "M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"
+                                            }
+                                        }
+                                        div {
+                                            h4 {
+                                                class: "font-bold",
+                                                "Browser Storage Mode"
+                                            }
+                                            p {
+                                                class: "text-sm",
+                                                "Your data is stored in browser LocalStorage. This works offline but won't sync across devices or browsers."
+                                            }
+                                        }
+                                    }
+                                })
+                            } else {
+                                None
+                            }
+                        } else {
+                            None
+                        };
+
                         rsx! {
-                            WorkoutInterface { state: workout_state.clone() }
+                            div {
+                                {storage_mode_banner}
+                                WorkoutInterface { state: workout_state.clone() }
+                            }
                         }
                     }
                     InitializationState::Error => {

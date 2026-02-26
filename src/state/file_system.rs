@@ -382,6 +382,10 @@ impl FileSystemManager {
     pub fn has_handle(&self) -> bool {
         self.handle.is_some() || self.use_fallback
     }
+
+    pub fn is_using_fallback(&self) -> bool {
+        self.use_fallback
+    }
 }
 
 impl Default for FileSystemManager {
