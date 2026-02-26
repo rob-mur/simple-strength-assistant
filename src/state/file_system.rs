@@ -31,6 +31,9 @@ pub enum FileSystemError {
     #[error("Permission denied. Please grant file access to continue.")]
     PermissionDenied,
 
+    #[error("Security error: File picker requires user gesture (button click)")]
+    SecurityError,
+
     #[error("Failed to read file: {0}")]
     ReadError(String),
 
@@ -98,11 +101,18 @@ impl FileSystemManager {
         let handle = retrieve_file_handle().await;
 
         if !handle.is_null() && !handle.is_undefined() {
-            web_sys::console::log_1(&"[FileSystem] Found cached handle".into());
+            web_sys::console::log_1(
+                &"[FileSystem] Cached handle retrieved with valid permissions".into(),
+            );
             self.handle = Some(handle);
             Ok(true)
         } else {
-            web_sys::console::log_1(&"[FileSystem] No cached handle found".into());
+            // Could be: (1) no handle in IndexedDB, or (2) handle exists but permission denied/requires gesture
+            // Both cases require user to select file via button click
+            web_sys::console::log_1(
+                &"[FileSystem] No cached handle or permissions not granted".into(),
+            );
+            web_sys::console::log_1(&"[FileSystem] User will need to select file location".into());
             Ok(false)
         }
     }
@@ -159,16 +169,29 @@ impl FileSystemManager {
 
         let promise = picker_fn.call1(&window, &options).map_err(|e| {
             let error_string = format!("{:?}", e);
-            web_sys::console::log_1(&"[FileSystem] File picker error".into());
-            web_sys::console::log_1(&format!("[FileSystem] Error: {}", error_string).into());
+            web_sys::console::error_1(&"[FileSystem] showSaveFilePicker call failed".into());
+            web_sys::console::error_1(&format!("[FileSystem] Error details: {}", error_string).into());
 
-            // Check if it's a permission error
-            if error_string.to_lowercase().contains("permission")
-                || error_string.to_lowercase().contains("notallowederror")
-            {
+            // Capture stack trace for WASM-JS boundary errors (ERR-04)
+            if let Ok(stack) = js_sys::Reflect::get(&e, &"stack".into()) {
+                if !stack.is_undefined() {
+                    web_sys::console::error_1(&format!("[FileSystem] Stack trace: {:?}", stack).into());
+                }
+            }
+
+            let error_lower = error_string.to_lowercase();
+
+            if error_lower.contains("securityerror") || error_lower.contains("user gesture") {
+                web_sys::console::error_1(&"[FileSystem] CAUSE: File picker requires user gesture (must be called from button click)".into());
+                FileSystemError::SecurityError
+            } else if error_lower.contains("notallowederror") || error_lower.contains("permission") {
+                web_sys::console::error_1(&"[FileSystem] CAUSE: User denied permission".into());
                 FileSystemError::PermissionDenied
-            } else {
+            } else if error_lower.contains("abort") {
+                web_sys::console::log_1(&"[FileSystem] User cancelled file picker dialog".into());
                 FileSystemError::UserCancelled
+            } else {
+                FileSystemError::JsError(error_string)
             }
         })?;
 
@@ -176,18 +199,29 @@ impl FileSystemManager {
             .await
             .map_err(|e| {
                 let error_string = format!("{:?}", e);
-                web_sys::console::log_1(
-                    &"[FileSystem] Failed to get file handle from promise".into(),
-                );
-                web_sys::console::error_1(&format!("[FileSystem] Error: {}", error_string).into());
+                web_sys::console::error_1(&"[FileSystem] File picker promise failed".into());
+                web_sys::console::error_1(&format!("[FileSystem] Error details: {}", error_string).into());
 
-                // Check if it's a permission error
-                if error_string.to_lowercase().contains("permission")
-                    || error_string.to_lowercase().contains("notallowederror")
-                {
+                // Capture stack trace for WASM-JS boundary errors (ERR-04)
+                if let Ok(stack) = js_sys::Reflect::get(&e, &"stack".into()) {
+                    if !stack.is_undefined() {
+                        web_sys::console::error_1(&format!("[FileSystem] Stack trace: {:?}", stack).into());
+                    }
+                }
+
+                let error_lower = error_string.to_lowercase();
+
+                if error_lower.contains("securityerror") || error_lower.contains("user gesture") {
+                    web_sys::console::error_1(&"[FileSystem] CAUSE: File picker requires user gesture (must be called from button click)".into());
+                    FileSystemError::SecurityError
+                } else if error_lower.contains("notallowederror") || error_lower.contains("permission") {
+                    web_sys::console::error_1(&"[FileSystem] CAUSE: User denied permission".into());
                     FileSystemError::PermissionDenied
-                } else {
+                } else if error_lower.contains("abort") {
+                    web_sys::console::log_1(&"[FileSystem] User cancelled file picker dialog".into());
                     FileSystemError::UserCancelled
+                } else {
+                    FileSystemError::JsError(error_string)
                 }
             })?;
 
