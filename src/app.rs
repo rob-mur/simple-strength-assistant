@@ -51,6 +51,7 @@ pub fn App() -> Element {
                         }
                     }
                     InitializationState::SelectingFile => {
+                        let state_for_select = workout_state.clone();
                         rsx! {
                             div {
                                 class: "flex items-center justify-center h-full",
@@ -67,7 +68,77 @@ pub fn App() -> Element {
                                         }
                                         p {
                                             class: "text-sm text-gray-600 mt-2",
-                                            "Your data will be stored locally and remain private."
+                                            "Your data will be stored locally on your device and remain completely private."
+                                        }
+                                        div {
+                                            class: "card-actions justify-end mt-4",
+                                            button {
+                                                class: "btn btn-primary",
+                                                onclick: move |_| {
+                                                    let state_clone = state_for_select.clone();
+                                                    spawn(async move {
+                                                        web_sys::console::log_1(&"[UI] User clicked file selection button - has user gesture".into());
+                                                        let mut file_manager = crate::state::FileSystemManager::new();
+
+                                                        match file_manager.prompt_for_file().await {
+                                                            Ok(_) => {
+                                                                web_sys::console::log_1(&"[UI] File selected successfully".into());
+
+                                                                // Continue initialization inline - file_manager already has handle from prompt_for_file
+                                                                state_clone.set_initialization_state(InitializationState::Initializing);
+
+                                                                // Read file data if handle exists
+                                                                let file_data = if file_manager.has_handle() {
+                                                                    web_sys::console::log_1(&"[UI] Reading existing file...".into());
+                                                                    match file_manager.read_file().await {
+                                                                        Ok(data) if !data.is_empty() => {
+                                                                            web_sys::console::log_1(&format!("[UI] Read {} bytes from file", data.len()).into());
+                                                                            Some(data)
+                                                                        }
+                                                                        Ok(_) => {
+                                                                            web_sys::console::log_1(&"[UI] File is empty, creating new database".into());
+                                                                            None
+                                                                        }
+                                                                        Err(e) => {
+                                                                            web_sys::console::warn_1(&format!("[UI] Failed to read file: {}", e).into());
+                                                                            None
+                                                                        }
+                                                                    }
+                                                                } else {
+                                                                    None
+                                                                };
+
+                                                                // Initialize database
+                                                                web_sys::console::log_1(&"[UI] Initializing database...".into());
+                                                                let mut database = crate::state::Database::new();
+                                                                match database.init(file_data).await {
+                                                                    Ok(_) => {
+                                                                        web_sys::console::log_1(&"[UI] Database initialized successfully".into());
+
+                                                                        // Store database and file manager in state
+                                                                        state_clone.set_database(database);
+                                                                        state_clone.set_file_manager(file_manager);
+                                                                        state_clone.set_initialization_state(InitializationState::Ready);
+
+                                                                        web_sys::console::log_1(&"[UI] Setup complete! State is now Ready".into());
+                                                                    }
+                                                                    Err(e) => {
+                                                                        let error_msg = format!("Database initialization failed: {}", e);
+                                                                        web_sys::console::error_1(&error_msg.clone().into());
+                                                                        crate::state::WorkoutStateManager::handle_error(&state_clone, error_msg);
+                                                                    }
+                                                                }
+                                                            }
+                                                            Err(e) => {
+                                                                let error_msg = format!("File selection failed: {}", e);
+                                                                web_sys::console::error_1(&error_msg.clone().into());
+                                                                crate::state::WorkoutStateManager::handle_error(&state_clone, error_msg);
+                                                            }
+                                                        }
+                                                    });
+                                                },
+                                                "Select Database Location"
+                                            }
                                         }
                                     }
                                 }

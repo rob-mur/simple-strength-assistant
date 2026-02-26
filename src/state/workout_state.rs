@@ -112,6 +112,22 @@ impl WorkoutState {
             log::error!("Failed to borrow WorkoutState mutably to set error message");
         }
     }
+
+    pub fn set_database(&self, database: Database) {
+        if let Ok(mut inner) = self.inner.try_borrow_mut() {
+            inner.database = Some(database);
+        } else {
+            log::error!("Failed to borrow WorkoutState mutably to set database");
+        }
+    }
+
+    pub fn set_file_manager(&self, file_manager: FileSystemManager) {
+        if let Ok(mut inner) = self.inner.try_borrow_mut() {
+            inner.file_manager = Some(file_manager);
+        } else {
+            log::error!("Failed to borrow WorkoutState mutably to set file manager");
+        }
+    }
 }
 
 pub struct WorkoutStateManager;
