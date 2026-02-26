@@ -1,5 +1,3 @@
-#![cfg(test)]
-
 use crate::state::FileSystemManager;
 use gloo_storage::{LocalStorage, Storage};
 use wasm_bindgen_test::*;
@@ -23,13 +21,13 @@ async fn test_file_system_manager_creation() {
 #[wasm_bindgen_test]
 async fn test_fallback_storage_write_read() {
     // Clear any existing data
-    let _ = LocalStorage::delete("workout_db_data");
+    LocalStorage::delete("workout_db_data");
 
     // Create a manager that uses fallback
     let mut manager = FileSystemManager::new();
 
     // Force fallback usage
-    let _ = manager.use_fallback_storage().await;
+    let _ = manager.use_fallback_storage();
 
     // Test data
     let test_data = b"SQLite format 3\0test data";
@@ -46,16 +44,16 @@ async fn test_fallback_storage_write_read() {
     assert_eq!(read_data, test_data, "Read data should match written data");
 
     // Cleanup
-    let _ = LocalStorage::delete("workout_db_data");
+    LocalStorage::delete("workout_db_data");
 }
 
 #[wasm_bindgen_test]
 async fn test_sqlite_format_validation() {
     // Clear any existing data
-    let _ = LocalStorage::delete("workout_db_data");
+    LocalStorage::delete("workout_db_data");
 
     let mut manager = FileSystemManager::new();
-    let _ = manager.use_fallback_storage().await;
+    let _ = manager.use_fallback_storage();
 
     // Write invalid SQLite data
     let invalid_data = b"Not a SQLite file";
@@ -70,16 +68,16 @@ async fn test_sqlite_format_validation() {
     );
 
     // Cleanup
-    let _ = LocalStorage::delete("workout_db_data");
+    LocalStorage::delete("workout_db_data");
 }
 
 #[wasm_bindgen_test]
 async fn test_empty_file_handling() {
     // Clear any existing data
-    let _ = LocalStorage::delete("workout_db_data");
+    LocalStorage::delete("workout_db_data");
 
     let mut manager = FileSystemManager::new();
-    let _ = manager.use_fallback_storage().await;
+    let _ = manager.use_fallback_storage();
 
     // Write empty data
     let empty_data = b"";
@@ -94,7 +92,7 @@ async fn test_empty_file_handling() {
     assert!(read_data.is_empty(), "Empty file should return empty data");
 
     // Cleanup
-    let _ = LocalStorage::delete("workout_db_data");
+    LocalStorage::delete("workout_db_data");
 }
 
 #[wasm_bindgen_test]
@@ -104,7 +102,7 @@ async fn test_has_handle_with_fallback() {
     assert!(!manager.has_handle(), "Should not have handle initially");
 
     // Set up fallback
-    let _ = manager.use_fallback_storage().await;
+    let _ = manager.use_fallback_storage();
 
     assert!(
         manager.has_handle(),
@@ -115,10 +113,10 @@ async fn test_has_handle_with_fallback() {
 #[wasm_bindgen_test]
 async fn test_valid_sqlite_file_acceptance() {
     // Clear any existing data
-    let _ = LocalStorage::delete("workout_db_data");
+    LocalStorage::delete("workout_db_data");
 
     let mut manager = FileSystemManager::new();
-    let _ = manager.use_fallback_storage().await;
+    let _ = manager.use_fallback_storage();
 
     // Write valid SQLite data (with proper magic number)
     let valid_data = b"SQLite format 3\0\x00\x00\x00\x00";
@@ -139,18 +137,18 @@ async fn test_valid_sqlite_file_acceptance() {
     );
 
     // Cleanup
-    let _ = LocalStorage::delete("workout_db_data");
+    LocalStorage::delete("workout_db_data");
 }
 
 #[wasm_bindgen_test]
 async fn test_check_cached_handle_fallback() {
     // Clear any existing data
-    let _ = LocalStorage::delete("workout_db_data");
+    LocalStorage::delete("workout_db_data");
 
     let mut manager = FileSystemManager::new();
 
     // For fallback, check_cached_handle should return true
-    let _ = manager.use_fallback_storage().await;
+    let _ = manager.use_fallback_storage();
 
     let result = manager.check_cached_handle().await;
     assert!(
@@ -163,16 +161,16 @@ async fn test_check_cached_handle_fallback() {
     );
 
     // Cleanup
-    let _ = LocalStorage::delete("workout_db_data");
+    LocalStorage::delete("workout_db_data");
 }
 
 #[wasm_bindgen_test]
 async fn test_multiple_write_operations() {
     // Clear any existing data
-    let _ = LocalStorage::delete("workout_db_data");
+    LocalStorage::delete("workout_db_data");
 
     let mut manager = FileSystemManager::new();
-    let _ = manager.use_fallback_storage().await;
+    let _ = manager.use_fallback_storage();
 
     // Write data multiple times
     let data1 = b"SQLite format 3\0data1";
@@ -193,16 +191,16 @@ async fn test_multiple_write_operations() {
     );
 
     // Cleanup
-    let _ = LocalStorage::delete("workout_db_data");
+    LocalStorage::delete("workout_db_data");
 }
 
 #[wasm_bindgen_test]
 async fn test_large_data_handling() {
     // Clear any existing data
-    let _ = LocalStorage::delete("workout_db_data");
+    LocalStorage::delete("workout_db_data");
 
     let mut manager = FileSystemManager::new();
-    let _ = manager.use_fallback_storage().await;
+    let _ = manager.use_fallback_storage();
 
     // Create data larger than typical but still reasonable (1MB)
     let mut large_data = b"SQLite format 3\0".to_vec();
@@ -222,5 +220,5 @@ async fn test_large_data_handling() {
     );
 
     // Cleanup
-    let _ = LocalStorage::delete("workout_db_data");
+    LocalStorage::delete("workout_db_data");
 }

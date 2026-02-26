@@ -133,7 +133,7 @@ impl FileSystemManager {
     pub async fn create_new_file(&mut self) -> Result<(), FileSystemError> {
         if self.use_fallback {
             log::debug!("[FileSystem] Using fallback storage for new database");
-            return self.use_fallback_storage().await;
+            return self.use_fallback_storage();
         }
 
         log::debug!("[FileSystem] Creating new database file...");
@@ -208,7 +208,7 @@ impl FileSystemManager {
     pub async fn prompt_for_file(&mut self) -> Result<(), FileSystemError> {
         if self.use_fallback {
             log::debug!("[FileSystem] Using fallback storage for file operations");
-            return self.use_fallback_storage().await;
+            return self.use_fallback_storage();
         }
 
         log::debug!("[FileSystem] Opening file picker dialog...");
