@@ -51,10 +51,10 @@ Plans:
   2. Database initializes successfully after file selection
   3. LocalStorage fallback works when API unavailable
   4. User-friendly error messages for common failure modes
-**Plans**: TBD
+**Plans**: 1 plan
 
 Plans:
-- [ ] 03-01: Test end-to-end flow and polish error handling
+- [ ] 03-01-PLAN.md — Enhance error UX and verify end-to-end initialization flow with comprehensive testing
 
 ## Progress
 
