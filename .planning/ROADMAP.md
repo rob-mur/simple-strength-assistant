@@ -35,11 +35,11 @@ Plans:
   2. User can select .sqlite or .db file from filesystem
   3. File System Access API permission prompt appears correctly
   4. Selected file handle is accessible from Rust code
-**Plans**: TBD
+**Plans**: 2 plans
 
 Plans:
-- [ ] 02-01: Debug file picker error and identify root cause
-- [ ] 02-02: Fix file picker implementation
+- [ ] 02-01-PLAN.md — Fix user gesture requirement by adding button to SelectingFile UI and preventing auto-prompt
+- [ ] 02-02-PLAN.md — Add permission state verification for cached handles with queryPermission/requestPermission
 
 ### Phase 3: Verify and Polish
 **Goal**: Complete database initialization flow works end-to-end with proper error handling
