@@ -1,54 +1,49 @@
 ---
-status: diagnosed
+status: complete
 phase: 02-debug-and-fix-file-picker
-source: [.planning/phases/02-debug-and-fix-file-picker/02-01-SUMMARY.md, .planning/phases/02-debug-and-fix-file-picker/02-02-SUMMARY.md]
+source: [.planning/phases/02-debug-and-fix-file-picker/02-01-SUMMARY.md, .planning/phases/02-debug-and-fix-file-picker/02-02-SUMMARY.md, .planning/phases/02-debug-and-fix-file-picker/02-03-SUMMARY.md, .planning/phases/02-debug-and-fix-file-picker/02-04-SUMMARY.md]
 started: 2026-02-26T10:00:00Z
-updated: 2026-02-26T10:05:00Z
+updated: 2026-02-26T14:15:00Z
 ---
 
 ## Current Test
-<!-- OVERWRITE each test - shows where we are -->
 
-number: 1
-name: App initialization without cached handle
-expected: |
-  1. Open app at http://localhost:8080 (first time or clear site data)
-  2. App should NOT automatically prompt for a file.
-  3. UI should show a card with "Select Database Location" button.
-  4. DevTools Console should show: "[DB Init] No cached handle, transitioning to SelectingFile state" and "[DB Init] File picker requires user gesture - waiting for button click"
-awaiting: user response
+[testing complete]
 
 ## Tests
 
 ### 1. App initialization without cached handle
 expected: App doesn't auto-prompt; shows "Select Database Location" button; console logs explain user gesture requirement.
-result: issue
-reported: "the console log does say [DB Init] File picker requires user gesture - waiting for button click, but no button is actually shown, instead there's just a loading spinner saying 'initializing database'"
-severity: major
+result: pass
 
 ### 2. File Selection via Button
 expected: Clicking "Select Database Location" opens native file picker. After selection, app initializes database and enters Ready state.
-result: [pending]
+result: pass
+note: "Fixed issue where Database was checked for initialization during its own table creation."
 
 ### 3. File Picker Cancellation
 expected: Clicking button then cancelling the dialog logs "User cancelled file picker dialog" in console and stays in SelectingFile state.
-result: [pending]
+result: pass
 
 ### 4. Initialization with Cached Handle (Permission Granted)
 expected: Reload app after successful file selection. App should automatically retrieve cached handle, verify permission (granted), and enter Ready state without showing the button.
-result: [pending]
+result: pass
 
 ### 5. Detailed Permission Logging
 expected: During initialization with a cached handle, DevTools Console shows detailed logs for permission state transitions (querying, evaluating, decision points).
-result: [pending]
+result: pass
 
 ## Summary
 
 total: 5
-passed: 0
-issues: 1
-pending: 4
+passed: 5
+issues: 0
+pending: 0
 skipped: 0
+
+## Gaps
+
+[none]
 
 ## Gaps
 
