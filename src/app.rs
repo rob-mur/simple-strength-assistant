@@ -150,22 +150,27 @@ pub fn App() -> Element {
 
                                                                 // Read file data if handle exists
                                                                 let file_data = if file_manager.has_handle() {
-                                                                    web_sys::console::log_1(&"[UI] Reading existing file...".into());
+                                                                    web_sys::console::log_1(&"[UI] Reading file contents...".into());
                                                                     match file_manager.read_file().await {
-                                                                        Ok(data) if !data.is_empty() => {
-                                                                            web_sys::console::log_1(&format!("[UI] Read {} bytes from file", data.len()).into());
+                                                                        Ok(data) if data.is_empty() => {
+                                                                            web_sys::console::log_1(&"[UI] File is empty (0 bytes), will create new database".into());
+                                                                            None
+                                                                        }
+                                                                        Ok(data) => {
+                                                                            web_sys::console::log_1(&format!("[UI] Read {} bytes from file, loading existing database", data.len()).into());
                                                                             Some(data)
                                                                         }
-                                                                        Ok(_) => {
-                                                                            web_sys::console::log_1(&"[UI] File is empty, creating new database".into());
-                                                                            None
-                                                                        }
                                                                         Err(e) => {
-                                                                            web_sys::console::warn_1(&format!("[UI] Failed to read file: {}", e).into());
-                                                                            None
+                                                                            // Don't silently treat read errors as "empty file"
+                                                                            // If we can't read the file, show error to user
+                                                                            let error_msg = format!("Failed to read selected file: {}", e);
+                                                                            web_sys::console::error_1(&error_msg.clone().into());
+                                                                            WorkoutStateManager::handle_error(&workout_state, error_msg);
+                                                                            return; // Exit early, don't try to initialize
                                                                         }
                                                                     }
                                                                 } else {
+                                                                    web_sys::console::log_1(&"[UI] No file handle, will create new database in memory".into());
                                                                     None
                                                                 };
 

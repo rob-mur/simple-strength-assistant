@@ -149,25 +149,30 @@ impl WorkoutStateManager {
         }
 
         let file_data = if file_manager.has_handle() {
-            web_sys::console::log_1(&"[DB Init] Reading existing file...".into());
+            web_sys::console::log_1(&"[DB Init] Reading file contents...".into());
             match file_manager.read_file().await {
-                Ok(data) if !data.is_empty() => {
+                Ok(data) if data.is_empty() => {
                     web_sys::console::log_1(
-                        &format!("[DB Init] Read {} bytes from file", data.len()).into(),
+                        &"[DB Init] File is empty (0 bytes), will create new database".into(),
+                    );
+                    None
+                }
+                Ok(data) => {
+                    web_sys::console::log_1(
+                        &format!(
+                            "[DB Init] Read {} bytes from file, loading existing database",
+                            data.len()
+                        )
+                        .into(),
                     );
                     Some(data)
                 }
-                Ok(_) => {
-                    web_sys::console::log_1(
-                        &"[DB Init] File is empty, creating new database".into(),
-                    );
-                    None
-                }
                 Err(e) => {
-                    let msg = format!("Failed to read existing file: {}", e);
-                    web_sys::console::warn_1(&msg.clone().into());
-                    log::warn!("{}", msg);
-                    None
+                    // Don't silently treat read errors as "empty file"
+                    // If we can't read the cached file handle, return error
+                    let msg = format!("Failed to read cached file handle: {}", e);
+                    web_sys::console::error_1(&msg.clone().into());
+                    return Err(msg);
                 }
             }
         } else {

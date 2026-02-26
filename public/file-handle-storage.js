@@ -75,8 +75,9 @@ export async function retrieveFileHandle() {
 
         if (permission === 'prompt') {
             // Permission expired or not yet granted
-            // Chrome 122+ may auto-grant if user previously chose "Remember this choice"
-            console.log('[FileHandleStorage] Permission expired, requesting...');
+            // Try to request permission - this may auto-grant if user previously selected "Remember"
+            // or it may require a user gesture (in which case it will fail or return 'prompt' again)
+            console.log('[FileHandleStorage] Permission state is prompt, attempting to request permission...');
 
             try {
                 const requestedPermission = await handle.requestPermission(options);
@@ -85,15 +86,21 @@ export async function retrieveFileHandle() {
                 if (requestedPermission === 'granted') {
                     console.log('[FileHandleStorage] Permission granted after request');
                     return handle;
+                } else if (requestedPermission === 'prompt') {
+                    // Permission still not granted - needs user gesture
+                    console.warn('[FileHandleStorage] Permission still requires user action - clearing handle');
+                    await clearFileHandle();
+                    return null;
+                } else {
+                    // 'denied'
+                    console.warn('[FileHandleStorage] Permission denied by user');
+                    await clearFileHandle();
+                    return null;
                 }
-
-                console.warn('[FileHandleStorage] User denied permission request');
-                await clearFileHandle();
-                return null;
             } catch (error) {
                 console.error('[FileHandleStorage] requestPermission failed:', error);
-                // requestPermission can fail if called without user gesture in some browsers
-                // Return null and let Rust code handle re-prompting from button click
+                // Clear stale handle since we can't use it
+                await clearFileHandle();
                 return null;
             }
         }
