@@ -356,12 +356,14 @@ impl FileSystemManager {
 
         let handle = self.handle.as_ref().ok_or(FileSystemError::NoHandle)?;
 
-        let get_file_result = js_sys::Reflect::get(handle, &JsValue::from_str("getFile")).map_err(|_| {
-            FileSystemError::ReadError("Failed to get getFile method".to_string())
-        })?;
-        let get_file = get_file_result.dyn_ref::<js_sys::Function>().ok_or(
-            FileSystemError::ReadError("getFile not a function".to_string()),
-        )?;
+        let get_file_result = js_sys::Reflect::get(handle, &JsValue::from_str("getFile"))
+            .map_err(|_| FileSystemError::ReadError("Failed to get getFile method".to_string()))?;
+        let get_file =
+            get_file_result
+                .dyn_ref::<js_sys::Function>()
+                .ok_or(FileSystemError::ReadError(
+                    "getFile not a function".to_string(),
+                ))?;
 
         let promise = get_file.call0(handle).map_err(|e| {
             let err_str = format!("{:?}", e);

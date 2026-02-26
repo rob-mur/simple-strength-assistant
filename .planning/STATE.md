@@ -1,83 +1,62 @@
 ---
 gsd_state_version: 1.0
 milestone: v1.0
-milestone_name: milestone
-current_phase: 02-debug-and-fix-file-picker (2/3)
-current_plan: 3 / 3
+milestone_name: File Picker Fix
+current_phase: 03-verify-and-polish (3/3)
 status: completed
-stopped_at: Completed 02-debug-and-fix-file-picker-03-PLAN.md
-last_updated: "2026-02-26T10:20:00Z"
+last_updated: "2026-02-26T20:00:00Z"
 progress:
   total_phases: 3
-  completed_phases: 2
-  total_plans: 5
-  completed_plans: 5
+  completed_phases: 3
+  total_plans: 6
+  completed_plans: 6
   percent: 100
 ---
 
 # Project State
 
-**Last Updated:** 2026-02-26T10:20:00Z
-**Current Phase:** 02-debug-and-fix-file-picker (2/3)
-**Current Plan:** 3 / 3
-**Progress:** [██████████] 100% (5/5 plans complete)
-**Next Action:** Advance to Phase 3: Verify and Polish
+**Last Updated:** 2026-02-26T20:00:00Z
+**Current Milestone:** v1.0 (File Picker Fix) SHIPPED
+**Status:** [██████████] 100% (v1.0 Complete)
+**Next Action:** Plan next milestone (v1.1)
 
 ## What Just Happened
 
-**Phase 2 Plan 3 COMPLETED:** Refactor WorkoutState for reactivity and fix error flow
+**Milestone v1.0 SHIPPED:** File Picker Fix
 
 **Accomplishments:**
-- Refactored WorkoutState to use Dioxus 0.7 Signals for reactivity
-- Implemented PartialEq for Database and FileSystemManager for Signal compatibility
-- Corrected setup_database return logic for SelectingFile transition
-- Simplified App component by removing redundant signals
-- Verified WASM compilation passes
+- Delivered robust File System Access API integration with user-gesture triggering.
+- Implemented automatic permission state machine for cached file handles.
+- Fixed PWA deployment and installability issues on Vercel.
+- Refactored core application state to use Dioxus 0.7 Signals.
+- Enhanced Error UI with actionable recovery instructions.
+- Verified cross-browser LocalStorage fallback support.
 
-**Files Modified:**
-- `src/state/db.rs` - Added PartialEq to Database
-- `src/state/file_system.rs` - Added PartialEq to FileSystemManager
-- `src/state/workout_state.rs` - Refactored to Dioxus Signals
-- `src/app.rs` - Updated to use reactive state and corrected error UI flow
+## Project Reference
+
+See: `.planning/PROJECT.md` (updated after v1.0)
+
+**Core value:** Users must be able to reliably persist their workout data to a file they control.
+**Current focus:** Planning next milestone (v1.1: Data Management)
 
 ## What's Next
 
-**Next Action:** Advance to Phase 3: Verify and Polish
+**Next Action:** `/gsd:new-milestone` to define requirements for v1.1.
 
 ## Project Context
 
-**Problem:** File picker not showing when user needs to select database location. Console errors preventing File System Access API from working.
+**Problem:** Fixed file picker visibility and reliability. Resolved PWA installation and permission persistence issues on mobile.
 
-**Stack:** Dioxus 0.7 (Rust→WASM), sql.js, File System Access API, LocalStorage fallback
+**Stack:** Dioxus 0.7.2 (Rust→WASM), sql.js, File System Access API, LocalStorage fallback.
 
-**What works:** UI components, database operations, validation, state management, console debugging
+**What works:** Full database lifecycle (selection, creation, persistence), PWA installation, cross-browser fallback, reactive UI state, and comprehensive error handling.
 
-**What's broken:** File picker doesn't appear, users can't complete database initialization
+**What's broken:** No known critical issues remaining in v1.0 scope.
 
-## Decisions Log
+## Decisions Summary (v1.0)
 
-| Date | Decision | Rationale |
-|------|----------|-----------|
-| 2026-02-25 | YOLO mode, quick depth, parallel execution | Fast iteration on focused bug fix |
-| 2026-02-25 | Enable research, plan-check, verifier agents | Catch issues early despite adding time |
-| 2026-02-25 | 3-phase roadmap (dev→debug→verify) | Minimal scope matches "quick" depth setting |
-| 2026-02-26 | Debug log level for development | Capture all log messages (trace through error) for comprehensive debugging |
-| 2026-02-26 | Use Dioxus built-in logger with tracing-wasm | Simpler than custom console_log setup, integrates automatically |
-| 2026-02-26 | Inline initialization after file selection | Eliminated fragile error message string matching by continuing database initialization inline after successful file selection |
-| 2026-02-26 | Added public setter methods to WorkoutState | Required to allow UI button handler to store database and file manager after initialization |
-
-## Performance Metrics
-
-| Phase | Plan | Duration | Tasks | Files | Completed |
-|-------|------|----------|-------|-------|-----------|
-| 01-development-environment | 01 | 52min | 3 | 2 | 2026-02-26 |
-| 02-debug-and-fix-file-picker | 01 | 4min | 3 | 3 | 2026-02-26 |
-
-## Last Session
-
-- **Timestamp:** 2026-02-26T09:50:33Z
-- **Stopped At:** Completed 02-debug-and-fix-file-picker-01-PLAN.md
-- **Status:** Phase 2 Plan 1 complete, ready for Plan 2
-
----
-*State tracking file for GSD workflow*
+- **Inline initialization**: Eliminated fragile error message string matching.
+- **User gesture required**: Solved `SecurityError` by wrapping file picker in button handler.
+- **Dioxus 0.7 Signals**: Improved reactivity and simplified global state management.
+- **Vercel Manifest Fix**: Added `crossorigin="use-credentials"` for fetch compliance.
+- **Storage Mode Indicator**: Clearer communication to users in fallback environments.

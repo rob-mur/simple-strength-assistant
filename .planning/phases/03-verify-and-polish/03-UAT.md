@@ -1,22 +1,14 @@
 ---
-status: testing
+status: complete
 phase: 03-verify-and-polish
 source: [.planning/phases/03-verify-and-polish/03-01-PLAN.md]
 started: 2026-02-26T17:00:00Z
-updated: 2026-02-26T19:00:00Z
+updated: 2026-02-26T19:15:00Z
 ---
 
 ## Current Test
-<!-- OVERWRITE each test - shows where we are -->
 
-number: 6
-name: User Cancellation Error UI
-expected: |
-  1. Open the app in Chrome.
-  2. Click "Open Existing Database".
-  3. Close the file picker dialog without selecting a file (e.g., press Escape).
-  4. App should show a "File Selection Cancelled" error card with a "Select File" retry button.
-awaiting: user response
+[testing complete]
 
 ## Tests
 
@@ -50,7 +42,8 @@ note: "Verified that selecting a .txt file triggers the correct Error UI. Fixed 
 
 ### 6. User Cancellation Error UI
 expected: Cancelling the file picker should show "File Selection Cancelled" error with a "Select File" retry button.
-result: [pending]
+result: pass
+note: "Verified that cancelling the file picker triggers the correct Error UI with a retry option."
 
 ### 7. PWA Install Prompt (Mobile)
 expected: On mobile devices, an install banner should appear in the SelectingFile state if not already installed.
@@ -60,11 +53,11 @@ note: "Fixed manifest 401 error with crossorigin='use-credentials'. PWA is insta
 ## Summary
 
 total: 7
-passed: 6
+passed: 7
 issues: 0
-pending: 1
+pending: 0
 skipped: 0
 
 ## Gaps
 
-[none yet]
+[none]

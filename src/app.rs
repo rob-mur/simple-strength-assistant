@@ -305,7 +305,7 @@ pub fn App() -> Element {
                                                                         Err(e) => {
                                                                             let error_msg = format!("Failed to read selected file: {}", e);
                                                                             web_sys::console::error_1(&error_msg.clone().into());
-                                                                            
+
                                                                             // Clear the handle if it's invalid so it doesn't stay cached
                                                                             if error_msg.to_lowercase().contains("not a valid sqlite database") || error_msg.to_lowercase().contains("invalid format") {
                                                                                 let mut fm_clone = file_manager.clone();
@@ -313,7 +313,7 @@ pub fn App() -> Element {
                                                                                     let _ = fm_clone.clear_handle().await;
                                                                                 });
                                                                             }
-                                                                            
+
                                                                             WorkoutStateManager::handle_error(&workout_state, error_msg);
                                                                             return;
                                                                         }
@@ -497,7 +497,7 @@ pub fn App() -> Element {
                                                                 web_sys::console::log_1(&"[UI] Permission granted! Retrying initialization...".into());
                                                             }
                                                         }
-                                                        
+
                                                         // Reset error state
                                                         workout_state.set_error_message(None);
                                                         workout_state.set_initialization_state(InitializationState::NotInitialized);

@@ -178,13 +178,15 @@ impl WorkoutStateManager {
                     // If we can't read the cached file handle, return error
                     let msg = format!("Failed to read cached file handle: {}", e);
                     web_sys::console::error_1(&msg.clone().into());
-                    
+
                     // If the format is invalid, clear the cached handle from IndexedDB
                     // This prevents the loop where "Retry" keeps finding the same bad handle.
-                    if msg.to_lowercase().contains("not a valid sqlite database") || msg.to_lowercase().contains("invalid format") {
+                    if msg.to_lowercase().contains("not a valid sqlite database")
+                        || msg.to_lowercase().contains("invalid format")
+                    {
                         let _ = file_manager.clear_handle().await;
                     }
-                    
+
                     return Err(msg);
                 }
             }
