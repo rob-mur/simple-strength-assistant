@@ -1,6 +1,7 @@
 use crate::models::{CompletedSet, ExerciseMetadata, SetType, SetTypeConfig};
 use crate::state::{InitializationState, WorkoutState, WorkoutStateManager};
 use dioxus::prelude::*;
+use wasm_bindgen::JsCast;
 
 struct ErrorInfo {
     title: String,
@@ -114,6 +115,28 @@ pub fn App() -> Element {
                         }
                     }
                     InitializationState::SelectingFile => {
+                        // Check if mobile and not installed (for PWA banner)
+                        let mut show_pwa_banner = use_signal(|| {
+                            if let Some(window) = web_sys::window() {
+                                // Check if mobile
+                                let is_mobile = window.inner_width().unwrap_or(1920.0.into()).as_f64().unwrap_or(1920.0) < 768.0;
+                                // Check if already installed
+                                let is_installed = js_sys::Reflect::get(&window, &"isPWAInstalled".into())
+                                    .ok()
+                                    .and_then(|v| v.as_bool())
+                                    .unwrap_or(false);
+                                // Check if install prompt available
+                                let install_available = js_sys::Reflect::get(&window, &"pwaInstallAvailable".into())
+                                    .ok()
+                                    .and_then(|v| v.as_bool())
+                                    .unwrap_or(false);
+
+                                is_mobile && !is_installed && install_available
+                            } else {
+                                false
+                            }
+                        });
+
                         rsx! {
                             div {
                                 class: "flex items-center justify-center h-full",
@@ -125,6 +148,51 @@ pub fn App() -> Element {
                                             class: "card-title text-xl mb-2",
                                             "Choose Database Setup"
                                         }
+
+                                        // PWA Install Banner (mobile only)
+                                        if show_pwa_banner() {
+                                            div {
+                                                class: "alert alert-info mb-4",
+                                                svg {
+                                                    xmlns: "http://www.w3.org/2000/svg",
+                                                    fill: "none",
+                                                    view_box: "0 0 24 24",
+                                                    class: "stroke-current shrink-0 w-6 h-6",
+                                                    path {
+                                                        stroke_linecap: "round",
+                                                        stroke_linejoin: "round",
+                                                        stroke_width: "2",
+                                                        d: "M12 18h.01M8 21h8a2 2 0 002-2V5a2 2 0 00-2-2H8a2 2 0 00-2 2v14a2 2 0 002 2z"
+                                                    }
+                                                }
+                                                div {
+                                                    class: "flex-1",
+                                                    h4 {
+                                                        class: "font-bold",
+                                                        "Install for Best Mobile Experience"
+                                                    }
+                                                    p {
+                                                        class: "text-sm",
+                                                        "Install this app to your home screen for better file access permissions."
+                                                    }
+                                                }
+                                                button {
+                                                    class: "btn btn-sm btn-primary",
+                                                    onclick: move |_| {
+                                                        if let Some(window) = web_sys::window() {
+                                                            let install_fn = js_sys::Reflect::get(&window, &"installPWA".into()).ok();
+                                                            if let Some(func) = install_fn.and_then(|f| f.dyn_into::<js_sys::Function>().ok()) {
+                                                                let _ = func.call0(&window);
+                                                                // Hide banner after attempting install
+                                                                show_pwa_banner.set(false);
+                                                            }
+                                                        }
+                                                    },
+                                                    "Install"
+                                                }
+                                            }
+                                        }
+
                                         p {
                                             class: "text-sm text-gray-600 mb-6",
                                             "Your data will be stored locally on your device and remain completely private."

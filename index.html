@@ -18,6 +18,75 @@
             });
         }
     </script>
+
+    <!-- PWA Install Prompt Support -->
+    <script>
+        let deferredPrompt;
+
+        // Listen for beforeinstallprompt event
+        window.addEventListener('beforeinstallprompt', (e) => {
+            console.log('[PWA] beforeinstallprompt event fired');
+            // Prevent the default prompt
+            e.preventDefault();
+            // Save the event for later use
+            deferredPrompt = e;
+            // Signal to Rust that install prompt is available
+            window.pwaInstallAvailable = true;
+            console.log('[PWA] Install prompt available and stored');
+        });
+
+        // Function to trigger the install prompt
+        window.installPWA = async function() {
+            console.log('[PWA] installPWA() called');
+
+            if (!deferredPrompt) {
+                console.log('[PWA] No install prompt available');
+                return false;
+            }
+
+            console.log('[PWA] Showing install prompt');
+            // Show the install prompt
+            deferredPrompt.prompt();
+
+            // Wait for the user's response
+            const { outcome } = await deferredPrompt.userChoice;
+            console.log('[PWA] User choice:', outcome);
+
+            // Clear the prompt
+            deferredPrompt = null;
+            window.pwaInstallAvailable = false;
+
+            return outcome === 'accepted';
+        };
+
+        // Detect if already installed
+        window.addEventListener('appinstalled', () => {
+            console.log('[PWA] App installed successfully');
+            window.pwaInstallAvailable = false;
+            deferredPrompt = null;
+        });
+
+        // Check if running as installed PWA
+        const isInstalled = window.matchMedia('(display-mode: standalone)').matches
+            || window.navigator.standalone === true;
+
+        if (isInstalled) {
+            console.log('[PWA] Running as installed app');
+            window.isPWAInstalled = true;
+        } else {
+            console.log('[PWA] Running in browser');
+            window.isPWAInstalled = false;
+        }
+
+        // Helper to check if mobile
+        window.isMobileDevice = function() {
+            return window.innerWidth < 768 ||
+                   /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent);
+        };
+
+        console.log('[PWA] Is mobile device:', window.isMobileDevice());
+        console.log('[PWA] Is installed:', window.isPWAInstalled);
+    </script>
 </head>
 <body>
     <div id="main"></div>
