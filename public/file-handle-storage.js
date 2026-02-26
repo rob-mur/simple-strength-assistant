@@ -75,34 +75,14 @@ export async function retrieveFileHandle() {
 
         if (permission === 'prompt') {
             // Permission expired or not yet granted
-            // Try to request permission - this may auto-grant if user previously selected "Remember"
-            // or it may require a user gesture (in which case it will fail or return 'prompt' again)
-            console.log('[FileHandleStorage] Permission state is prompt, attempting to request permission...');
-
-            try {
-                const requestedPermission = await handle.requestPermission(options);
-                console.log('[FileHandleStorage] Permission request result:', requestedPermission);
-
-                if (requestedPermission === 'granted') {
-                    console.log('[FileHandleStorage] Permission granted after request');
-                    return handle;
-                } else if (requestedPermission === 'prompt') {
-                    // Permission still not granted - needs user gesture
-                    console.warn('[FileHandleStorage] Permission still requires user action - clearing handle');
-                    await clearFileHandle();
-                    return null;
-                } else {
-                    // 'denied'
-                    console.warn('[FileHandleStorage] Permission denied by user');
-                    await clearFileHandle();
-                    return null;
-                }
-            } catch (error) {
-                console.error('[FileHandleStorage] requestPermission failed:', error);
-                // Clear stale handle since we can't use it
-                await clearFileHandle();
-                return null;
-            }
+            // CRITICAL: requestPermission() REQUIRES a user gesture (button click, etc.)
+            // During page load (auto-init), there is no user gesture context
+            // Browsers will reject the call with an error or throw an exception
+            // Solution: Clear the stale handle and force user to manually select file again
+            console.warn('[FileHandleStorage] Permission state is prompt (requires user gesture)');
+            console.log('[FileHandleStorage] Cannot auto-restore - user must select file again');
+            await clearFileHandle();
+            return null;
         }
 
         // permission === 'denied'
