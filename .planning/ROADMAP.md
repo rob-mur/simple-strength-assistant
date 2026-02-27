@@ -9,7 +9,7 @@
 
 | # | Phase | Goal | Requirements | Success Criteria |
 |---|-------|------|--------------|------------------|
-| 4 | **Tape Measure** | Core implementation of swipeable inputs for Reps & Weight. | TAPE-[01-05] | 2 |
+| 4 | **Tape Measure** | Core implementation of swipeable inputs for Reps & Weight. | TAPE-[01-05] | **Plans:** 3 plans |
 | 5 | **RPE Slider** | Discrete slider-based input for RPE (1-10 in 0.5 steps). | RPE-[01-03] | 1 |
 | 6 | **Jump Controls** | Buttons for rapid adjustment (±1, ±5, ±10, ±25). | STEP-[01-02] | 1 |
 | 7 | **UI Integration** | Replace current inputs and sync with global state. | INT-[01-03] | 2 |
@@ -19,6 +19,10 @@
 ### Phase Details
 
 #### Phase 4: Swipeable Tape Measure
+**Plans:**
+- [ ] 04-01-PLAN.md — Core Component Foundation & Physics
+- [ ] 04-02-PLAN.md — SVG Rendering & Aesthetic Polish
+- [ ] 04-03-PLAN.md — UI Integration & Physics Tuning
 **Goal:** Implementation of the tape measure component using SVG and pointer events.
 **Requirements:**
 - TAPE-01: Swipe to adjust weight
