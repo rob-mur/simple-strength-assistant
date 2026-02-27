@@ -1,3 +1,4 @@
+use crate::components::rpe_slider::RPESlider;
 use crate::components::tape_measure::TapeMeasure;
 use crate::models::{CompletedSet, ExerciseMetadata, SetType, SetTypeConfig};
 use crate::state::{InitializationState, WorkoutError, WorkoutState, WorkoutStateManager};
@@ -739,7 +740,7 @@ fn ActiveSession(state: WorkoutState, session: crate::state::WorkoutSession) -> 
     let session_clone = session.clone();
     let session_for_display = session_clone.clone();
     let mut reps_input = use_signal(|| session.predicted.reps as f64);
-    let mut rpe_input = use_signal(|| session.predicted.rpe.to_string());
+    let mut rpe_input = use_signal(|| session.predicted.rpe as f64);
     let mut weight_input = use_signal(|| session.predicted.weight.map(|w| w as f64).unwrap_or(0.0));
 
     let state_for_log = state;
@@ -747,7 +748,7 @@ fn ActiveSession(state: WorkoutState, session: crate::state::WorkoutSession) -> 
     let log_set = move |_| {
         let session = &session_for_log;
         let reps = reps_input() as u32;
-        let rpe = rpe_input().parse::<f32>().unwrap_or(0.0);
+        let rpe = rpe_input() as f32;
         let weight = if session.predicted.weight.is_some() {
             Some(weight_input() as f32)
         } else {
@@ -855,20 +856,17 @@ fn ActiveSession(state: WorkoutState, session: crate::state::WorkoutSession) -> 
                             }
                         }
                         div {
-                            class: "form-control max-w-xs mx-auto",
+                            class: "form-control w-full",
                             label {
                                 class: "label",
                                 span {
                                     class: "label-text font-bold",
-                                    "RPE (0-10)"
+                                    "RPE (Rate of Perceived Exertion)"
                                 }
                             }
-                            input {
-                                class: "input input-bordered text-center text-xl",
-                                r#type: "number",
-                                step: "0.5",
-                                value: "{rpe_input}",
-                                oninput: move |e| rpe_input.set(e.value())
+                            RPESlider {
+                                value: rpe_input(),
+                                on_change: move |val| rpe_input.set(val)
                             }
                         }
                     }
