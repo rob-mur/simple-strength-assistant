@@ -53,9 +53,11 @@ Users must be able to reliably persist their workout data to a file they control
 
 ## Next Milestone Goals (v1.1)
 
-- Implement data management features (Export/Import/Vacuum).
-- Build the historical data view and progress visualization.
-- Begin work on the intelligent workout prescription system.
+- Implement a tactile, "no-typing" interface for set recording.
+- Develop a swipeable tape measure component for reps and weight inputs.
+- Create a slider-based input for RPE (1-10 in 0.5 increments).
+- Add "big step" jump buttons for rapid weight/rep adjustments.
+- Ensure desktop compatibility for touch-optimized components (mouse click support).
 
 ## Key Decisions
 
