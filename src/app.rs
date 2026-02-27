@@ -679,43 +679,56 @@ fn StartSessionView(state: WorkoutState) -> Element {
                     }
                     if is_weighted() {
                         div {
-                            class: "grid grid-cols-2 gap-4 mt-4",
+                            class: "flex flex-col gap-8 mt-6",
                             div {
-                                class: "form-control",
+                                class: "form-control w-full",
                                 label {
                                     class: "label",
                                     span {
-                                        class: "label-text",
-                                        "Starting Weight"
+                                        class: "label-text font-bold text-lg",
+                                        "Starting Weight (kg)"
                                     }
                                 }
-                                input {
-                                    class: "input input-bordered",
-                                    r#type: "number",
-                                    value: "{min_weight}",
-                                    oninput: move |e| {
-                                        if let Ok(val) = e.value().parse::<f32>() {
-                                            min_weight.set(val);
-                                        }
-                                    }
+                                TapeMeasure {
+                                    value: min_weight() as f64,
+                                    min: 0.0,
+                                    max: 500.0,
+                                    step: increment() as f64,
+                                    on_change: move |val| min_weight.set(val as f32)
+                                }
+                                div {
+                                    class: "text-center text-3xl font-black text-primary mt-2",
+                                    "{min_weight} kg"
+                                }
+                                StepControls {
+                                    value: min_weight() as f64,
+                                    steps: vec![-10.0, 10.0],
+                                    min: 0.0,
+                                    max: 500.0,
+                                    on_change: move |val| min_weight.set(val as f32)
                                 }
                             }
                             div {
-                                class: "form-control",
+                                class: "form-control w-full",
                                 label {
                                     class: "label",
                                     span {
-                                        class: "label-text",
-                                        "Weight Increment"
+                                        class: "label-text font-bold text-lg",
+                                        "Weight Increment (kg)"
                                     }
                                 }
-                                input {
-                                    class: "input input-bordered",
-                                    r#type: "number",
-                                    value: "{increment}",
-                                    oninput: move |e| {
-                                        if let Ok(val) = e.value().parse::<f32>() {
-                                            increment.set(val);
+                                div {
+                                    class: "flex flex-wrap gap-3 justify-center mt-2",
+                                    for &inc in &[1.25, 2.5, 5.0, 10.0] {
+                                        button {
+                                            key: "{inc}",
+                                            class: if (increment() - inc as f32).abs() < 0.001 {
+                                                "btn btn-primary btn-md flex-1 min-w-[70px] shadow-lg"
+                                            } else {
+                                                "btn btn-outline btn-md flex-1 min-w-[70px]"
+                                            },
+                                            onclick: move |_| increment.set(inc as f32),
+                                            "{inc}"
                                         }
                                     }
                                 }
@@ -743,6 +756,14 @@ fn ActiveSession(state: WorkoutState, session: crate::state::WorkoutSession) -> 
     let mut reps_input = use_signal(|| session.predicted.reps as f64);
     let mut rpe_input = use_signal(|| session.predicted.rpe as f64);
     let mut weight_input = use_signal(|| session.predicted.weight.map(|w| w as f64).unwrap_or(0.0));
+
+    // Sync inputs when session.predicted changes (e.g., after logging a set)
+    use_effect(move || {
+        let predicted = session.predicted;
+        reps_input.set(predicted.reps as f64);
+        rpe_input.set(predicted.rpe as f64);
+        weight_input.set(predicted.weight.map(|w| w as f64).unwrap_or(0.0));
+    });
 
     let state_for_log = state;
     let session_for_log = session_clone.clone();
@@ -787,39 +808,43 @@ fn ActiveSession(state: WorkoutState, session: crate::state::WorkoutSession) -> 
 
     rsx! {
         div {
-            class: "max-w-4xl mx-auto space-y-6",
+            class: "max-w-md mx-auto space-y-8 pb-10",
+            // Exercise Header
             div {
-                class: "card bg-base-100 shadow-xl",
+                class: "card bg-base-100 shadow-xl border-t-4 border-primary",
                 div {
-                    class: "card-body",
-                    h2 {
-                        class: "card-title text-2xl",
-                        {session_for_display.exercise.name.clone()}
-                    }
-                    p {
-                        class: "text-gray-600",
-                        "Sets completed: {session_for_display.completed_sets.len()}"
+                    class: "card-body p-6",
+                    div {
+                        class: "flex justify-between items-center",
+                        h2 {
+                            class: "card-title text-2xl font-black",
+                            {session_for_display.exercise.name.clone()}
+                        }
+                        div {
+                            class: "badge badge-primary badge-lg font-bold",
+                            "Set {session_for_display.completed_sets.len() + 1}"
+                        }
                     }
                 }
             }
+
+            // Input Section
             div {
                 class: "card bg-base-100 shadow-xl",
                 div {
-                    class: "card-body",
-                    h3 {
-                        class: "card-title mb-4",
-                        "Log New Set"
-                    }
+                    class: "card-body p-4 sm:p-6",
                     div {
-                        class: "flex flex-col gap-10 items-stretch w-full",
+                        class: "flex flex-col gap-12 items-stretch w-full",
+
+                        // Weight Input
                         if let SetTypeConfig::Weighted { min_weight, increment } = session_for_display.exercise.set_type_config {
                             div {
                                 class: "form-control w-full",
                                 label {
-                                    class: "label",
+                                    class: "label justify-center mb-2",
                                     span {
-                                        class: "label-text font-bold text-lg",
-                                        "Weight (kg)"
+                                        class: "label-text font-black text-xl text-base-content/70 uppercase tracking-widest",
+                                        "Weight"
                                     }
                                 }
                                 TapeMeasure {
@@ -830,7 +855,7 @@ fn ActiveSession(state: WorkoutState, session: crate::state::WorkoutSession) -> 
                                     on_change: move |val| weight_input.set(val)
                                 }
                                 div {
-                                    class: "text-center text-3xl font-black text-primary mt-2",
+                                    class: "text-center text-5xl font-black text-primary my-4",
                                     "{weight_input} kg"
                                 }
                                 StepControls {
@@ -840,15 +865,16 @@ fn ActiveSession(state: WorkoutState, session: crate::state::WorkoutSession) -> 
                                     max: 500.0,
                                     on_change: move |val| weight_input.set(val)
                                 }
-                                div { class: "divider mt-8" }
                             }
                         }
+
+                        // Reps Input
                         div {
                             class: "form-control w-full",
                             label {
-                                class: "label",
+                                class: "label justify-center mb-2",
                                 span {
-                                    class: "label-text font-bold text-lg",
+                                    class: "label-text font-black text-xl text-base-content/70 uppercase tracking-widest",
                                     "Reps"
                                 }
                             }
@@ -860,25 +886,26 @@ fn ActiveSession(state: WorkoutState, session: crate::state::WorkoutSession) -> 
                                 on_change: move |val| reps_input.set(val)
                             }
                             div {
-                                class: "text-center text-3xl font-black text-primary mt-2",
+                                class: "text-center text-5xl font-black text-primary my-4",
                                 "{reps_input} reps"
                             }
                             StepControls {
                                 value: reps_input(),
-                                steps: vec![-1.0, 1.0],
+                                steps: vec![-1.0, 5.0],
                                 min: 1.0,
                                 max: 100.0,
                                 on_change: move |val| reps_input.set(val)
                             }
-                            div { class: "divider mt-8" }
                         }
+
+                        // RPE Input
                         div {
                             class: "form-control w-full",
                             label {
-                                class: "label",
+                                class: "label justify-center mb-2",
                                 span {
-                                    class: "label-text font-bold text-lg",
-                                    "RPE (Rate of Perceived Exertion)"
+                                    class: "label-text font-black text-xl text-base-content/70 uppercase tracking-widest",
+                                    "Intensity (RPE)"
                                 }
                             }
                             RPESlider {
@@ -887,29 +914,34 @@ fn ActiveSession(state: WorkoutState, session: crate::state::WorkoutSession) -> 
                             }
                         }
                     }
+
+                    // Log Set Button
                     div {
-                        class: "card-actions justify-end mt-6",
+                        class: "mt-12",
                         button {
-                            class: "btn btn-primary btn-lg btn-block",
+                            class: "btn btn-primary btn-lg btn-block h-24 text-2xl font-black shadow-lg",
                             onclick: log_set,
-                            "Log Set"
+                            "LOG SET"
                         }
                     }
                 }
             }
+
+            // History Section
             if !session_for_display.completed_sets.is_empty() {
                 div {
-                    class: "card bg-base-100 shadow-xl",
+                    class: "collapse collapse-arrow bg-base-100 shadow-lg border border-base-300",
+                    input { r#type: "checkbox", checked: true },
                     div {
-                        class: "card-body",
-                        h3 {
-                            class: "card-title",
-                            "Completed Sets"
-                        }
+                        class: "collapse-title text-xl font-bold",
+                        "History ({session_for_display.completed_sets.len()} sets)"
+                    }
+                    div {
+                        class: "collapse-content p-0",
                         div {
                             class: "overflow-x-auto",
                             table {
-                                class: "table table-zebra",
+                                class: "table table-zebra w-full",
                                 thead {
                                     tr {
                                         th { "Set" }
@@ -921,11 +953,11 @@ fn ActiveSession(state: WorkoutState, session: crate::state::WorkoutSession) -> 
                                     }
                                 }
                                 tbody {
-                                    for set in session_for_display.completed_sets.iter() {
+                                    for set in session_for_display.completed_sets.iter().rev() {
                                         tr {
-                                            td { "{set.set_number}" }
+                                            td { class: "font-bold", "{set.set_number}" }
                                             if let SetType::Weighted { weight } = set.set_type {
-                                                td { "{weight}" }
+                                                td { "{weight} kg" }
                                             }
                                             td { "{set.reps}" }
                                             td { "{set.rpe}" }
@@ -937,12 +969,14 @@ fn ActiveSession(state: WorkoutState, session: crate::state::WorkoutSession) -> 
                     }
                 }
             }
+
+            // Finish Session Button
             div {
-                class: "flex justify-end",
+                class: "flex justify-center pt-4",
                 button {
-                    class: "btn btn-success",
+                    class: "btn btn-ghost btn-sm opacity-50 hover:opacity-100",
                     onclick: complete_session,
-                    "Complete Session"
+                    "Finish Workout Session"
                 }
             }
         }

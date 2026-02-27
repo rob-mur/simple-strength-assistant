@@ -145,10 +145,24 @@ pub fn TapeMeasure(props: TapeMeasureProps) -> Element {
                     let e = evt.data.downcast::<PointerEvent>().unwrap();
                     let current_x = e.client_x() as f64;
                     let now = js_sys::Date::now();
-                    let delta_x = current_x - last_pointer_x();
+
+                    // Calculate scale factor: SVG units per screen pixel
+                    let scale_factor = if let Some(el) = container_element.peek().as_ref() {
+                        let rect = el.get_bounding_client_rect();
+                        if rect.width() > 0.0 {
+                            VIEWPORT_WIDTH / rect.width()
+                        } else {
+                            1.0
+                        }
+                    } else {
+                        1.0
+                    };
+
+                    let delta_x_screen = current_x - last_pointer_x();
+                    let delta_x_svg = delta_x_screen * scale_factor;
                     let delta_t = now - last_update_time();
 
-                    let mut new_offset = offset() + delta_x;
+                    let mut new_offset = offset() + delta_x_svg;
                     let total_steps = (props.max - props.min) / props.step;
                     let min_offset = total_steps * -PIXELS_PER_STEP;
                     let max_offset = 0.0;
@@ -159,7 +173,7 @@ pub fn TapeMeasure(props: TapeMeasureProps) -> Element {
                     offset.set(new_offset);
 
                     if delta_t > 0.0 {
-                        let inst_velocity = delta_x / delta_t * 16.0;
+                        let inst_velocity = delta_x_svg / delta_t * 16.0;
                         velocity.with_mut(|v| *v = *v * 0.5 + inst_velocity * 0.5);
                     }
 

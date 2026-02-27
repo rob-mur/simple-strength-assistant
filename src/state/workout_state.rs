@@ -11,7 +11,7 @@ const RPE_THRESHOLD_LOW: f32 = 7.0;
 const RPE_REDUCTION: f32 = 0.5;
 const RPE_MINIMUM: f32 = 6.0;
 
-#[derive(Clone, Debug, PartialEq)]
+#[derive(Clone, Copy, Debug, PartialEq)]
 pub struct PredictedParameters {
     pub weight: Option<f32>,
     pub reps: u32,
