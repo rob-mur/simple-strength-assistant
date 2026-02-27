@@ -1,3 +1,4 @@
+use crate::components::tape_measure::TapeMeasure;
 use crate::models::{CompletedSet, ExerciseMetadata, SetType, SetTypeConfig};
 use crate::state::{InitializationState, WorkoutError, WorkoutState, WorkoutStateManager};
 use dioxus::prelude::*;
@@ -737,24 +738,18 @@ fn StartSessionView(state: WorkoutState) -> Element {
 fn ActiveSession(state: WorkoutState, session: crate::state::WorkoutSession) -> Element {
     let session_clone = session.clone();
     let session_for_display = session_clone.clone();
-    let mut reps_input = use_signal(|| session.predicted.reps.to_string());
+    let mut reps_input = use_signal(|| session.predicted.reps as f64);
     let mut rpe_input = use_signal(|| session.predicted.rpe.to_string());
-    let mut weight_input = use_signal(|| {
-        session
-            .predicted
-            .weight
-            .map(|w| w.to_string())
-            .unwrap_or_default()
-    });
+    let mut weight_input = use_signal(|| session.predicted.weight.map(|w| w as f64).unwrap_or(0.0));
 
     let state_for_log = state;
     let session_for_log = session_clone.clone();
     let log_set = move |_| {
         let session = &session_for_log;
-        let reps = reps_input().parse::<u32>().unwrap_or(0);
+        let reps = reps_input() as u32;
         let rpe = rpe_input().parse::<f32>().unwrap_or(0.0);
         let weight = if session.predicted.weight.is_some() {
-            weight_input().parse::<f32>().ok()
+            Some(weight_input() as f32)
         } else {
             None
         };
@@ -810,26 +805,31 @@ fn ActiveSession(state: WorkoutState, session: crate::state::WorkoutSession) -> 
                 div {
                     class: "card-body",
                     h3 {
-                        class: "card-title",
+                        class: "card-title mb-4",
                         "Log New Set"
                     }
                     div {
-                        class: "grid grid-cols-3 gap-4 mt-4",
-                        if session_for_display.predicted.weight.is_some() {
+                        class: "flex flex-col gap-6",
+                        if let SetTypeConfig::Weighted { min_weight, increment } = session_for_display.exercise.set_type_config {
                             div {
                                 class: "form-control",
                                 label {
                                     class: "label",
                                     span {
-                                        class: "label-text",
-                                        "Weight"
+                                        class: "label-text font-bold",
+                                        "Weight (kg)"
                                     }
                                 }
-                                input {
-                                    class: "input input-bordered",
-                                    r#type: "number",
-                                    value: "{weight_input}",
-                                    oninput: move |e| weight_input.set(e.value())
+                                TapeMeasure {
+                                    value: weight_input(),
+                                    min: min_weight as f64,
+                                    max: 500.0,
+                                    step: increment as f64,
+                                    on_change: move |val| weight_input.set(val)
+                                }
+                                div {
+                                    class: "text-center text-2xl font-bold text-primary mt-2",
+                                    "{weight_input} kg"
                                 }
                             }
                         }
@@ -838,28 +838,33 @@ fn ActiveSession(state: WorkoutState, session: crate::state::WorkoutSession) -> 
                             label {
                                 class: "label",
                                 span {
-                                    class: "label-text",
+                                    class: "label-text font-bold",
                                     "Reps"
                                 }
                             }
-                            input {
-                                class: "input input-bordered",
-                                r#type: "number",
-                                value: "{reps_input}",
-                                oninput: move |e| reps_input.set(e.value())
+                            TapeMeasure {
+                                value: reps_input(),
+                                min: 1.0,
+                                max: 100.0,
+                                step: 1.0,
+                                on_change: move |val| reps_input.set(val)
+                            }
+                            div {
+                                class: "text-center text-2xl font-bold text-primary mt-2",
+                                "{reps_input} reps"
                             }
                         }
                         div {
-                            class: "form-control",
+                            class: "form-control max-w-xs mx-auto",
                             label {
                                 class: "label",
                                 span {
-                                    class: "label-text",
-                                    "RPE"
+                                    class: "label-text font-bold",
+                                    "RPE (0-10)"
                                 }
                             }
                             input {
-                                class: "input input-bordered",
+                                class: "input input-bordered text-center text-xl",
                                 r#type: "number",
                                 step: "0.5",
                                 value: "{rpe_input}",
@@ -870,7 +875,7 @@ fn ActiveSession(state: WorkoutState, session: crate::state::WorkoutSession) -> 
                     div {
                         class: "card-actions justify-end mt-6",
                         button {
-                            class: "btn btn-primary",
+                            class: "btn btn-primary btn-lg btn-block",
                             onclick: log_set,
                             "Log Set"
                         }

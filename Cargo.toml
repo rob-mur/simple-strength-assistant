@@ -25,9 +25,14 @@ web-sys = { version = "0.3", features = [
     "File",
     "Blob",
     "FileReader",
+    "PointerEvent",
+    "Element",
+    "HtmlElement",
+    "EventTarget",
 ] }
 gloo-storage = "0.3"
 gloo-utils = "0.2"
+gloo-timers = { version = "0.3", features = ["futures"] }
 thiserror = "2.0"
 log = "0.4"
 tracing = "0.1"
