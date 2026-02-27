@@ -833,15 +833,12 @@ fn ActiveSession(state: WorkoutState, session: crate::state::WorkoutSession) -> 
                                     class: "text-center text-2xl font-bold text-primary mt-2",
                                     "{weight_input} kg"
                                 }
-                                div {
-                                    class: "w-full",
-                                    StepControls {
-                                        value: weight_input(),
-                                        steps: vec![-10.0, 10.0],
-                                        min: min_weight as f64,
-                                        max: 500.0,
-                                        on_change: move |val| weight_input.set(val)
-                                    }
+                                StepControls {
+                                    value: weight_input(),
+                                    steps: vec![-10.0, 10.0],
+                                    min: min_weight as f64,
+                                    max: 500.0,
+                                    on_change: move |val| weight_input.set(val)
                                 }
                             }
                         }
@@ -865,15 +862,12 @@ fn ActiveSession(state: WorkoutState, session: crate::state::WorkoutSession) -> 
                                 class: "text-center text-2xl font-bold text-primary mt-2",
                                 "{reps_input} reps"
                             }
-                            div {
-                                class: "w-full",
-                                StepControls {
-                                    value: reps_input(),
-                                    steps: vec![-1.0, 1.0],
-                                    min: 1.0,
-                                    max: 100.0,
-                                    on_change: move |val| reps_input.set(val)
-                                }
+                            StepControls {
+                                value: reps_input(),
+                                steps: vec![-1.0, 1.0],
+                                min: 1.0,
+                                max: 100.0,
+                                on_change: move |val| reps_input.set(val)
                             }
                         }
                         div {

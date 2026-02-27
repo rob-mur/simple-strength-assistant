@@ -193,13 +193,7 @@ pub fn TapeMeasure(props: TapeMeasureProps) -> Element {
                     is_snapping.set(true);
                 }
             },
-            onpointerleave: move |_| {
-                // Failsafe for when capture is not supported or fails
-                if is_dragging() {
-                    is_dragging.set(false);
-                    is_snapping.set(true);
-                }
-            },
+            // Removed onpointerleave and onpointerout to allow out-of-bounds swiping
 
             svg {
                 view_box: "0 0 {VIEWPORT_WIDTH} {VIEWPORT_HEIGHT}",
