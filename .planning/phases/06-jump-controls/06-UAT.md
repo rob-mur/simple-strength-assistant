@@ -1,49 +1,101 @@
-# UAT: Jump & Step Controls (Phase 6) - COMPLETED
+---
+status: complete
+phase: 06-jump-controls
+source: [.planning/phases/06-jump-controls/06-01-SUMMARY.md]
+started: 2026-02-27T12:00:00Z
+updated: 2026-02-27T12:45:00Z
+---
 
-## Objective
-Verify that the "Big Step" and "Small Step" buttons correctly modify weight and reps values, staying within bounds and syncing with the Tape Measure.
+## Current Test
 
-## Test Scenarios
+[testing complete]
 
-### 1. Weight Jump Controls (STEP-01, STEP-02)
-- [x] **Big Steps (±5, ±10, ±25):**
-    - Tap `+25`: Value increases by 25 (e.g., 45 -> 70).
-    - Tap `-10`: Value decreases by 10 (e.g., 70 -> 60).
-    - Tap `+5`: Value increases by 5 (e.g., 60 -> 65).
-- [x] **Small Steps (±1):**
-    - Tap `+1`: Value increases by 1 (e.g., 65 -> 66).
-    - Tap `-1`: Value decreases by 1 (e.g., 66 -> 65).
-- [x] **Clamping:**
-    - Tap `-25` repeatedly: Value stops at `min_weight` (e.g., 45.0) and does not go lower.
-    - Tap `+25` until high value: Value stops at `max` (500.0).
+## Tests
 
-### 2. Reps Step Controls (STEP-02)
-- [x] **Small Steps (±1):**
-    - Tap `+1`: Reps increase by 1 (e.g., 8 -> 9).
-    - Tap `-1`: Reps decrease by 1 (e.g., 9 -> 8).
-- [x] **Clamping:**
-    - Tap `-1` until 1: Value stops at 1 and does not go to 0 or negative.
+### 1. Weight Big Steps (±5, ±10, ±25)
+expected: Tapping `+25`, `+10`, or `+5` should increase the weight value by that amount. Tapping `-25`, `-10`, or `-5` should decrease the weight value by that amount. The large weight display should update immediately.
+result: issue
+reported: "too many butrons are displayed that its cramped - lets just have one (e.g. the 10 for now). tapping does update the displayed number but it doesmt update the tape measure"
+severity: major
 
-### 3. Sync with Tape Measure
-- [x] **Visual Sync:**
-    - Clicking a jump button updates the large value display immediately.
-    - `TapeMeasure` centers on the new value (verified via `use_effect` logic and `offset` calculation).
-- [x] **Interaction Logic:**
-    - Arbitrary values from buttons (e.g., 46kg when step is 2.5) are preserved until the next tape interaction (verified by refined snapping logic).
+### 2. Weight Small Steps (±1)
+expected: Tapping `+1` or `-1` should increase or decrease the weight by exactly 1kg, regardless of the exercise's default step (e.g. 2.5kg).
+result: issue
+reported: "same as before, it updates the number but not the tape measure. i wpuld also prefer if the buttons were spaced so that the decrease is far left and the increase is far right"
+severity: major
 
-### 4. End-to-End Logging
-- [x] Start a session for "Bench Press".
-- [x] Use `+25` and `+5` to set weight to 75kg.
-- [x] Use `+1` to set reps to 6.
-- [x] Use RPE slider to set 8.0.
-- [x] Tap "Log Set".
-- [x] **Result:** "Completed Sets" table shows 1st set with 75kg, 6 reps, 8.0 RPE.
+### 3. Weight Clamping (Min/Max)
+expected: Tapping `-25` repeatedly should stop the weight at the exercise's `min_weight` (e.g., 45kg) and not go lower. Tapping `+25` until a high value should stop at `max` (500kg).
+result: pass
 
-## Success Criteria
-- [x] All button interactions correctly update state.
-- [x] Values are clamped within specified ranges.
-- [x] `TapeMeasure` stays in sync with button-driven changes.
-- [x] UI is responsive and thumb-friendly (DaisyUI `join` group used).
+### 4. Reps Small Steps (±1)
+expected: Tapping `+1` or `-1` below the reps display should increase or decrease the reps count by 1.
+result: issue
+reported: "updates the count but not the measure"
+severity: major
 
-## Verification Summary (2026-02-27)
-Phase 6 implementation successfully provides a rapid adjustment interface for weight and reps. The `StepControls` component is modular and reusable. Refinements to `TapeMeasure` snapping logic ensure that external updates (from buttons) are respected while maintaining the tactile feel during direct manipulation.
+### 5. Reps Clamping (Min 1)
+expected: Tapping `-1` when reps are at 1 should keep the reps at 1 and not go to 0 or negative.
+result: pass
+
+### 6. TapeMeasure Visual Sync
+expected: Clicking any weight step button should cause the TapeMeasure to immediately scroll and center on the new weight value.
+result: issue
+reported: "tapping does update the displayed number but it doesmt update the tape measure"
+severity: major
+
+### 7. TapeMeasure Interaction Sync
+expected: Setting an arbitrary value via buttons (e.g., 46kg) should be respected by the TapeMeasure (not snapped to 45 or 47.5) until the user directly drags or interacts with the TapeMeasure.
+result: issue
+reported: "this shouldnt be possible. is it invalid for the buttons to not be a multiple of the increment"
+severity: minor
+
+### 8. End-to-End Log Set
+expected: Start a session, use jump buttons to set Weight to 75kg and Reps to 6, then Log Set. The completed sets table should accurately show 75kg and 6 reps.
+result: pass
+
+## Summary
+
+total: 8
+passed: 3
+issues: 5
+pending: 0
+skipped: 0
+
+## Gaps
+
+- truth: "Weight jump buttons should be limited to ±10 to avoid UI crowding."
+  status: failed
+  reason: "User reported: too many butrons are displayed that its cramped - lets just have one (e.g. the 10 for now)."
+  severity: minor
+  test: 1
+  artifacts: ["src/app.rs"]
+  missing: []
+- truth: "Tapping jump buttons should immediately update the TapeMeasure position."
+  status: failed
+  reason: "User reported: tapping does update the displayed number but it doesmt update the tape measure"
+  severity: major
+  test: 6
+  artifacts: ["src/components/tape_measure.rs", "src/components/step_controls.rs"]
+  missing: []
+- truth: "Decrease button should be far left and increase button far right."
+  status: failed
+  reason: "User reported: i wpuld also prefer if the buttons were spaced so that the decrease is far left and the increase is far right"
+  severity: minor
+  test: 2
+  artifacts: ["src/components/step_controls.rs"]
+  missing: []
+- truth: "Reps buttons should sync with Reps display/measure."
+  status: failed
+  reason: "User reported: updates the count but not the measure"
+  severity: major
+  test: 4
+  artifacts: ["src/app.rs", "src/components/tape_measure.rs"]
+  missing: []
+- truth: "Jump buttons should respect exercise increment (step) to avoid invalid values."
+  status: failed
+  reason: "User reported: this shouldnt be possible. is it invalid for the buttons to not be a multiple of the increment"
+  severity: minor
+  test: 7
+  artifacts: ["src/app.rs", "src/components/step_controls.rs"]
+  missing: []
