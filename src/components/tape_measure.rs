@@ -12,9 +12,9 @@ pub struct TapeMeasureProps {
 }
 
 const PIXELS_PER_STEP: f64 = 60.0;
-const FRICTION: f64 = 0.88; // Reduced from 0.95 for faster settle
-const VELOCITY_THRESHOLD: f64 = 0.1;
-const SNAP_STIFFNESS: f64 = 0.2;
+const FRICTION: f64 = 0.92; // Slightly more glide than 0.88
+const VELOCITY_THRESHOLD: f64 = 0.01; // Much lower to allow slow slides to finish
+const SNAP_STIFFNESS: f64 = 0.25;
 const VIEWPORT_WIDTH: f64 = 300.0;
 const VIEWPORT_HEIGHT: f64 = 80.0;
 const CENTER_X: f64 = VIEWPORT_WIDTH / 2.0;
@@ -73,6 +73,7 @@ pub fn TapeMeasure(props: TapeMeasureProps) -> Element {
 
                 // When velocity stops, trigger snap
                 if new_v.abs() <= VELOCITY_THRESHOLD {
+                    velocity.set(0.0);
                     is_snapping.set(true);
                 }
             } else if is_snapping() {
@@ -81,7 +82,8 @@ pub fn TapeMeasure(props: TapeMeasureProps) -> Element {
                     (current_offset_val / PIXELS_PER_STEP).round() * PIXELS_PER_STEP;
                 let diff = target_offset - current_offset_val;
 
-                if diff.abs() > 0.1 {
+                if diff.abs() > 0.01 {
+                    // Tighter tolerance
                     offset.set(current_offset_val + diff * SNAP_STIFFNESS);
                 } else {
                     offset.set(target_offset);
@@ -155,7 +157,7 @@ pub fn TapeMeasure(props: TapeMeasureProps) -> Element {
 
                     if delta_t > 0.0 {
                         let inst_velocity = delta_x / delta_t * 16.0;
-                        velocity.with_mut(|v| *v = *v * 0.6 + inst_velocity * 0.4);
+                        velocity.with_mut(|v| *v = *v * 0.4 + inst_velocity * 0.6); // More reactive
                     }
 
                     last_pointer_x.set(current_x);
@@ -166,7 +168,10 @@ pub fn TapeMeasure(props: TapeMeasureProps) -> Element {
                 if is_dragging() {
                     let e = evt.data.downcast::<PointerEvent>().unwrap();
                     is_dragging.set(false);
-                    // Momentum loop will take over and then snap
+                    // If moving very slowly, jump straight to snapping
+                    if velocity().abs() <= VELOCITY_THRESHOLD {
+                        is_snapping.set(true);
+                    }
                     if let Some(target) = e.target() {
                         if let Ok(element) = target.dyn_into::<web_sys::Element>() {
                             let _ = element.release_pointer_capture(e.pointer_id());
