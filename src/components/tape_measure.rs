@@ -1,5 +1,4 @@
 use dioxus::prelude::*;
-use wasm_bindgen::JsCast;
 use web_sys::PointerEvent;
 
 #[derive(Props, PartialEq, Clone)]
@@ -28,6 +27,7 @@ pub fn TapeMeasure(props: TapeMeasureProps) -> Element {
     let mut last_pointer_x = use_signal(|| 0.0);
     let mut last_update_time = use_signal(|| 0.0);
     let mut is_snapping = use_signal(|| false);
+    let mut container_element = use_signal(|| None::<web_sys::Element>);
 
     // Sync state if props change (prop-to-signal sync pattern)
     let mut last_value = use_signal(|| props.value);
@@ -123,6 +123,11 @@ pub fn TapeMeasure(props: TapeMeasureProps) -> Element {
         div {
             class: "tape-measure-container bg-base-100 rounded-lg shadow-inner",
             style: "touch-action: none; overflow: hidden; width: 100%; height: {VIEWPORT_HEIGHT}px; position: relative; cursor: grab;",
+            onmounted: move |el| {
+                if let Some(raw) = el.data.downcast::<web_sys::Element>() {
+                    container_element.set(Some(raw.clone()));
+                }
+            },
             onpointerdown: move |evt| {
                 let e = evt.data.downcast::<PointerEvent>().unwrap();
                 is_dragging.set(true);
@@ -131,10 +136,8 @@ pub fn TapeMeasure(props: TapeMeasureProps) -> Element {
                 last_update_time.set(js_sys::Date::now());
                 velocity.set(0.0);
 
-                if let Some(target) = e.target() {
-                    if let Ok(element) = target.dyn_into::<web_sys::Element>() {
-                        let _ = element.set_pointer_capture(e.pointer_id());
-                    }
+                if let Some(el) = container_element.peek().as_ref() {
+                    let _ = el.set_pointer_capture(e.pointer_id());
                 }
             },
             onpointermove: move |evt| {
@@ -157,7 +160,7 @@ pub fn TapeMeasure(props: TapeMeasureProps) -> Element {
 
                     if delta_t > 0.0 {
                         let inst_velocity = delta_x / delta_t * 16.0;
-                        velocity.with_mut(|v| *v = *v * 0.4 + inst_velocity * 0.6); // More reactive
+                        velocity.with_mut(|v| *v = *v * 0.5 + inst_velocity * 0.5);
                     }
 
                     last_pointer_x.set(current_x);
@@ -172,10 +175,8 @@ pub fn TapeMeasure(props: TapeMeasureProps) -> Element {
                     if velocity().abs() <= VELOCITY_THRESHOLD {
                         is_snapping.set(true);
                     }
-                    if let Some(target) = e.target() {
-                        if let Ok(element) = target.dyn_into::<web_sys::Element>() {
-                            let _ = element.release_pointer_capture(e.pointer_id());
-                        }
+                    if let Some(el) = container_element.peek().as_ref() {
+                        let _ = el.release_pointer_capture(e.pointer_id());
                     }
                 }
             },
@@ -184,10 +185,8 @@ pub fn TapeMeasure(props: TapeMeasureProps) -> Element {
                     let e = evt.data.downcast::<PointerEvent>().unwrap();
                     is_dragging.set(false);
                     is_snapping.set(true); // Snap immediately on cancel
-                    if let Some(target) = e.target() {
-                        if let Ok(element) = target.dyn_into::<web_sys::Element>() {
-                            let _ = element.release_pointer_capture(e.pointer_id());
-                        }
+                    if let Some(el) = container_element.peek().as_ref() {
+                        let _ = el.release_pointer_capture(e.pointer_id());
                     }
                 }
             },
@@ -197,7 +196,7 @@ pub fn TapeMeasure(props: TapeMeasureProps) -> Element {
                     is_snapping.set(true);
                 }
             },
-            // Removed onpointerleave and onpointerout as requested to trust pointer capture.
+            // trust pointer capture for out-of-bounds movement.
 
             svg {
                 view_box: "0 0 {VIEWPORT_WIDTH} {VIEWPORT_HEIGHT}",
