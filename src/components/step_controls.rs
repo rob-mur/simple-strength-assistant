@@ -27,12 +27,12 @@ pub fn StepControls(props: StepControlsProps) -> Element {
 
     rsx! {
         div {
-            class: "flex justify-between items-center w-full mt-4 px-1",
-            style: "width: 100%; min-width: 100%;",
+            class: "flex flex-row justify-between items-center w-full mt-4 px-1 gap-4",
+            style: "width: 100%;",
 
             // Left side (Decrements)
             div {
-                class: "flex gap-2 justify-start",
+                class: "flex-1 flex justify-start gap-2",
                 for step in neg_steps {
                     {
                         rsx! {
@@ -54,7 +54,7 @@ pub fn StepControls(props: StepControlsProps) -> Element {
 
             // Right side (Increments)
             div {
-                class: "flex gap-2 justify-end",
+                class: "flex-1 flex justify-end gap-2",
                 for step in pos_steps {
                     {
                         rsx! {

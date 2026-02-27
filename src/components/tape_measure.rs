@@ -11,8 +11,8 @@ pub struct TapeMeasureProps {
 }
 
 const PIXELS_PER_STEP: f64 = 60.0;
-const FRICTION: f64 = 0.92; // Slightly more glide than 0.88
-const VELOCITY_THRESHOLD: f64 = 0.01; // Much lower to allow slow slides to finish
+const FRICTION: f64 = 0.85; // Faster deceleration
+const VELOCITY_THRESHOLD: f64 = 0.5; // Trigger snap much sooner
 const SNAP_STIFFNESS: f64 = 0.25;
 const VIEWPORT_WIDTH: f64 = 300.0;
 const VIEWPORT_HEIGHT: f64 = 80.0;
