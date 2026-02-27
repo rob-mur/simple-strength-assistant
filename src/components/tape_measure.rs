@@ -33,8 +33,9 @@ pub fn TapeMeasure(props: TapeMeasureProps) -> Element {
     // We use peek() to avoid re-triggering this effect when internal state changes.
     use_effect(move || {
         let v = props.value;
-        if !*is_dragging.peek() && !*is_snapping.peek() && *velocity.peek() == 0.0 {
+        if !*is_dragging.peek() && !*is_snapping.peek() {
             offset.set((v - props.min) / props.step * -PIXELS_PER_STEP);
+            velocity.set(0.0); // Stop any residual momentum when syncing externally
         }
     });
 

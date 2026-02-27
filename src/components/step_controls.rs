@@ -11,29 +11,65 @@ pub struct StepControlsProps {
 
 #[component]
 pub fn StepControls(props: StepControlsProps) -> Element {
+    let mut neg_steps = Vec::new();
+    let mut pos_steps = Vec::new();
+
+    for &step in &props.steps {
+        if step < 0.0 {
+            neg_steps.push(step);
+        } else {
+            pos_steps.push(step);
+        }
+    }
+
+    // Sort to ensure consistent order (e.g., more negative values first)
+    neg_steps.sort_by(|a, b| a.partial_cmp(b).unwrap());
+    pos_steps.sort_by(|a, b| a.partial_cmp(b).unwrap());
+
     rsx! {
         div {
-            class: "flex justify-center mt-2 overflow-x-auto",
-            div {
-                class: "join w-full flex-nowrap",
-                for step in props.steps {
-                    {
-                        let is_negative = step < 0.0;
-                        let abs_step = step.abs();
-                        let label = format!("{}{}", if is_negative { "-" } else { "+" }, abs_step);
-                        let btn_class = if is_negative { "btn-outline btn-error" } else { "btn-outline btn-success" };
+            class: "flex justify-between items-center w-full px-2 mt-4",
 
+            // Left side (Decrements)
+            div {
+                class: "flex gap-2",
+                for step in neg_steps {
+                    {
                         rsx! {
                             button {
                                 key: "{step}",
-                                class: "join-item btn btn-xs sm:btn-sm flex-1 {btn_class}",
+                                class: "btn btn-circle btn-outline btn-error btn-sm",
                                 onclick: move |_| {
                                     let new_val = (props.value + step).clamp(props.min, props.max);
                                     if (new_val - props.value).abs() > 0.001 {
                                         props.on_change.call(new_val);
                                     }
                                 },
-                                {label}
+                                // Compact label, e.g. -10
+                                "{step}"
+                            }
+                        }
+                    }
+                }
+            }
+
+            // Right side (Increments)
+            div {
+                class: "flex gap-2",
+                for step in pos_steps {
+                    {
+                        rsx! {
+                            button {
+                                key: "{step}",
+                                class: "btn btn-circle btn-outline btn-success btn-sm",
+                                onclick: move |_| {
+                                    let new_val = (props.value + step).clamp(props.min, props.max);
+                                    if (new_val - props.value).abs() > 0.001 {
+                                        props.on_change.call(new_val);
+                                    }
+                                },
+                                // Compact label, e.g. +10
+                                "+{step}"
                             }
                         }
                     }

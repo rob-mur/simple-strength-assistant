@@ -3,7 +3,7 @@ status: complete
 phase: 06-jump-controls
 source: [.planning/phases/06-jump-controls/06-01-SUMMARY.md]
 started: 2026-02-27T12:00:00Z
-updated: 2026-02-27T12:45:00Z
+updated: 2026-02-27T13:00:00Z
 ---
 
 ## Current Test
@@ -70,32 +70,32 @@ skipped: 0
   severity: minor
   test: 1
   artifacts: ["src/app.rs"]
-  missing: []
+  diagnosis: "Current implementation shows 8 buttons for weight. Will reduce to just ±10 (or a more focused set) as requested."
 - truth: "Tapping jump buttons should immediately update the TapeMeasure position."
   status: failed
   reason: "User reported: tapping does update the displayed number but it doesmt update the tape measure"
   severity: major
   test: 6
-  artifacts: ["src/components/tape_measure.rs", "src/components/step_controls.rs"]
-  missing: []
+  artifacts: ["src/components/tape_measure.rs"]
+  diagnosis: "The `use_effect` in `TapeMeasure` responsible for external sync has a condition `*velocity.peek() == 0.0`. If a previous interaction left a tiny residual velocity (below `VELOCITY_THRESHOLD`), the sync never triggers. Also, `offset` calculation needs to be more robust against floating point errors."
 - truth: "Decrease button should be far left and increase button far right."
   status: failed
   reason: "User reported: i wpuld also prefer if the buttons were spaced so that the decrease is far left and the increase is far right"
   severity: minor
   test: 2
   artifacts: ["src/components/step_controls.rs"]
-  missing: []
+  diagnosis: "Current implementation uses a DaisyUI `join` group which puts all buttons together in the center. Will change to a layout with 'Decrease' on far left and 'Increase' on far right."
 - truth: "Reps buttons should sync with Reps display/measure."
   status: failed
   reason: "User reported: updates the count but not the measure"
   severity: major
   test: 4
-  artifacts: ["src/app.rs", "src/components/tape_measure.rs"]
-  missing: []
+  artifacts: ["src/components/tape_measure.rs"]
+  diagnosis: "Same root cause as Weight sync: `TapeMeasure`'s external sync effect is too restrictive or failing to detect the change."
 - truth: "Jump buttons should respect exercise increment (step) to avoid invalid values."
   status: failed
   reason: "User reported: this shouldnt be possible. is it invalid for the buttons to not be a multiple of the increment"
   severity: minor
   test: 7
   artifacts: ["src/app.rs", "src/components/step_controls.rs"]
-  missing: []
+  diagnosis: "Current buttons use hardcoded values like ±1 and ±10. If exercise increment is 2.5kg, ±1kg creates 'invalid' values relative to the tape measure steps. Will update buttons to be multiples of the exercise `step` (e.g., ±1 * step, ±2 * step)."

@@ -835,7 +835,7 @@ fn ActiveSession(state: WorkoutState, session: crate::state::WorkoutSession) -> 
                                 }
                                 StepControls {
                                     value: weight_input(),
-                                    steps: vec![-25.0, -10.0, -5.0, -1.0, 1.0, 5.0, 10.0, 25.0],
+                                    steps: vec![-(increment as f64) * 4.0, -(increment as f64), increment as f64, (increment as f64) * 4.0],
                                     min: min_weight as f64,
                                     max: 500.0,
                                     on_change: move |val| weight_input.set(val)
