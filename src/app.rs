@@ -811,14 +811,14 @@ fn ActiveSession(state: WorkoutState, session: crate::state::WorkoutSession) -> 
                         "Log New Set"
                     }
                     div {
-                        class: "flex flex-col gap-6 items-stretch w-full",
+                        class: "flex flex-col gap-10 items-stretch w-full",
                         if let SetTypeConfig::Weighted { min_weight, increment } = session_for_display.exercise.set_type_config {
                             div {
                                 class: "form-control w-full",
                                 label {
                                     class: "label",
                                     span {
-                                        class: "label-text font-bold",
+                                        class: "label-text font-bold text-lg",
                                         "Weight (kg)"
                                     }
                                 }
@@ -830,7 +830,7 @@ fn ActiveSession(state: WorkoutState, session: crate::state::WorkoutSession) -> 
                                     on_change: move |val| weight_input.set(val)
                                 }
                                 div {
-                                    class: "text-center text-2xl font-bold text-primary mt-2",
+                                    class: "text-center text-3xl font-black text-primary mt-2",
                                     "{weight_input} kg"
                                 }
                                 StepControls {
@@ -840,6 +840,7 @@ fn ActiveSession(state: WorkoutState, session: crate::state::WorkoutSession) -> 
                                     max: 500.0,
                                     on_change: move |val| weight_input.set(val)
                                 }
+                                div { class: "divider mt-8" }
                             }
                         }
                         div {
@@ -847,7 +848,7 @@ fn ActiveSession(state: WorkoutState, session: crate::state::WorkoutSession) -> 
                             label {
                                 class: "label",
                                 span {
-                                    class: "label-text font-bold",
+                                    class: "label-text font-bold text-lg",
                                     "Reps"
                                 }
                             }
@@ -859,7 +860,7 @@ fn ActiveSession(state: WorkoutState, session: crate::state::WorkoutSession) -> 
                                 on_change: move |val| reps_input.set(val)
                             }
                             div {
-                                class: "text-center text-2xl font-bold text-primary mt-2",
+                                class: "text-center text-3xl font-black text-primary mt-2",
                                 "{reps_input} reps"
                             }
                             StepControls {
@@ -869,13 +870,14 @@ fn ActiveSession(state: WorkoutState, session: crate::state::WorkoutSession) -> 
                                 max: 100.0,
                                 on_change: move |val| reps_input.set(val)
                             }
+                            div { class: "divider mt-8" }
                         }
                         div {
                             class: "form-control w-full",
                             label {
                                 class: "label",
                                 span {
-                                    class: "label-text font-bold",
+                                    class: "label-text font-bold text-lg",
                                     "RPE (Rate of Perceived Exertion)"
                                 }
                             }

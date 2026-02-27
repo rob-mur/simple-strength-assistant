@@ -27,25 +27,37 @@ pub fn StepControls(props: StepControlsProps) -> Element {
 
     rsx! {
         div {
-            class: "flex flex-row justify-between items-center w-full mt-4 px-1 gap-4",
+            class: "flex flex-row justify-between items-center w-full mt-6 px-1 gap-4",
             style: "width: 100%;",
 
             // Left side (Decrements)
             div {
-                class: "flex-1 flex justify-start gap-2",
+                class: "flex-1 flex justify-start gap-3",
                 for step in neg_steps {
                     {
                         rsx! {
                             button {
                                 key: "{step}",
-                                class: "btn btn-circle btn-outline btn-error btn-sm",
+                                class: "btn btn-circle btn-md shadow-lg glass border-2 border-error/30 hover:border-error text-error transition-all hover:scale-110 active:scale-95",
                                 onclick: move |_| {
                                     let new_val = (props.value + step).clamp(props.min, props.max);
                                     if (new_val - props.value).abs() > 0.001 {
                                         props.on_change.call(new_val);
                                     }
                                 },
-                                "{step}"
+                                div {
+                                    class: "flex flex-col items-center justify-center gap-0",
+                                    svg {
+                                        xmlns: "http://www.w3.org/2000/svg",
+                                        fill: "none",
+                                        view_box: "0 0 24 24",
+                                        stroke_width: "4",
+                                        stroke: "currentColor",
+                                        class: "w-4 h-4",
+                                        path { stroke_linecap: "round", stroke_linejoin: "round", d: "M5 12h14" }
+                                    }
+                                    span { class: "text-xs font-black", "{step.abs()}" }
+                                }
                             }
                         }
                     }
@@ -54,20 +66,32 @@ pub fn StepControls(props: StepControlsProps) -> Element {
 
             // Right side (Increments)
             div {
-                class: "flex-1 flex justify-end gap-2",
+                class: "flex-1 flex justify-end gap-3",
                 for step in pos_steps {
                     {
                         rsx! {
                             button {
                                 key: "{step}",
-                                class: "btn btn-circle btn-outline btn-success btn-sm",
+                                class: "btn btn-circle btn-md shadow-lg glass border-2 border-success/30 hover:border-success text-success transition-all hover:scale-110 active:scale-95",
                                 onclick: move |_| {
                                     let new_val = (props.value + step).clamp(props.min, props.max);
                                     if (new_val - props.value).abs() > 0.001 {
                                         props.on_change.call(new_val);
                                     }
                                 },
-                                "+{step}"
+                                div {
+                                    class: "flex flex-col items-center justify-center gap-0",
+                                    svg {
+                                        xmlns: "http://www.w3.org/2000/svg",
+                                        fill: "none",
+                                        view_box: "0 0 24 24",
+                                        stroke_width: "4",
+                                        stroke: "currentColor",
+                                        class: "w-4 h-4",
+                                        path { stroke_linecap: "round", stroke_linejoin: "round", d: "M12 4.5v15m7.5-7.5h-15" }
+                                    }
+                                    span { class: "text-xs font-black", "{step.abs()}" }
+                                }
                             }
                         }
                     }
