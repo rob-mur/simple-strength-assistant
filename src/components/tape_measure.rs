@@ -29,15 +29,13 @@ pub fn TapeMeasure(props: TapeMeasureProps) -> Element {
     let mut last_update_time = use_signal(|| 0.0);
     let mut is_snapping = use_signal(|| false);
 
-    // Sync offset if props.value changes from outside (and we are not interacting)
-    // We use peek() to avoid re-triggering this effect when internal state changes.
-    use_effect(move || {
-        let v = props.value;
-        if !*is_dragging.peek() && !*is_snapping.peek() {
-            offset.set((v - props.min) / props.step * -PIXELS_PER_STEP);
-            velocity.set(0.0); // Stop any residual momentum when syncing externally
-        }
-    });
+    // Sync state if props change (prop-to-signal sync pattern)
+    let mut last_value = use_signal(|| props.value);
+    if props.value != *last_value.read() && !*is_dragging.peek() && !*is_snapping.peek() {
+        last_value.set(props.value);
+        offset.set((props.value - props.min) / props.step * -PIXELS_PER_STEP);
+        velocity.set(0.0);
+    }
 
     // Momentum and Snapping Loop
     use_future(move || async move {

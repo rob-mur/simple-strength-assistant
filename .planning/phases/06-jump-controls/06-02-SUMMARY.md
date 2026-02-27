@@ -7,18 +7,21 @@ Refined the Jump & Step Controls to address UI crowding and synchronization issu
 
 ## Changes Implemented
 
-### 1. TapeMeasure Synchronization
-- **Issue:** External updates (via buttons) were not always syncing the TapeMeasure position if there was residual velocity.
-- **Fix:** Loosened the `use_effect` condition in `src/components/tape_measure.rs`. It now syncs whenever `!is_dragging` and `!is_snapping`. It also explicitly resets `velocity` to `0.0` when an external sync occurs.
+### 1. TapeMeasure Synchronization (REFINED)
+- **Issue:** External updates (via buttons) were not always syncing the TapeMeasure position. The `use_effect` was not reliably tracking prop changes.
+- **Fix:** Implemented a prop-to-signal sync pattern in `src/components/tape_measure.rs`. It now tracks `last_value` and explicitly updates `offset` and `velocity` whenever `props.value` changes from the outside.
 
-### 2. StepControls Layout & Visuals
-- **Issue:** Buttons were cramped in a center group, and users wanted a clear left/right distinction for decrease/increase.
-- **Fix:** Redesigned `src/components/step_controls.rs` to use a spread layout (`flex justify-between`).
-- **Visuals:** Used circular outline buttons (`btn-circle btn-outline`) with `btn-error` (red) for decreases on the left and `btn-success` (green) for increases on the right.
+### 2. StepControls Layout & Visuals (REFINED)
+- **Issue:** Spacing was off (left-aligned) and user wanted only one set of buttons.
+- **Fix:** Redesigned `src/components/step_controls.rs` to use `justify-between` and `w-full`. Applied `ml-auto` to the positive buttons to guarantee they are pushed to the far right.
+- **Visuals:** Circular outline buttons (`btn-circle btn-outline`) with color coding.
 
-### 3. Simplified & Dynamic Weight Steps
-- **Issue:** Too many weight buttons (8) caused crowding. Fixed values (±1, ±10) could lead to "invalid" increments relative to exercise steps.
-- **Fix:** Reduced weight buttons to 4: `±1 * increment` and `±4 * increment`. This ensures all button jumps are aligned with the exercise's defined step and keeps the UI clean.
+### 3. Simplified Weight Steps (REFINED)
+- **Issue:** User wanted only one pair of buttons per slider.
+- **Fix:** Reduced weight buttons to a single pair (`±10.0kg`) in `src/app.rs`. Reps remains at `±1.0`.
+
+### 4. Layout Robustness
+- **Fix:** Added `w-full` and `items-stretch` to the `ActiveSession` input containers to ensure child components expand to the full width of the card.
 
 ## Verification Results
 

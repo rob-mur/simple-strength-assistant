@@ -811,10 +811,10 @@ fn ActiveSession(state: WorkoutState, session: crate::state::WorkoutSession) -> 
                         "Log New Set"
                     }
                     div {
-                        class: "flex flex-col gap-6",
+                        class: "flex flex-col gap-6 items-stretch w-full",
                         if let SetTypeConfig::Weighted { min_weight, increment } = session_for_display.exercise.set_type_config {
                             div {
-                                class: "form-control",
+                                class: "form-control w-full",
                                 label {
                                     class: "label",
                                     span {
@@ -835,7 +835,7 @@ fn ActiveSession(state: WorkoutState, session: crate::state::WorkoutSession) -> 
                                 }
                                 StepControls {
                                     value: weight_input(),
-                                    steps: vec![-(increment as f64) * 4.0, -(increment as f64), increment as f64, (increment as f64) * 4.0],
+                                    steps: vec![-10.0, 10.0],
                                     min: min_weight as f64,
                                     max: 500.0,
                                     on_change: move |val| weight_input.set(val)
@@ -843,7 +843,7 @@ fn ActiveSession(state: WorkoutState, session: crate::state::WorkoutSession) -> 
                             }
                         }
                         div {
-                            class: "form-control",
+                            class: "form-control w-full",
                             label {
                                 class: "label",
                                 span {
