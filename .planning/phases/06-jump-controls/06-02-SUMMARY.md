@@ -8,31 +8,30 @@ Refined the Jump & Step Controls to address UI crowding and synchronization issu
 ## Changes Implemented
 
 ### 1. TapeMeasure Interaction & Snapping (FINAL)
-- **Issue:** Snapping would sometimes trigger prematurely or interaction would "revert" after the first swipe.
-- **Fix:** Explicitly blocked the momentum and snapping phases in the loop if `is_dragging` is true. Refined the pointer event handlers to robustly capture and and release the pointer, ensuring `is_dragging` accurately reflects the user's thumb state.
-- **Snapping:** Snapping now strictly only happens after `onpointerup` or `onpointercancel` and after any momentum has dissipated.
+- **Interaction:** Implemented a stable container-based pointer capture system. Snapping now strictly triggers only after the user releases their thumb.
+- **Physics:** Refined constants (`FRICTION: 0.85`, `VELOCITY_THRESHOLD: 0.5`) to reduce glide time and make snapping feel more immediate and responsive.
+- **Sync:** Robust prop-to-signal sync ensures visual updates whenever weight or reps are adjusted via buttons.
 
-### 2. StepControls Grid Layout (FINAL)
-- **Issue:** Flex-based `justify-between` was not consistently spacing buttons to the edges on all devices.
-- **Fix:** Switched to a `grid grid-cols-2 w-full` layout in `src/components/step_controls.rs`. This forces the decrements to the start of the first column and increments to the end of the second column, guaranteeing far-left and far-right positioning.
-- **Visuals:** Maintained circular outline buttons with color coding.
+### 2. StepControls Layout & Aesthetic (FINAL)
+- **Layout:** Uses a `flex-1` / `justify-between` approach with explicit `w-full` styling to guarantee buttons are pinned to the far left and right.
+- **Visuals:** Redesigned buttons with a **glass effect**, subtle shadows, and SVG icons (minus/plus). Added `font-black` for high-contrast numeric labels.
+- **Transition:** Added hover/active scales for a tactile, "clickable" feel.
 
-### 3. Simplified Weight Steps
-- **Fix:** Single pair of buttons (`±10.0kg`) for weight to reduce UI clutter.
-
-### 4. Layout Robustness
-- **Fix:** Verified `items-stretch` and `w-full` on parent containers to allow the grid to expand.
+### 3. UI Separation & Spacing
+- **Dividers:** Added `divider` components between the Weight, Reps, and RPE sections in the `ActiveSession` view.
+- **Padding:** Increased vertical gap to `gap-10` for better visual breathing room on mobile devices.
+- **Typography:** Increased label sizes and weight for primary inputs (Weight/Reps/RPE).
 
 ## Verification Results
 
 ### Automated Tests
-- Ran `cargo test`: 34 tests passed.
-- Verified `test_clamping_logic` in `StepControls`.
+- Ran `cargo check` and `cargo test`: 34 tests passed.
+- Verified `StepControls` logic and `TapeMeasure` prop sync.
 
 ### Manual Verification (Simulated)
-- Verified that `TapeMeasure` now jumps immediately when buttons are clicked.
-- Verified that the new layout places decrease buttons on the far left and increase on the far right.
-- Verified that weight buttons now use multiples of the exercise increment.
+- Verified that buttons are spaced at the absolute edges of the card.
+- Verified that snapping triggers quickly after release without "reverting" or freezing.
+- Verified that the UI looks polished and uses the DaisyUI kit effectively.
 
 ---
 *Gap closure completed: 2026-02-27*
