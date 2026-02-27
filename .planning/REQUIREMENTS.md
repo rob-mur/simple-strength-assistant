@@ -58,8 +58,8 @@ Requirements for the tactile, "no-typing" interface.
 | RPE-01 | Phase 5 | Pending |
 | RPE-02 | Phase 5 | Pending |
 | RPE-03 | Phase 5 | Pending |
-| STEP-01 | Phase 6 | Pending |
-| STEP-02 | Phase 6 | Pending |
+| STEP-01 | Phase 6 | Complete |
+| STEP-02 | Phase 6 | Complete |
 | INT-01 | Phase 7 | Pending |
 | INT-02 | Phase 7 | Pending |
 | INT-03 | Phase 7 | Pending |

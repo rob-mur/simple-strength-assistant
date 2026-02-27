@@ -70,10 +70,13 @@ pub fn TapeMeasure(props: TapeMeasureProps) -> Element {
 
                 velocity.set(new_v);
                 offset.set(new_o);
-                is_snapping.set(false);
-            } else if !is_dragging() {
+
+                // If velocity dropped below threshold, trigger snapping
+                if new_v.abs() <= VELOCITY_THRESHOLD {
+                    is_snapping.set(true);
+                }
+            } else if !is_dragging() && is_snapping() {
                 // Snapping Phase
-                is_snapping.set(true);
                 let target_offset =
                     (current_offset_val / PIXELS_PER_STEP).round() * PIXELS_PER_STEP;
                 let diff = target_offset - current_offset_val;
@@ -163,6 +166,9 @@ pub fn TapeMeasure(props: TapeMeasureProps) -> Element {
                 if is_dragging() {
                     let e = evt.data.downcast::<PointerEvent>().unwrap();
                     is_dragging.set(false);
+                    if velocity().abs() <= VELOCITY_THRESHOLD {
+                        is_snapping.set(true);
+                    }
                     if let Some(target) = e.target() {
                         if let Ok(element) = target.dyn_into::<web_sys::Element>() {
                             let _ = element.release_pointer_capture(e.pointer_id());

@@ -11,7 +11,7 @@
 |---|-------|------|--------------|------------------|
 | 4 | **Tape Measure** | Core implementation of swipeable inputs for Reps & Weight. | TAPE-[01-05] | **Plans:** 3 plans |
 | 5 | **RPE Slider** | Discrete slider-based input for RPE (1-10 in 0.5 steps). | RPE-[01-03] | 1 |
-| 6 | **Jump Controls** | Buttons for rapid adjustment (±1, ±5, ±10, ±25). | STEP-[01-02] | 1 |
+| 6 | **Jump Controls** | Buttons for rapid adjustment (±1, ±5, ±10, ±25). | STEP-[01-02] | ✓ |
 | 7 | **UI Integration** | Replace current inputs and sync with global state. | INT-[01-03] | 2 |
 
 ---

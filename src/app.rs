@@ -1,4 +1,5 @@
 use crate::components::rpe_slider::RPESlider;
+use crate::components::step_controls::StepControls;
 use crate::components::tape_measure::TapeMeasure;
 use crate::models::{CompletedSet, ExerciseMetadata, SetType, SetTypeConfig};
 use crate::state::{InitializationState, WorkoutError, WorkoutState, WorkoutStateManager};
@@ -832,6 +833,13 @@ fn ActiveSession(state: WorkoutState, session: crate::state::WorkoutSession) -> 
                                     class: "text-center text-2xl font-bold text-primary mt-2",
                                     "{weight_input} kg"
                                 }
+                                StepControls {
+                                    value: weight_input(),
+                                    steps: vec![-25.0, -10.0, -5.0, -1.0, 1.0, 5.0, 10.0, 25.0],
+                                    min: min_weight as f64,
+                                    max: 500.0,
+                                    on_change: move |val| weight_input.set(val)
+                                }
                             }
                         }
                         div {
@@ -853,6 +861,13 @@ fn ActiveSession(state: WorkoutState, session: crate::state::WorkoutSession) -> 
                             div {
                                 class: "text-center text-2xl font-bold text-primary mt-2",
                                 "{reps_input} reps"
+                            }
+                            StepControls {
+                                value: reps_input(),
+                                steps: vec![-1.0, 1.0],
+                                min: 1.0,
+                                max: 100.0,
+                                on_change: move |val| reps_input.set(val)
                             }
                         }
                         div {
