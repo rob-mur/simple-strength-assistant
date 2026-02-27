@@ -7,18 +7,21 @@ Refined the Jump & Step Controls to address UI crowding and synchronization issu
 
 ## Changes Implemented
 
-### 1. TapeMeasure Synchronization & Robustness (FINAL)
-- **Issue:** Swipe interaction would freeze if the thumb moved out of bounds vertically.
-- **Fix:** Added comprehensive pointer event handlers (`onpointercancel`, `onlostpointercapture`, `onpointerleave`) to `src/components/tape_measure.rs` to ensure `is_dragging` is always reset, regardless of how the interaction ends.
-- **Prop Sync:** Maintained the prop-to-signal sync pattern for reliable visual updates from buttons.
+### 1. TapeMeasure Interaction & Snapping (FINAL)
+- **Issue:** Snapping would sometimes trigger prematurely or interaction would "revert" after the first swipe.
+- **Fix:** Explicitly blocked the momentum and snapping phases in the loop if `is_dragging` is true. Refined the pointer event handlers to robustly capture and and release the pointer, ensuring `is_dragging` accurately reflects the user's thumb state.
+- **Snapping:** Snapping now strictly only happens after `onpointerup` or `onpointercancel` and after any momentum has dissipated.
 
-### 2. StepControls Layout & Alignment (FINAL)
-- **Issue:** Buttons were still appearing left-aligned despite using `justify-between`.
-- **Fix:** Ensured the parent container in `src/app.rs` also applies `w-full` to the `StepControls` wrapper, allowing it to expand and push buttons to the far left and right.
-- **Visuals:** Simplified to one pair of buttons per slider (±10.0kg weight, ±1.0 reps) with circular outline styling.
+### 2. StepControls Grid Layout (FINAL)
+- **Issue:** Flex-based `justify-between` was not consistently spacing buttons to the edges on all devices.
+- **Fix:** Switched to a `grid grid-cols-2 w-full` layout in `src/components/step_controls.rs`. This forces the decrements to the start of the first column and increments to the end of the second column, guaranteeing far-left and far-right positioning.
+- **Visuals:** Maintained circular outline buttons with color coding.
 
-### 3. Layout Robustness
-- **Fix:** Added `items-stretch` and `w-full` to exercise input containers in `ActiveSession`.
+### 3. Simplified Weight Steps
+- **Fix:** Single pair of buttons (`±10.0kg`) for weight to reduce UI clutter.
+
+### 4. Layout Robustness
+- **Fix:** Verified `items-stretch` and `w-full` on parent containers to allow the grid to expand.
 
 ## Verification Results
 

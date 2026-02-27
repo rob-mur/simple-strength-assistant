@@ -42,7 +42,8 @@ pub fn TapeMeasure(props: TapeMeasureProps) -> Element {
         loop {
             gloo_timers::future::sleep(std::time::Duration::from_millis(16)).await;
 
-            if is_dragging() {
+            // NEVER snap while the user is actively dragging.
+            if *is_dragging.peek() {
                 continue;
             }
 
@@ -50,7 +51,7 @@ pub fn TapeMeasure(props: TapeMeasureProps) -> Element {
             let current_offset_val: f64 = offset();
 
             if current_velocity_val.abs() > VELOCITY_THRESHOLD {
-                // Momentum Phase
+                // Momentum Phase (Only runs after release)
                 let mut new_v = current_velocity_val * FRICTION;
                 let mut new_o = current_offset_val + new_v;
 
@@ -70,11 +71,11 @@ pub fn TapeMeasure(props: TapeMeasureProps) -> Element {
                 velocity.set(new_v);
                 offset.set(new_o);
 
-                // If velocity dropped below threshold, trigger snapping
+                // When velocity stops, trigger snap
                 if new_v.abs() <= VELOCITY_THRESHOLD {
                     is_snapping.set(true);
                 }
-            } else if !is_dragging() && is_snapping() {
+            } else if is_snapping() {
                 // Snapping Phase
                 let target_offset =
                     (current_offset_val / PIXELS_PER_STEP).round() * PIXELS_PER_STEP;
@@ -165,9 +166,7 @@ pub fn TapeMeasure(props: TapeMeasureProps) -> Element {
                 if is_dragging() {
                     let e = evt.data.downcast::<PointerEvent>().unwrap();
                     is_dragging.set(false);
-                    if velocity().abs() <= VELOCITY_THRESHOLD {
-                        is_snapping.set(true);
-                    }
+                    // Momentum loop will take over and then snap
                     if let Some(target) = e.target() {
                         if let Ok(element) = target.dyn_into::<web_sys::Element>() {
                             let _ = element.release_pointer_capture(e.pointer_id());
@@ -179,7 +178,7 @@ pub fn TapeMeasure(props: TapeMeasureProps) -> Element {
                 if is_dragging() {
                     let e = evt.data.downcast::<PointerEvent>().unwrap();
                     is_dragging.set(false);
-                    is_snapping.set(true);
+                    is_snapping.set(true); // Snap immediately on cancel
                     if let Some(target) = e.target() {
                         if let Ok(element) = target.dyn_into::<web_sys::Element>() {
                             let _ = element.release_pointer_capture(e.pointer_id());
@@ -193,7 +192,7 @@ pub fn TapeMeasure(props: TapeMeasureProps) -> Element {
                     is_snapping.set(true);
                 }
             },
-            // Removed onpointerleave and onpointerout to allow out-of-bounds swiping
+            // Removed onpointerleave and onpointerout as requested to trust pointer capture.
 
             svg {
                 view_box: "0 0 {VIEWPORT_WIDTH} {VIEWPORT_HEIGHT}",

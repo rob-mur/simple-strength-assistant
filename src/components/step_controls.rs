@@ -22,17 +22,16 @@ pub fn StepControls(props: StepControlsProps) -> Element {
         }
     }
 
-    // Sort to ensure consistent order (e.g., more negative values first)
     neg_steps.sort_by(|a, b| a.partial_cmp(b).unwrap());
     pos_steps.sort_by(|a, b| a.partial_cmp(b).unwrap());
 
     rsx! {
         div {
-            class: "flex justify-between items-center w-full px-2 mt-4",
+            class: "grid grid-cols-2 w-full mt-4",
 
             // Left side (Decrements)
             div {
-                class: "flex gap-2",
+                class: "flex justify-start items-center gap-2",
                 for step in neg_steps {
                     {
                         rsx! {
@@ -45,7 +44,6 @@ pub fn StepControls(props: StepControlsProps) -> Element {
                                         props.on_change.call(new_val);
                                     }
                                 },
-                                // Compact label, e.g. -10
                                 "{step}"
                             }
                         }
@@ -55,7 +53,7 @@ pub fn StepControls(props: StepControlsProps) -> Element {
 
             // Right side (Increments)
             div {
-                class: "flex gap-2",
+                class: "flex justify-end items-center gap-2",
                 for step in pos_steps {
                     {
                         rsx! {
@@ -68,7 +66,6 @@ pub fn StepControls(props: StepControlsProps) -> Element {
                                         props.on_change.call(new_val);
                                     }
                                 },
-                                // Compact label, e.g. +10
                                 "+{step}"
                             }
                         }
