@@ -175,6 +175,31 @@ pub fn TapeMeasure(props: TapeMeasureProps) -> Element {
                     }
                 }
             },
+            onpointercancel: move |evt| {
+                if is_dragging() {
+                    let e = evt.data.downcast::<PointerEvent>().unwrap();
+                    is_dragging.set(false);
+                    is_snapping.set(true);
+                    if let Some(target) = e.target() {
+                        if let Ok(element) = target.dyn_into::<web_sys::Element>() {
+                            let _ = element.release_pointer_capture(e.pointer_id());
+                        }
+                    }
+                }
+            },
+            onlostpointercapture: move |_| {
+                if is_dragging() {
+                    is_dragging.set(false);
+                    is_snapping.set(true);
+                }
+            },
+            onpointerleave: move |_| {
+                // Failsafe for when capture is not supported or fails
+                if is_dragging() {
+                    is_dragging.set(false);
+                    is_snapping.set(true);
+                }
+            },
 
             svg {
                 view_box: "0 0 {VIEWPORT_WIDTH} {VIEWPORT_HEIGHT}",

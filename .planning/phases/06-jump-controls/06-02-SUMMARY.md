@@ -7,21 +7,18 @@ Refined the Jump & Step Controls to address UI crowding and synchronization issu
 
 ## Changes Implemented
 
-### 1. TapeMeasure Synchronization (REFINED)
-- **Issue:** External updates (via buttons) were not always syncing the TapeMeasure position. The `use_effect` was not reliably tracking prop changes.
-- **Fix:** Implemented a prop-to-signal sync pattern in `src/components/tape_measure.rs`. It now tracks `last_value` and explicitly updates `offset` and `velocity` whenever `props.value` changes from the outside.
+### 1. TapeMeasure Synchronization & Robustness (FINAL)
+- **Issue:** Swipe interaction would freeze if the thumb moved out of bounds vertically.
+- **Fix:** Added comprehensive pointer event handlers (`onpointercancel`, `onlostpointercapture`, `onpointerleave`) to `src/components/tape_measure.rs` to ensure `is_dragging` is always reset, regardless of how the interaction ends.
+- **Prop Sync:** Maintained the prop-to-signal sync pattern for reliable visual updates from buttons.
 
-### 2. StepControls Layout & Visuals (REFINED)
-- **Issue:** Spacing was off (left-aligned) and user wanted only one set of buttons.
-- **Fix:** Redesigned `src/components/step_controls.rs` to use `justify-between` and `w-full`. Applied `ml-auto` to the positive buttons to guarantee they are pushed to the far right.
-- **Visuals:** Circular outline buttons (`btn-circle btn-outline`) with color coding.
+### 2. StepControls Layout & Alignment (FINAL)
+- **Issue:** Buttons were still appearing left-aligned despite using `justify-between`.
+- **Fix:** Ensured the parent container in `src/app.rs` also applies `w-full` to the `StepControls` wrapper, allowing it to expand and push buttons to the far left and right.
+- **Visuals:** Simplified to one pair of buttons per slider (±10.0kg weight, ±1.0 reps) with circular outline styling.
 
-### 3. Simplified Weight Steps (REFINED)
-- **Issue:** User wanted only one pair of buttons per slider.
-- **Fix:** Reduced weight buttons to a single pair (`±10.0kg`) in `src/app.rs`. Reps remains at `±1.0`.
-
-### 4. Layout Robustness
-- **Fix:** Added `w-full` and `items-stretch` to the `ActiveSession` input containers to ensure child components expand to the full width of the card.
+### 3. Layout Robustness
+- **Fix:** Added `items-stretch` and `w-full` to exercise input containers in `ActiveSession`.
 
 ## Verification Results
 

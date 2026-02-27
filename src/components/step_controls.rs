@@ -55,7 +55,7 @@ pub fn StepControls(props: StepControlsProps) -> Element {
 
             // Right side (Increments)
             div {
-                class: "flex gap-2 ml-auto",
+                class: "flex gap-2",
                 for step in pos_steps {
                     {
                         rsx! {
