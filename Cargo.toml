@@ -39,5 +39,7 @@ tracing = "0.1"
 
 [dev-dependencies]
 wasm-bindgen-test = "0.3"
+cucumber = { version = "0.21", features = ["macros"] }
+tokio = { version = "1", features = ["rt-multi-thread", "macros"] }
 
 
