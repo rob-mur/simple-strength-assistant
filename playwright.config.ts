@@ -21,9 +21,4 @@ export default defineConfig({
       use: { ...devices['iPhone 13'] },
     },
   ],
-  webServer: {
-    command: 'dx serve --port 8080',
-    url: 'http://localhost:8080',
-    reuseExistingServer: !process.env.CI,
-  },
 });

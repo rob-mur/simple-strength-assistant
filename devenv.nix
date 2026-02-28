@@ -32,6 +32,10 @@
     ci-test.exec = "./scripts/ci-test.sh";
   };
 
+  processes = {
+    serve.exec = "dx serve --port 8080";
+  };
+
   git-hooks.hooks = {
     ci-checks = {
       enable = true;
