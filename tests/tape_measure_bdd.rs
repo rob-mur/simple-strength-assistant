@@ -1,6 +1,6 @@
 use cucumber::World;
 
-// mod steps; // Will be added in Task 2
+mod steps;
 
 // Constants from TapeMeasure component
 const PIXELS_PER_STEP: f64 = 60.0;
@@ -153,7 +153,7 @@ impl TapeMeasureWorld {
     }
 }
 
-#[tokio::main]
-async fn main() {
+#[tokio::test]
+async fn run_cucumber_tests() {
     TapeMeasureWorld::cucumber().run("tests/features").await;
 }
