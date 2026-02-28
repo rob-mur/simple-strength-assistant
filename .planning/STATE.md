@@ -22,6 +22,11 @@ progress:
 
 ## What Just Happened
 
+**Quick Task 4 COMPLETE:** Add playwright tests to ci-test script using devenv processes (2026-02-28)
+- Updated devenv.nix to include a serve process
+- Modified playwright.config.ts to remove webServer block
+- Rewrote ci-test.sh to run background processes via devenv for tests
+
 **Quick Task 3 COMPLETE:** PR review comments addressed & E2E tests implemented (2026-02-28)
 - Fixed critical bugs: onmounted downcast, ghost clicks, NaN panic
 - Improved code quality: float formatting, consistent epsilon comparisons, removed redundancy
@@ -91,7 +96,8 @@ None.
 | 1 | Address PR review comments: fix TapeMeasure sync bug, unsafe unwraps, float drift, idle animation guard, and update BDD documentation | 2026-02-28 | a7243f5 | [1-address-pr-review-comments-fix-tapemeasu](./quick/1-address-pr-review-comments-fix-tapemeasu/) |
 | 2 | Implement BDD step definitions for TapeMeasure feature files to verify core interaction behaviors | 2026-02-28 | 4caad8f | [2-implement-bdd-step-definitions-for-tapem](./quick/2-implement-bdd-step-definitions-for-tapem/) |
 | 3 | Address PR review comments & implement Playwright E2E tests: fix critical bugs, improve code quality, add 18 E2E tests | 2026-02-28 | d053403 | [3-address-pr-review-comments-and-implement](./quick/3-address-pr-review-comments-and-implement/) |
+| 4 | please add playwright tests to ci-test script. for any necessary background services use devenv processes | 2026-02-28 | 71d3d5a | [4-please-add-playwright-tests-to-ci-test-s](./quick/4-please-add-playwright-tests-to-ci-test-s/) |
 
 ---
 
-Last activity: 2026-02-28 - Completed quick task 3: Address PR review comments & implement E2E tests
+Last activity: 2026-02-28 - Completed quick task 4: please add playwright tests to ci-test script. for any necessary background services use devenv processes
