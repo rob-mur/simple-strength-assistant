@@ -34,6 +34,7 @@ pub fn TapeMeasure(props: TapeMeasureProps) -> Element {
     if props.value != *last_value.read() && !*is_dragging.peek() && !*is_snapping.peek() {
         last_value.set(props.value);
         offset.set((props.value - props.min) / props.step * -PIXELS_PER_STEP);
+        // Force velocity to 0.0 to ensure sync triggers immediately
         velocity.set(0.0);
     }
 
@@ -50,7 +51,12 @@ pub fn TapeMeasure(props: TapeMeasureProps) -> Element {
             let current_velocity_val: f64 = velocity();
             let current_offset_val: f64 = offset();
 
-            if current_velocity_val.abs() > VELOCITY_THRESHOLD {
+            // Idle animation guard: skip iteration if component is idle
+            if current_velocity_val.abs() < f64::EPSILON && !*is_snapping.peek() {
+                continue;
+            }
+
+            if current_velocity_val.abs() >= VELOCITY_THRESHOLD + f64::EPSILON {
                 // Momentum Phase (Only runs after release)
                 let mut new_v = current_velocity_val * FRICTION;
                 let mut new_o = current_offset_val + new_v;
@@ -72,7 +78,7 @@ pub fn TapeMeasure(props: TapeMeasureProps) -> Element {
                 offset.set(new_o);
 
                 // When velocity stops, trigger snap
-                if new_v.abs() <= VELOCITY_THRESHOLD {
+                if new_v.abs() < VELOCITY_THRESHOLD {
                     velocity.set(0.0);
                     is_snapping.set(true);
                 }
@@ -186,7 +192,7 @@ pub fn TapeMeasure(props: TapeMeasureProps) -> Element {
                     let e = evt.data.downcast::<PointerEvent>().unwrap();
                     is_dragging.set(false);
                     // If moving very slowly, jump straight to snapping
-                    if velocity().abs() <= VELOCITY_THRESHOLD {
+                    if velocity().abs() < VELOCITY_THRESHOLD {
                         is_snapping.set(true);
                     }
                     if let Some(el) = container_element.peek().as_ref() {
