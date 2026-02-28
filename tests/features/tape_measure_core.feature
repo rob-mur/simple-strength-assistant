@@ -17,3 +17,10 @@ Feature: TapeMeasure Core Interaction
     Then the component should capture the pointer
     When I move the pointer outside the component boundaries
     Then the component should still receive pointer move events
+
+  Scenario: External value changes update tape position
+    Given the TapeMeasure is initialized with value 100kg
+    When the parent component updates the value prop to 150kg
+    Then the tape should immediately scroll to center 150kg
+    And the offset should reflect the new position
+    And velocity should be reset to 0.0

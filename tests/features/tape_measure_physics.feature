@@ -23,3 +23,10 @@ Feature: TapeMeasure Physics (Momentum and Snapping)
     When I press down on the component
     Then the glide should immediately stop
     And the component should snap to the current nearest increment
+
+  Scenario: External updates during idle state
+    Given the TapeMeasure is idle (not dragging, no momentum)
+    When the value prop changes from external source
+    Then the animation loop should immediately sync the offset
+    And no snapping animation should play
+    And the new value should be centered instantly
