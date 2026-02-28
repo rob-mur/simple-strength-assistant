@@ -90,7 +90,7 @@ None.
 |---|-------------|------|--------|-----------|
 | 1 | Address PR review comments: fix TapeMeasure sync bug, unsafe unwraps, float drift, idle animation guard, and update BDD documentation | 2026-02-28 | a7243f5 | [1-address-pr-review-comments-fix-tapemeasu](./quick/1-address-pr-review-comments-fix-tapemeasu/) |
 | 2 | Implement BDD step definitions for TapeMeasure feature files to verify core interaction behaviors | 2026-02-28 | 4caad8f | [2-implement-bdd-step-definitions-for-tapem](./quick/2-implement-bdd-step-definitions-for-tapem/) |
-| 3 | Address PR review comments & implement Playwright E2E tests: fix critical bugs, improve code quality, add 18 E2E tests | 2026-02-28 | 87185c7, 3fe53cf | [3-address-pr-review-comments-and-implement](./quick/3-address-pr-review-comments-and-implement/) |
+| 3 | Address PR review comments & implement Playwright E2E tests: fix critical bugs, improve code quality, add 18 E2E tests | 2026-02-28 | d053403 | [3-address-pr-review-comments-and-implement](./quick/3-address-pr-review-comments-and-implement/) |
 
 ---
 
