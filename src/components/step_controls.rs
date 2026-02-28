@@ -22,13 +22,12 @@ pub fn StepControls(props: StepControlsProps) -> Element {
         }
     }
 
-    neg_steps.sort_by(|a, b| a.partial_cmp(b).unwrap());
-    pos_steps.sort_by(|a, b| a.partial_cmp(b).unwrap());
+    neg_steps.sort_by(|a, b| a.total_cmp(b));
+    pos_steps.sort_by(|a, b| a.total_cmp(b));
 
     rsx! {
         div {
             class: "flex flex-row justify-between items-center w-full mt-6 px-1 gap-4",
-            style: "width: 100%;",
 
             // Left side (Decrements)
             div {

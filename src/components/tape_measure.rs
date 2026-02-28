@@ -1,4 +1,5 @@
 use dioxus::prelude::*;
+use wasm_bindgen::JsCast;
 use web_sys::PointerEvent;
 
 #[derive(Props, PartialEq, Clone)]
@@ -17,6 +18,9 @@ const SNAP_STIFFNESS: f64 = 0.25;
 const VIEWPORT_WIDTH: f64 = 300.0;
 const VIEWPORT_HEIGHT: f64 = 80.0;
 const CENTER_X: f64 = VIEWPORT_WIDTH / 2.0;
+const EPSILON_TOLERANCE: f64 = 1e-9;
+const CLICK_SUPPRESSION_DELAY_MS: u32 = 200;
+const CLICK_DRAG_THRESHOLD: f64 = 5.0;
 
 #[component]
 pub fn TapeMeasure(props: TapeMeasureProps) -> Element {
@@ -28,6 +32,8 @@ pub fn TapeMeasure(props: TapeMeasureProps) -> Element {
     let mut last_update_time = use_signal(|| 0.0);
     let mut is_snapping = use_signal(|| false);
     let mut container_element = use_signal(|| None::<web_sys::Element>);
+    let mut click_allowed = use_signal(|| true);
+    let mut drag_start_offset = use_signal(|| 0.0);
 
     // Sync state if props change (prop-to-signal sync pattern)
     let mut last_value = use_signal(|| props.value);
@@ -39,6 +45,7 @@ pub fn TapeMeasure(props: TapeMeasureProps) -> Element {
     }
 
     // Momentum and Snapping Loop
+    // TODO: Consider RAF-based animation loop instead of 16ms timer for battery efficiency
     use_future(move || async move {
         loop {
             gloo_timers::future::sleep(std::time::Duration::from_millis(16)).await;
@@ -130,8 +137,15 @@ pub fn TapeMeasure(props: TapeMeasureProps) -> Element {
             class: "tape-measure-container bg-base-100 rounded-lg shadow-inner",
             style: "touch-action: none; overflow: hidden; width: 100%; height: {VIEWPORT_HEIGHT}px; position: relative; cursor: grab;",
             onmounted: move |el| {
-                if let Some(raw) = el.data.downcast::<web_sys::Element>() {
+                // Try HtmlElement first, then fallback to Element
+                if let Some(raw) = el.data.downcast::<web_sys::HtmlElement>() {
+                    if let Ok(element) = raw.clone().dyn_into::<web_sys::Element>() {
+                        container_element.set(Some(element));
+                    }
+                } else if let Some(raw) = el.data.downcast::<web_sys::Element>() {
                     container_element.set(Some(raw.clone()));
+                } else {
+                    web_sys::console::log_1(&"TapeMeasure: Failed to downcast mounted element to HtmlElement or Element".into());
                 }
             },
             onpointerdown: move |evt| {
@@ -141,6 +155,8 @@ pub fn TapeMeasure(props: TapeMeasureProps) -> Element {
                     last_pointer_x.set(e.client_x() as f64);
                     last_update_time.set(js_sys::Date::now());
                     velocity.set(0.0);
+                    click_allowed.set(false);
+                    drag_start_offset.set(offset());
 
                     if let Some(el) = container_element.peek().as_ref() {
                         let _ = el.set_pointer_capture(e.pointer_id());
@@ -197,10 +213,27 @@ pub fn TapeMeasure(props: TapeMeasureProps) -> Element {
                 if is_dragging() {
                     if let Some(e) = evt.data.downcast::<PointerEvent>() {
                         is_dragging.set(false);
+
+                        // Calculate drag distance
+                        let drag_distance = (offset() - drag_start_offset()).abs();
+
                         // If moving very slowly, jump straight to snapping
                         if velocity().abs() < VELOCITY_THRESHOLD {
                             is_snapping.set(true);
                         }
+
+                        // Re-enable clicks after delay if drag distance was small
+                        if drag_distance < CLICK_DRAG_THRESHOLD {
+                            let mut click_allowed_clone = click_allowed.clone();
+                            spawn(async move {
+                                gloo_timers::future::TimeoutFuture::new(CLICK_SUPPRESSION_DELAY_MS).await;
+                                click_allowed_clone.set(true);
+                            });
+                        } else {
+                            // Large drag: immediately re-enable clicks
+                            click_allowed.set(true);
+                        }
+
                         if let Some(el) = container_element.peek().as_ref() {
                             let _ = el.release_pointer_capture(e.pointer_id());
                         }
@@ -248,13 +281,16 @@ pub fn TapeMeasure(props: TapeMeasureProps) -> Element {
                             let x = (val - props.min) / props.step * PIXELS_PER_STEP;
                             let dist = (x + offset()).abs();
                             let opacity = (1.0 - dist / (VIEWPORT_WIDTH / 1.5)).max(0.0).powf(2.0);
-                            let is_major = (val % (props.step * 2.0)).abs() < 0.001 || props.step >= 1.0;
+                            let is_major = (val % (props.step * 2.0)).abs() < EPSILON_TOLERANCE || props.step >= 1.0;
 
                             rsx! {
                                 g {
                                     key: "{val}",
                                     style: "opacity: {opacity}",
                                     onclick: move |_| {
+                                        if !click_allowed() {
+                                            return;
+                                        }
                                         let target_offset = (val - props.min) / props.step * -PIXELS_PER_STEP;
                                         velocity.set(0.0);
                                         offset.set(target_offset);
@@ -275,11 +311,22 @@ pub fn TapeMeasure(props: TapeMeasureProps) -> Element {
                                         stroke: "currentColor", stroke_width: "2"
                                     }
                                     if is_major {
-                                        text {
-                                            x: "{x}", y: "40", text_anchor: "middle",
-                                            font_size: "20", font_weight: "bold", fill: "currentColor",
-                                            style: "pointer-events: none;",
-                                            "{val}"
+                                        {
+                                            let formatted_val = if props.step >= 1.0 {
+                                                format!("{:.0}", val)
+                                            } else if props.step >= 0.1 {
+                                                format!("{:.1}", val)
+                                            } else {
+                                                format!("{:.2}", val)
+                                            };
+                                            rsx! {
+                                                text {
+                                                    x: "{x}", y: "40", text_anchor: "middle",
+                                                    font_size: "20", font_weight: "bold", fill: "currentColor",
+                                                    style: "pointer-events: none;",
+                                                    "{formatted_val}"
+                                                }
+                                            }
                                         }
                                     }
                                 }
