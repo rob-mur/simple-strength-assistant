@@ -224,7 +224,7 @@ pub fn TapeMeasure(props: TapeMeasureProps) -> Element {
 
                         // Re-enable clicks after delay if drag distance was small
                         if drag_distance < CLICK_DRAG_THRESHOLD {
-                            let mut click_allowed_clone = click_allowed.clone();
+                            let mut click_allowed_clone = click_allowed;
                             spawn(async move {
                                 gloo_timers::future::TimeoutFuture::new(CLICK_SUPPRESSION_DELAY_MS).await;
                                 click_allowed_clone.set(true);
