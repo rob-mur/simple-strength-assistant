@@ -29,6 +29,7 @@
     build.exec = "dx bundle --web --release --debug-symbols=false";
     format.exec = "cargo fmt";
     lint.exec = "./scripts/lint.sh";
+    ci-test.exec = "./scripts/ci-test.sh";
   };
 
   git-hooks.hooks = {
@@ -38,7 +39,7 @@
       entry = ''
         format
         lint
-        test
+        ci-test
         build
       '';
       stages = ["pre-commit" "pre-push"];
