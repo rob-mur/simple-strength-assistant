@@ -13,6 +13,13 @@ test.describe('StepControls Component E2E', () => {
     await page.click('text=Create New Database');
     await page.waitForLoadState('networkidle');
 
+    // If there's already an active session, finish it first
+    const finishButton = page.locator('text=Finish Workout Session');
+    if (await finishButton.isVisible({ timeout: 2000 }).catch(() => false)) {
+      await finishButton.click();
+      await page.waitForLoadState('networkidle');
+    }
+
     // Start a workout session
     await page.click('text=Start Session');
     await page.waitForLoadState('networkidle');
