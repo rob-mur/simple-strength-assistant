@@ -22,15 +22,5 @@ export default defineConfig({
         } : {},
       },
     },
-    {
-      name: 'Mobile Safari',
-      use: {
-        ...devices['iPhone 13'],
-        // Uses Chromium engine for simulation (webkit uses chromium under the hood for device emulation)
-        launchOptions: process.env.CHROMIUM_EXECUTABLE_PATH ? {
-          executablePath: process.env.CHROMIUM_EXECUTABLE_PATH,
-        } : {},
-      },
-    },
   ],
 });
