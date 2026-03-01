@@ -14,7 +14,13 @@ export CHROMIUM_EXECUTABLE_PATH
 cargo test
 
 # Ensure devenv processes are stopped when the script exits
-trap "devenv processes down" EXIT
+# Capture exit status before shutting down processes
+function cleanup() {
+  EXIT_CODE=$?
+  devenv processes down
+  exit $EXIT_CODE
+}
+trap cleanup EXIT
 
 # Start test server with test-mode feature enabled (uses in-memory storage instead of OPFS)
 devenv processes up -d test-serve

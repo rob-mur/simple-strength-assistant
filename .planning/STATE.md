@@ -22,6 +22,11 @@ progress:
 
 ## What Just Happened
 
+**Quick Task 13 COMPLETE:** Fix CI Test Script Exit Code Propagation (2026-03-01)
+- Modified `scripts/ci-test.sh` to correctly capture and return the exit status of Playwright tests.
+- Introduced a `cleanup` function for the `EXIT` trap to ensure `devenv processes down` doesn't clobber the failure signal.
+- Verified the fix with a temporary failing test, confirming CI now correctly fails on test regressions.
+
 **Quick Task 12 COMPLETE:** Fix CI Tests and Compilation Errors (2026-03-01)
 - Fixed E2E test timeout issue caused by `test-serve` compilation failure.
 - Exported and conditionally imported `StorageBackend` trait under the `test-mode` feature to fix `InMemoryStorage` method resolution errors.
@@ -169,7 +174,8 @@ None - All E2E tests passing (18/18). Full CI pipeline green.
 | 10 | Implement hydration-ready pattern: data-hydrated attribute and E2E test wait pattern - 11/18 tests now passing | 2026-03-01 | cd4a754 | [10-implement-hydration-ready-pattern-add-da](./quick/10-implement-hydration-ready-pattern-add-da/) |
 | 11 | Fix remaining 7 failing E2E tests - achieve 100% test pass rate (18/18) by correcting test assertions | 2026-03-01 | 3fc301c | [11-fix-remaining-7-failing-e2e-tests-test-l](./quick/11-fix-remaining-7-failing-e2e-tests-test-l/) |
 | 12 | please fix the ci-tests (they were working pre linting) | 2026-03-01 | 0f690af | [12-please-fix-the-ci-tests-they-were-workin](./quick/12-please-fix-the-ci-tests-they-were-workin/) |
+| 13 | Fix ci-test.sh exit code and verify Playwright test failures are captured in CI | 2026-03-01 | a175b30 | [13-fix-ci-test-sh-exit-code-and-verify-play](./quick/13-fix-ci-test-sh-exit-code-and-verify-play/) |
 
 ---
 
-Last activity: 2026-03-01 - Completed quick task 12: please fix the ci-tests (they were working pre linting)
+Last activity: 2026-03-01 - Completed quick task 13: Fix ci-test.sh exit code and verify Playwright test failures are captured in CI
