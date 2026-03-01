@@ -19,7 +19,10 @@ export default defineConfig({
         // Use Nix-provided Chromium for NixOS compatibility
         launchOptions: process.env.CHROMIUM_EXECUTABLE_PATH ? {
           executablePath: process.env.CHROMIUM_EXECUTABLE_PATH,
-        } : {},
+          headless: true,  // Ensures HeadlessChrome in user agent for E2E test mode detection
+        } : {
+          headless: true,
+        },
       },
     },
   ],

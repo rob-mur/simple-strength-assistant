@@ -3,7 +3,12 @@ set -e
 
 # Export chromium path for Playwright (from devenv.nix)
 # This ensures Playwright uses NixOS-compatible chromium instead of downloaded binaries
-export CHROMIUM_EXECUTABLE_PATH="${CHROMIUM_EXECUTABLE_PATH:-$(which chromium)}"
+# Note: CHROMIUM_EXECUTABLE_PATH must be set by devenv.nix, no fallback needed
+if [ -z "$CHROMIUM_EXECUTABLE_PATH" ]; then
+  echo "Error: CHROMIUM_EXECUTABLE_PATH not set. Run this script from 'devenv shell'."
+  exit 1
+fi
+export CHROMIUM_EXECUTABLE_PATH
 
 # Run cargo tests
 cargo test
