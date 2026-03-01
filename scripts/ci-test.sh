@@ -27,7 +27,7 @@ devenv processes up -d test-serve
 
 # Wait for the service to be ready
 echo "Waiting for http://localhost:8080 to be ready..."
-timeout 30 bash -c 'until curl -s http://localhost:8080 > /dev/null; do sleep 1; done'
+timeout 60 bash -c 'until curl -s http://localhost:8080 > /dev/null; do sleep 1; done'
 
 # Give Dioxus additional time to build and serve the WASM bundle
 echo "Waiting for WASM bundle to be ready..."
