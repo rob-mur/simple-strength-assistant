@@ -1,8 +1,12 @@
 import { test, expect } from '@playwright/test';
 
 test.describe('TapeMeasure Component E2E', () => {
-  test.beforeEach(async ({ page }) => {
+  test.beforeEach(async ({ page, context }) => {
+    // Force fresh context by clearing storage
+    await context.clearCookies();
     await page.goto('/');
+    await page.evaluate(() => localStorage.clear());
+    await page.reload();
     await page.waitForLoadState('networkidle');
 
     // Real user flow: Click "Create New Database"
