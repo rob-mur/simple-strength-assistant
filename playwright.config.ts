@@ -17,8 +17,8 @@ export default defineConfig({
       use: {
         ...devices['Desktop Chrome'],
         // Use Nix-provided Chromium for NixOS compatibility
-        launchOptions: process.env.PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH ? {
-          executablePath: process.env.PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH,
+        launchOptions: process.env.CHROMIUM_EXECUTABLE_PATH ? {
+          executablePath: process.env.CHROMIUM_EXECUTABLE_PATH,
         } : {},
       },
     },
@@ -27,8 +27,8 @@ export default defineConfig({
       use: {
         ...devices['iPhone 13'],
         // Uses Chromium engine for simulation (webkit uses chromium under the hood for device emulation)
-        launchOptions: process.env.PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH ? {
-          executablePath: process.env.PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH,
+        launchOptions: process.env.CHROMIUM_EXECUTABLE_PATH ? {
+          executablePath: process.env.CHROMIUM_EXECUTABLE_PATH,
         } : {},
       },
     },
