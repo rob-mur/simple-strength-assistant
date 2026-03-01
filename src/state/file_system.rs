@@ -1,3 +1,5 @@
+use super::storage::StorageBackend;
+use async_trait::async_trait;
 use gloo_storage::{LocalStorage, Storage};
 use thiserror::Error;
 use wasm_bindgen::prelude::*;
@@ -575,5 +577,49 @@ impl FileSystemManager {
 impl Default for FileSystemManager {
     fn default() -> Self {
         Self::new()
+    }
+}
+
+// Implement StorageBackend trait for FileSystemManager (OPFS-based storage)
+#[async_trait(?Send)]
+impl StorageBackend for FileSystemManager {
+    fn new() -> Self {
+        FileSystemManager::new()
+    }
+
+    async fn check_cached_handle(&mut self) -> Result<bool, FileSystemError> {
+        FileSystemManager::check_cached_handle(self).await
+    }
+
+    async fn create_new_file(&mut self) -> Result<(), FileSystemError> {
+        FileSystemManager::create_new_file(self).await
+    }
+
+    async fn prompt_for_file(&mut self) -> Result<(), FileSystemError> {
+        FileSystemManager::prompt_for_file(self).await
+    }
+
+    async fn read_file(&self) -> Result<Vec<u8>, FileSystemError> {
+        FileSystemManager::read_file(self).await
+    }
+
+    async fn write_file(&self, data: &[u8]) -> Result<(), FileSystemError> {
+        FileSystemManager::write_file(self, data).await
+    }
+
+    fn has_handle(&self) -> bool {
+        FileSystemManager::has_handle(self)
+    }
+
+    fn is_using_fallback(&self) -> bool {
+        FileSystemManager::is_using_fallback(self)
+    }
+
+    async fn request_permission(&self) -> Result<(), FileSystemError> {
+        FileSystemManager::request_permission(self).await
+    }
+
+    async fn clear_handle(&mut self) -> Result<(), FileSystemError> {
+        FileSystemManager::clear_handle(self).await
     }
 }

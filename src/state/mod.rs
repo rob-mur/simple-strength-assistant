@@ -1,6 +1,7 @@
 mod db;
 mod error;
 mod file_system;
+mod storage;
 mod workout_state;
 
 #[cfg(test)]
@@ -11,4 +12,12 @@ mod file_system_tests;
 pub use db::{Database, DatabaseError};
 pub use error::WorkoutError;
 pub use file_system::{FileSystemError, FileSystemManager};
+pub use storage::StorageBackend;
 pub use workout_state::{InitializationState, WorkoutSession, WorkoutState, WorkoutStateManager};
+
+// Type alias that switches between OPFS and in-memory storage based on test-mode feature
+#[cfg(not(feature = "test-mode"))]
+pub type Storage = FileSystemManager;
+
+#[cfg(feature = "test-mode")]
+pub type Storage = storage::InMemoryStorage;

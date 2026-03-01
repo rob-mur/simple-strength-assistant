@@ -16,8 +16,8 @@ cargo test
 # Ensure devenv processes are stopped when the script exits
 trap "devenv processes down" EXIT
 
-# Start necessary background services using devenv processes
-devenv processes up -d
+# Start test server with test-mode feature enabled (uses in-memory storage instead of OPFS)
+devenv processes up -d test-serve
 
 # Wait for the service to be ready
 echo "Waiting for http://localhost:8080 to be ready..."

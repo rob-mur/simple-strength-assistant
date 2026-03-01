@@ -40,6 +40,7 @@
 
   processes = {
     serve.exec = "dx serve --port 8080";
+    test-serve.exec = "dx serve --port 8080 --features test-mode";
   };
 
   git-hooks.hooks = {

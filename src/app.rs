@@ -201,7 +201,7 @@ pub fn App() -> Element {
                                                 onclick: move |_| {
                                                     spawn(async move {
                                                         log::debug!("[UI] User clicked create new database - has user gesture");
-                                                        let mut file_manager = crate::state::FileSystemManager::new();
+                                                        let mut file_manager = crate::state::Storage::new();
 
                                                         match file_manager.create_new_file().await {
                                                             Ok(_) => {
@@ -274,7 +274,7 @@ pub fn App() -> Element {
                                                 onclick: move |_| {
                                                     spawn(async move {
                                                         log::debug!("[UI] User clicked open existing database - has user gesture");
-                                                        let mut file_manager = crate::state::FileSystemManager::new();
+                                                        let mut file_manager = crate::state::Storage::new();
 
                                                         match file_manager.prompt_for_file().await {
                                                             Ok(_) => {
