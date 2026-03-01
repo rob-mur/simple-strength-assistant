@@ -18,5 +18,14 @@ devenv processes up -d
 echo "Waiting for http://localhost:8080 to be ready..."
 timeout 30 bash -c 'until curl -s http://localhost:8080 > /dev/null; do sleep 1; done'
 
+# Give Dioxus additional time to build and serve the WASM bundle
+echo "Waiting for WASM bundle to be ready..."
+sleep 5
+
+# Verify WASM bundle is accessible
+if ! curl -s http://localhost:8080/assets/*.wasm > /dev/null 2>&1; then
+  echo "Warning: WASM bundle may not be fully ready, but proceeding with tests..."
+fi
+
 # Run Playwright tests
 npm run test:e2e
