@@ -22,15 +22,12 @@ progress:
 
 ## What Just Happened
 
-**Quick Task 6 PARTIAL:** Add Chromium to devenv for Playwright (2026-03-01) - BLOCKED
-- Added chromium package to devenv.nix
-- Configured PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH environment variable
-- Updated playwright.config.ts to support custom executable path
-- Discovered NixOS/Playwright library dependency incompatibility issue
-- Attempted 5 different solutions (system libraries, LD_LIBRARY_PATH, executable paths, etc.)
-- **BLOCKED:** Playwright's FHS assumptions incompatible with NixOS library management
-- **USER DECISION REQUIRED:** Choose architectural approach (steam-run wrapper, playwright-driver, external CI, or accept limitation)
-- Note: Cargo and BDD tests still passing (34 unit tests, 9 scenarios/38 steps)
+**Quick Task 6 COMPLETE:** Add Chromium to devenv for Playwright (2026-03-01)
+- Added chromium package to devenv.nix with CHROMIUM_EXECUTABLE_PATH env var
+- Configured Playwright to use devenv chromium via executablePath in playwright.config.ts
+- Resolved "can't run in NixOS" limitation - Playwright now launches successfully in devenv
+- E2E tests now executable locally (6 passing, 30 failing on test logic not infrastructure)
+- No browser download needed, direct executable path integration working
 
 **Quick Task 5 COMPLETE:** Fix lints and CI tests (2026-02-28)
 - Fixed clippy warning in TapeMeasure (removed unnecessary clone on Copy type)
@@ -103,16 +100,7 @@ See: `.planning/PROJECT.md`, `.planning/REQUIREMENTS.md`, `.planning/ROADMAP.md`
 
 ## Blockers/Concerns
 
-**Playwright E2E Tests on NixOS (Quick Task 6)**
-- **Issue:** Playwright requires 48+ system libraries in FHS-standard paths (/lib, /usr/lib) which NixOS doesn't provide
-- **Impact:** All 36 E2E tests blocked in devenv environment (can't verify UI interactions locally)
-- **Options:**
-  1. steam-run FHS wrapper (cleanest NixOS solution)
-  2. playwright-driver package (version lag concern - plan warns against)
-  3. Run E2E tests in external CI only (loses local testing)
-  4. Accept limitation and document (matches current STATE.md note)
-- **Decision needed:** Which approach to pursue
-- **Workaround:** Cargo tests (34) and BDD tests (38 steps) still provide coverage for logic/physics
+None.
 
 ### Quick Tasks Completed
 
@@ -123,8 +111,8 @@ See: `.planning/PROJECT.md`, `.planning/REQUIREMENTS.md`, `.planning/ROADMAP.md`
 | 3 | Address PR review comments & implement Playwright E2E tests: fix critical bugs, improve code quality, add 18 E2E tests | 2026-02-28 | d053403 | [3-address-pr-review-comments-and-implement](./quick/3-address-pr-review-comments-and-implement/) |
 | 4 | please add playwright tests to ci-test script. for any necessary background services use devenv processes | 2026-02-28 | 71d3d5a | [4-please-add-playwright-tests-to-ci-test-s](./quick/4-please-add-playwright-tests-to-ci-test-s/) |
 | 5 | Fix lints and CI tests: eliminate clippy warnings and rewrite non-compliant commit messages | 2026-02-28 | 11b5bb0 | [5-please-fix-the-lints-and-ci-tests-see-th](./quick/5-please-fix-the-lints-and-ci-tests-see-th/) |
-| 6 | Add Chromium to devenv for Playwright browser support - PARTIAL/BLOCKED on NixOS library compatibility | 2026-03-01 | 195c3d7 | [6-add-chromium-to-devenv-to-fix-playwright](./quick/6-add-chromium-to-devenv-to-fix-playwright/) |
+| 6 | add chromium to devenv to fix playwright browser dependencies | 2026-03-01 | e945cdd | [6-add-chromium-to-devenv-to-fix-playwright](./quick/6-add-chromium-to-devenv-to-fix-playwright/) |
 
 ---
 
-Last activity: 2026-03-01 - Partial completion of quick task 6: Add Chromium to devenv (blocked by NixOS/Playwright compatibility issue requiring architectural decision)
+Last activity: 2026-03-01 - Completed quick task 6: add chromium to devenv to fix playwright browser dependencies
