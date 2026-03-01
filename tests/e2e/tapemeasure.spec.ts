@@ -3,8 +3,22 @@ import { test, expect } from '@playwright/test';
 test.describe('TapeMeasure Component E2E', () => {
   test.beforeEach(async ({ page }) => {
     await page.goto('/');
-    // Navigate to active session where TapeMeasure is rendered
     await page.waitForLoadState('networkidle');
+
+    // Wait for ActiveSession to render (E2E test mode auto-creates session)
+    await page.waitForSelector('.badge.badge-primary.badge-lg', {
+      state: 'visible',
+      timeout: 15000
+    });
+
+    // Wait for TapeMeasure components to render (there are 2: Weight and Reps)
+    await page.waitForSelector('.tape-measure-container', {
+      state: 'visible',
+      timeout: 5000
+    });
+
+    // Allow WASM hydration and event handlers to attach
+    await page.waitForTimeout(1000);
   });
 
   test('swipe drag gesture updates value', async ({ page }) => {

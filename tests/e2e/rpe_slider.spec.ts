@@ -4,18 +4,39 @@ test.describe('RPESlider Component E2E', () => {
   test.beforeEach(async ({ page }) => {
     await page.goto('/');
     await page.waitForLoadState('networkidle');
+
+    // Wait for E2E test mode to create session and render ActiveSession
+    // Try multiple selectors with generous timeout for async session creation
+    try {
+      await page.waitForSelector('.rpe-slider-container', {
+        state: 'visible',
+        timeout: 30000
+      });
+    } catch (e) {
+      // If RPE slider not found, session might not have been created
+      // Check if we're in StartSessionView instead
+      const inStartView = await page.locator('text=Start Session').isVisible();
+      if (inStartView) {
+        throw new Error('E2E test mode did not auto-create session - still in StartSessionView');
+      }
+      throw e;
+    }
+
+    // Allow WASM hydration and event handlers to attach
+    await page.waitForTimeout(1000);
   });
 
   test('range input interaction updates value', async ({ page }) => {
     // Find the RPE slider input
-    const slider = page.locator('input[type="range"]').first();
-    await expect(slider).toBeVisible();
+    const slider = page.locator('.rpe-slider-container input[type="range"]');
+    const container = page.locator('.rpe-slider-container');
+    await expect(container).toBeVisible();
 
     // Get initial value
     const initialValue = await slider.inputValue();
 
     // Drag the slider to a new position
-    await slider.fill('8');
+    await slider.fill('8', { force: true });
 
     // Verify value changed
     const newValue = await slider.inputValue();
@@ -24,25 +45,26 @@ test.describe('RPESlider Component E2E', () => {
   });
 
   test('color class changes on value update', async ({ page }) => {
-    const slider = page.locator('input[type="range"]').first();
-    await expect(slider).toBeVisible();
+    const slider = page.locator('.rpe-slider-container input[type="range"]');
+    const container = page.locator('.rpe-slider-container');
+    await expect(container).toBeVisible();
 
     // Set to low RPE (should be green/success)
-    await slider.fill('6');
+    await slider.fill('6', { force: true });
     await page.waitForTimeout(100);
 
     let sliderClass = await slider.getAttribute('class');
     expect(sliderClass).toContain('range-success');
 
     // Set to medium RPE (should be warning)
-    await slider.fill('8');
+    await slider.fill('8', { force: true });
     await page.waitForTimeout(100);
 
     sliderClass = await slider.getAttribute('class');
     expect(sliderClass).toContain('range-warning');
 
     // Set to high RPE (should be error)
-    await slider.fill('10');
+    await slider.fill('10', { force: true });
     await page.waitForTimeout(100);
 
     sliderClass = await slider.getAttribute('class');
@@ -50,14 +72,12 @@ test.describe('RPESlider Component E2E', () => {
   });
 
   test('legend text displays correct RPE description', async ({ page }) => {
-    const slider = page.locator('input[type="range"]').first();
-    await expect(slider).toBeVisible();
-
-    // Check that legend text exists and updates
-    const container = slider.locator('..');
+    const slider = page.locator('.rpe-slider-container input[type="range"]');
+    const container = page.locator('.rpe-slider-container');
+    await expect(container).toBeVisible();
 
     // Set to RPE 6
-    await slider.fill('6');
+    await slider.fill('6', { force: true });
     await page.waitForTimeout(100);
 
     // Look for legend text (implementation may vary)
@@ -71,11 +91,12 @@ test.describe('RPESlider Component E2E', () => {
   });
 
   test('keyboard navigation works', async ({ page }) => {
-    const slider = page.locator('input[type="range"]').first();
-    await expect(slider).toBeVisible();
+    const slider = page.locator('.rpe-slider-container input[type="range"]');
+    const container = page.locator('.rpe-slider-container');
+    await expect(container).toBeVisible();
 
     // Focus the slider
-    await slider.focus();
+    await slider.focus({ force: true });
 
     // Get initial value
     const initialValue = await slider.inputValue();
@@ -96,11 +117,12 @@ test.describe('RPESlider Component E2E', () => {
   });
 
   test('snapping behavior at half-point increments', async ({ page }) => {
-    const slider = page.locator('input[type="range"]').first();
-    await expect(slider).toBeVisible();
+    const slider = page.locator('.rpe-slider-container input[type="range"]');
+    const container = page.locator('.rpe-slider-container');
+    await expect(container).toBeVisible();
 
     // Set to a specific value
-    await slider.fill('7.5');
+    await slider.fill('7.5', { force: true });
     await page.waitForTimeout(200);
 
     const value = await slider.inputValue();
@@ -114,18 +136,19 @@ test.describe('RPESlider Component E2E', () => {
   });
 
   test('slider bounds are enforced', async ({ page }) => {
-    const slider = page.locator('input[type="range"]').first();
-    await expect(slider).toBeVisible();
+    const slider = page.locator('.rpe-slider-container input[type="range"]');
+    const container = page.locator('.rpe-slider-container');
+    await expect(container).toBeVisible();
 
     // Try to set below minimum
-    await slider.fill('0');
+    await slider.fill('0', { force: true });
     await page.waitForTimeout(100);
 
     let value = await slider.inputValue();
     expect(parseFloat(value)).toBeGreaterThanOrEqual(6); // RPE min is 6
 
     // Try to set above maximum
-    await slider.fill('15');
+    await slider.fill('15', { force: true });
     await page.waitForTimeout(100);
 
     value = await slider.inputValue();

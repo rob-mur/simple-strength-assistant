@@ -4,6 +4,21 @@ test.describe('StepControls Component E2E', () => {
   test.beforeEach(async ({ page }) => {
     await page.goto('/');
     await page.waitForLoadState('networkidle');
+
+    // Wait for ActiveSession to render (E2E test mode auto-creates session)
+    await page.waitForSelector('.badge.badge-primary.badge-lg', {
+      state: 'visible',
+      timeout: 15000
+    });
+
+    // Wait for StepControls buttons to render
+    await page.waitForSelector('button.btn-circle', {
+      state: 'visible',
+      timeout: 5000
+    });
+
+    // Allow WASM hydration and event handlers to attach
+    await page.waitForTimeout(1000);
   });
 
   test('increment button increases value', async ({ page }) => {
@@ -148,6 +163,12 @@ test.describe('StepControls Component E2E', () => {
   });
 
   test('multiple step sizes are available', async ({ page }) => {
+    // Ensure buttons are present
+    await page.waitForSelector('button.btn-circle.text-success', {
+      state: 'visible',
+      timeout: 3000
+    });
+
     // Check for multiple step buttons on both sides
     const incrementButtons = page.locator('button.btn-circle.text-success');
     const decrementButtons = page.locator('button.btn-circle.text-error');

@@ -147,6 +147,51 @@ impl WorkoutStateManager {
         log::debug!("[DB Init] Creating file manager...");
         let mut file_manager = FileSystemManager::new();
 
+        // Check if we're in E2E test mode BEFORE checking cache (test mode always starts fresh)
+        let is_test_mode = if let Some(window) = web_sys::window() {
+            window
+                .navigator()
+                .user_agent()
+                .ok()
+                .map(|ua: String| ua.contains("HeadlessChrome") || ua.contains("Playwright"))
+                .unwrap_or(false)
+        } else {
+            false
+        };
+
+        if is_test_mode {
+            log::debug!("[DB Init] E2E test mode detected, initializing in-memory database");
+            // Skip file selection in test mode - initialize empty database
+            let mut database = Database::new();
+            database.init(None).await.map_err(|e| {
+                log::error!("Failed to initialize test database: {}", e);
+                WorkoutError::Database(e)
+            })?;
+
+            state.set_database(database);
+            state.set_file_manager(file_manager);
+            state.set_initialization_state(InitializationState::Ready);
+
+            // Auto-start a test workout session for E2E tests
+            log::debug!("[DB Init] Creating test workout session...");
+            let test_exercise = crate::models::ExerciseMetadata {
+                name: "Test Bench Press".to_string(),
+                set_type_config: crate::models::SetTypeConfig::Weighted {
+                    min_weight: 45.0,
+                    increment: 5.0,
+                },
+            };
+
+            // Use the start_session method to create session
+            if let Err(e) = Self::start_session(state, test_exercise).await {
+                log::error!("Failed to create test session: {}", e);
+                // Don't fail completely - just log the error
+            }
+
+            log::debug!("[DB Init] Test mode setup complete!");
+            return Ok(());
+        }
+
         log::debug!("[DB Init] Checking for cached file handle...");
         let has_cached = file_manager.check_cached_handle().await.map_err(|e| {
             log::error!("Failed to check cached handle: {}", e);
@@ -159,54 +204,7 @@ impl WorkoutStateManager {
             // Store it even if we might fail later (e.g. permission check)
             // This allows the Error UI to see we have a handle and re-request permission.
             state.set_file_manager(file_manager.clone());
-        }
-
-        if !has_cached {
-            // Check if we're in E2E test mode (detected via Playwright user agent or test flag)
-            let is_test_mode = if let Some(window) = web_sys::window() {
-                window
-                    .navigator()
-                    .user_agent()
-                    .ok()
-                    .map(|ua: String| ua.contains("HeadlessChrome") || ua.contains("Playwright"))
-                    .unwrap_or(false)
-            } else {
-                false
-            };
-
-            if is_test_mode {
-                log::debug!("[DB Init] E2E test mode detected, initializing in-memory database");
-                // Skip file selection in test mode - initialize empty database
-                let mut database = Database::new();
-                database.init(None).await.map_err(|e| {
-                    log::error!("Failed to initialize test database: {}", e);
-                    WorkoutError::Database(e)
-                })?;
-
-                state.set_database(database);
-                state.set_file_manager(file_manager);
-                state.set_initialization_state(InitializationState::Ready);
-
-                // Auto-start a test workout session for E2E tests
-                log::debug!("[DB Init] Creating test workout session...");
-                let test_exercise = crate::models::ExerciseMetadata {
-                    name: "Test Bench Press".to_string(),
-                    set_type_config: crate::models::SetTypeConfig::Weighted {
-                        min_weight: 45.0,
-                        increment: 5.0,
-                    },
-                };
-
-                // Use the start_session method to create session
-                if let Err(e) = Self::start_session(state, test_exercise).await {
-                    log::error!("Failed to create test session: {}", e);
-                    // Don't fail completely - just log the error
-                }
-
-                log::debug!("[DB Init] Test mode setup complete!");
-                return Ok(());
-            }
-
+        } else {
             log::debug!("[DB Init] No cached handle, transitioning to SelectingFile state");
             log::debug!("[DB Init] File picker requires user gesture - waiting for button click");
             state.set_initialization_state(InitializationState::SelectingFile);
