@@ -1,6 +1,10 @@
 #!/usr/bin/env bash
 set -e
 
+# Export chromium path for Playwright (from devenv.nix)
+# This ensures Playwright uses NixOS-compatible chromium instead of downloaded binaries
+export CHROMIUM_EXECUTABLE_PATH="${CHROMIUM_EXECUTABLE_PATH:-$(which chromium)}"
+
 # Run cargo tests
 cargo test
 
