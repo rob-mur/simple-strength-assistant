@@ -219,6 +219,11 @@ pub fn App() -> Element {
                                                                     Ok(_) => {
                                                                         log::debug!("[UI] New database initialized successfully");
 
+                                                                        // Clear any existing session state to ensure clean slate
+                                                                        log::debug!("[UI] Clearing current_session to ensure fresh start");
+                                                                        workout_state.set_current_session(None);
+                                                                        log::debug!("[UI] current_session cleared, should show StartSessionView");
+
                                                                         // Store database and file manager in state
                                                                         workout_state.set_database(database);
                                                                         workout_state.set_file_manager(file_manager);
@@ -553,10 +558,15 @@ fn WorkoutInterface(state: WorkoutState) -> Element {
     let current_session = state.current_session();
 
     if let Some(session) = current_session {
+        log::debug!(
+            "[WorkoutInterface] Rendering ActiveSession for exercise: {}",
+            session.exercise.name
+        );
         rsx! {
             ActiveSession { state: state, session }
         }
     } else {
+        log::debug!("[WorkoutInterface] No current_session, rendering StartSessionView");
         rsx! {
             StartSessionView { state: state }
         }

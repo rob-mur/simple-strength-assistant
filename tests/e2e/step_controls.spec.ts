@@ -6,31 +6,24 @@ test.describe('StepControls Component E2E', () => {
     await context.clearCookies();
     await page.goto('/');
     await page.evaluate(() => localStorage.clear());
-    await page.reload();
     await page.waitForLoadState('networkidle');
 
-    // Real user flow: Click "Create New Database"
+    // Real user flow: Click "Create New Database" and wait for DB init
     await page.click('text=Create New Database');
     await page.waitForLoadState('networkidle');
+    await page.waitForTimeout(200); // Ensure DB initialization completes
 
     // If there's already an active session, finish it first
     const finishButton = page.locator('text=Finish Workout Session');
-    if (await finishButton.isVisible({ timeout: 2000 }).catch(() => false)) {
+    if (await finishButton.isVisible({ timeout: 3000 }).catch(() => false)) {
       await finishButton.click();
       await page.waitForLoadState('networkidle');
     }
 
-    // Start a workout session
-    await page.click('text=Start Session');
-    await page.waitForLoadState('networkidle');
+    // Fill in exercise name (input already has "Bench Press" as default, change it to test value)
+    await page.getByLabel('Exercise Name').fill('Test Bench Press');
 
-    // Fill in exercise name
-    await page.fill('input[placeholder="Exercise Name"]', 'Test Bench Press');
-
-    // Select "Weighted" exercise type
-    await page.click('text=Weighted');
-
-    // Submit the form
+    // Submit the form (Weighted is already selected by default)
     await page.click('button:has-text("Start Workout")');
 
     // Wait for ActiveSession to render with StepControls buttons
