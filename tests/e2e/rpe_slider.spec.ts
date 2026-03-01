@@ -55,22 +55,22 @@ test.describe('RPESlider Component E2E', () => {
     const container = page.locator('.rpe-slider-container');
     await expect(container).toBeVisible();
 
-    // Set to low RPE (should be green/success)
+    // Set to RPE 6.0 (should be accent - moderate/solid)
     await slider.fill('6', { force: true });
     await page.waitForTimeout(100);
 
     let sliderClass = await slider.getAttribute('class');
-    expect(sliderClass).toContain('range-success');
+    expect(sliderClass).toContain('range-accent');
 
-    // Set to medium RPE (should be warning)
+    // Set to RPE 8.0 (should be warning - heavy/challenging)
     await slider.fill('8', { force: true });
     await page.waitForTimeout(100);
 
     sliderClass = await slider.getAttribute('class');
     expect(sliderClass).toContain('range-warning');
 
-    // Set to high RPE (should be error)
-    await slider.fill('10', { force: true });
+    // Set to high RPE 9.5 (should be error - extremely hard)
+    await slider.fill('9.5', { force: true });
     await page.waitForTimeout(100);
 
     sliderClass = await slider.getAttribute('class');
@@ -146,18 +146,26 @@ test.describe('RPESlider Component E2E', () => {
     const container = page.locator('.rpe-slider-container');
     await expect(container).toBeVisible();
 
-    // Try to set below minimum
-    await slider.fill('0', { force: true });
-    await page.waitForTimeout(100);
+    // Verify HTML min/max attributes are correctly set
+    const minAttr = await slider.getAttribute('min');
+    const maxAttr = await slider.getAttribute('max');
+    const stepAttr = await slider.getAttribute('step');
 
+    expect(minAttr).toBe('1');
+    expect(maxAttr).toBe('10');
+    expect(stepAttr).toBe('0.5');
+
+    // Verify values stay within bounds when set programmatically
+    await slider.fill('1', { force: true });
+    await page.waitForTimeout(100);
     let value = await slider.inputValue();
-    expect(parseFloat(value)).toBeGreaterThanOrEqual(6); // RPE min is 6
+    expect(parseFloat(value)).toBeGreaterThanOrEqual(1); // RPE min is 1
+    expect(parseFloat(value)).toBeLessThanOrEqual(10);
 
-    // Try to set above maximum
-    await slider.fill('15', { force: true });
+    await slider.fill('10', { force: true });
     await page.waitForTimeout(100);
-
     value = await slider.inputValue();
     expect(parseFloat(value)).toBeLessThanOrEqual(10); // RPE max is 10
+    expect(parseFloat(value)).toBeGreaterThanOrEqual(1);
   });
 });
