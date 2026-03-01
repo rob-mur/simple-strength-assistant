@@ -24,16 +24,12 @@ test.describe('StepControls Component E2E', () => {
     await page.getByLabel('Exercise Name').fill('Test Bench Press');
 
     // Submit the form (Weighted is already selected by default)
-    await page.click('button:has-text("Start Workout")');
+    await page.click('button:has-text("Start Session")');
 
-    // Wait for ActiveSession to render with StepControls buttons
-    await page.waitForSelector('button.btn-circle', {
-      state: 'visible',
+    // Wait for WASM hydration to complete
+    await page.waitForSelector('body[data-hydrated="true"]', {
       timeout: 10000
     });
-
-    // Allow WASM hydration and event handlers to attach
-    await page.waitForTimeout(500);
   });
 
   test('increment button increases value', async ({ page }) => {

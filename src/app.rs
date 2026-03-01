@@ -661,12 +661,14 @@ fn StartSessionView(state: WorkoutState) -> Element {
                         class: "form-control",
                         label {
                             class: "label",
+                            r#for: "exercise-name-input",
                             span {
                                 class: "label-text",
                                 "Exercise Name"
                             }
                         }
                         input {
+                            id: "exercise-name-input",
                             class: if validation_error().is_some() {
                                 "input input-bordered input-error"
                             } else {
