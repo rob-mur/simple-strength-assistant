@@ -1,5 +1,5 @@
 use crate::models::{CompletedSet, ExerciseMetadata, SetType};
-use crate::state::{Database, Storage, error::WorkoutError};
+use crate::state::{Database, Storage, StorageBackend, error::WorkoutError};
 use dioxus::prelude::*;
 
 // Initial prediction constants

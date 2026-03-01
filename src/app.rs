@@ -2,7 +2,9 @@ use crate::components::rpe_slider::RPESlider;
 use crate::components::step_controls::StepControls;
 use crate::components::tape_measure::TapeMeasure;
 use crate::models::{CompletedSet, ExerciseMetadata, SetType, SetTypeConfig};
-use crate::state::{InitializationState, WorkoutError, WorkoutState, WorkoutStateManager};
+use crate::state::{
+    InitializationState, StorageBackend, WorkoutError, WorkoutState, WorkoutStateManager,
+};
 use dioxus::prelude::*;
 use wasm_bindgen::JsCast;
 
