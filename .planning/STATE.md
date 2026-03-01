@@ -22,6 +22,11 @@ progress:
 
 ## What Just Happened
 
+**Quick Task 14 COMPLETE:** Fix CI Lints and Playwright Timeout Issues (2026-03-01)
+- Identified commitlint failures caused by older Phase 6 commits with uppercase subjects in the PR.
+- Executed an automated interactive rebase to fix the capitalization of those commit messages.
+- Doubled the overall Playwright test timeout (`playwright.config.ts`) and the `test-serve` server timeout (`scripts/ci-test.sh`) to 60 seconds in CI environments.
+
 **Quick Task 13 COMPLETE:** Fix CI Test Script Exit Code Propagation (2026-03-01)
 - Modified `scripts/ci-test.sh` to correctly capture and return the exit status of Playwright tests.
 - Introduced a `cleanup` function for the `EXIT` trap to ensure `devenv processes down` doesn't clobber the failure signal.
@@ -174,8 +179,9 @@ None - All E2E tests passing (18/18). Full CI pipeline green.
 | 10 | Implement hydration-ready pattern: data-hydrated attribute and E2E test wait pattern - 11/18 tests now passing | 2026-03-01 | cd4a754 | [10-implement-hydration-ready-pattern-add-da](./quick/10-implement-hydration-ready-pattern-add-da/) |
 | 11 | Fix remaining 7 failing E2E tests - achieve 100% test pass rate (18/18) by correcting test assertions | 2026-03-01 | 3fc301c | [11-fix-remaining-7-failing-e2e-tests-test-l](./quick/11-fix-remaining-7-failing-e2e-tests-test-l/) |
 | 12 | please fix the ci-tests (they were working pre linting) | 2026-03-01 | 0f690af | [12-please-fix-the-ci-tests-they-were-workin](./quick/12-please-fix-the-ci-tests-they-were-workin/) |
-| 13 | Fix ci-test.sh exit code and verify Playwright test failures are captured in CI | 2026-03-01 | a175b30 | [13-fix-ci-test-sh-exit-code-and-verify-play](./quick/13-fix-ci-test-sh-exit-code-and-verify-play/) |
+| 13 | Fix ci-test.sh exit code and verify Playwright test failures are captured in CI | 2026-03-01 | a8eb792 | [13-fix-ci-test-sh-exit-code-and-verify-play](./quick/13-fix-ci-test-sh-exit-code-and-verify-play/) |
+| 14 | Fix lints and investigate CI run timeout/exit code issue | 2026-03-01 | ba66705 | [14-fix-lints-and-investigate-ci-run-timeout](./quick/14-fix-lints-and-investigate-ci-run-timeout/) |
 
 ---
 
-Last activity: 2026-03-01 - Completed quick task 13: Fix ci-test.sh exit code and verify Playwright test failures are captured in CI
+Last activity: 2026-03-01 - Completed quick task 14: Fix lints and investigate CI run timeout/exit code issue
