@@ -1,3 +1,4 @@
+#![cfg_attr(feature = "test-mode", allow(dead_code, unused_imports))]
 use super::storage::StorageBackend;
 use async_trait::async_trait;
 use gloo_storage::{LocalStorage, Storage};

@@ -2,9 +2,9 @@ use crate::components::rpe_slider::RPESlider;
 use crate::components::step_controls::StepControls;
 use crate::components::tape_measure::TapeMeasure;
 use crate::models::{CompletedSet, ExerciseMetadata, SetType, SetTypeConfig};
-use crate::state::{
-    InitializationState, StorageBackend, WorkoutError, WorkoutState, WorkoutStateManager,
-};
+#[cfg(feature = "test-mode")]
+use crate::state::StorageBackend;
+use crate::state::{InitializationState, WorkoutError, WorkoutState, WorkoutStateManager};
 use dioxus::prelude::*;
 use wasm_bindgen::JsCast;
 
@@ -560,15 +560,14 @@ fn WorkoutInterface(state: WorkoutState) -> Element {
     // Set data-hydrated attribute after WASM initialization
     use_effect(move || {
         spawn(async move {
-            if let Some(window) = web_sys::window() {
-                if let Some(document) = window.document() {
-                    if let Some(body) = document.body() {
-                        if let Err(e) = body.set_attribute("data-hydrated", "true") {
-                            log::error!("Failed to set data-hydrated attribute: {:?}", e);
-                        } else {
-                            log::debug!("WASM hydration complete - data-hydrated attribute set");
-                        }
-                    }
+            if let Some(window) = web_sys::window()
+                && let Some(document) = window.document()
+                && let Some(body) = document.body()
+            {
+                if let Err(e) = body.set_attribute("data-hydrated", "true") {
+                    log::error!("Failed to set data-hydrated attribute: {:?}", e);
+                } else {
+                    log::debug!("WASM hydration complete - data-hydrated attribute set");
                 }
             }
         });

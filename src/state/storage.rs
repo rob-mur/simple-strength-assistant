@@ -4,6 +4,7 @@ use async_trait::async_trait;
 /// Storage backend trait that abstracts away the underlying storage mechanism.
 /// This allows switching between OPFS (production) and in-memory storage (tests).
 #[async_trait(?Send)]
+#[cfg_attr(not(feature = "test-mode"), allow(dead_code))]
 pub trait StorageBackend: Clone + PartialEq {
     /// Creates a new storage backend instance
     fn new() -> Self;
@@ -42,6 +43,7 @@ use std::rc::Rc;
 /// In-memory storage backend for E2E tests and environments where OPFS isn't available.
 /// This implementation bypasses all file picker dialogs and stores data in memory.
 #[derive(Clone)]
+#[cfg_attr(not(feature = "test-mode"), allow(dead_code))]
 pub struct InMemoryStorage {
     data: Rc<RefCell<Option<Vec<u8>>>>,
     initialized: Rc<RefCell<bool>>,

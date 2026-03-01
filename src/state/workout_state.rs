@@ -1,5 +1,7 @@
 use crate::models::{CompletedSet, ExerciseMetadata, SetType};
-use crate::state::{Database, Storage, StorageBackend, error::WorkoutError};
+#[cfg(feature = "test-mode")]
+use crate::state::StorageBackend;
+use crate::state::{Database, Storage, error::WorkoutError};
 use dioxus::prelude::*;
 
 // Initial prediction constants
