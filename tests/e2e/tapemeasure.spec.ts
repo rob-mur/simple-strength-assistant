@@ -5,20 +5,31 @@ test.describe('TapeMeasure Component E2E', () => {
     await page.goto('/');
     await page.waitForLoadState('networkidle');
 
-    // Wait for ActiveSession to render (E2E test mode auto-creates session)
-    await page.waitForSelector('.badge.badge-primary.badge-lg', {
-      state: 'visible',
-      timeout: 15000
-    });
+    // Real user flow: Click "Create New Database"
+    await page.click('text=Create New Database');
+    await page.waitForLoadState('networkidle');
 
-    // Wait for TapeMeasure components to render (there are 2: Weight and Reps)
+    // Start a workout session
+    await page.click('text=Start Session');
+    await page.waitForLoadState('networkidle');
+
+    // Fill in exercise name
+    await page.fill('input[placeholder="Exercise Name"]', 'Test Bench Press');
+
+    // Select "Weighted" exercise type
+    await page.click('text=Weighted');
+
+    // Submit the form
+    await page.click('button:has-text("Start Workout")');
+
+    // Wait for ActiveSession to render with TapeMeasure components
     await page.waitForSelector('.tape-measure-container', {
       state: 'visible',
-      timeout: 5000
+      timeout: 10000
     });
 
     // Allow WASM hydration and event handlers to attach
-    await page.waitForTimeout(1000);
+    await page.waitForTimeout(500);
   });
 
   test('swipe drag gesture updates value', async ({ page }) => {

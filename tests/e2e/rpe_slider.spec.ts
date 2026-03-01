@@ -5,25 +5,31 @@ test.describe('RPESlider Component E2E', () => {
     await page.goto('/');
     await page.waitForLoadState('networkidle');
 
-    // Wait for E2E test mode to create session and render ActiveSession
-    // Try multiple selectors with generous timeout for async session creation
-    try {
-      await page.waitForSelector('.rpe-slider-container', {
-        state: 'visible',
-        timeout: 30000
-      });
-    } catch (e) {
-      // If RPE slider not found, session might not have been created
-      // Check if we're in StartSessionView instead
-      const inStartView = await page.locator('text=Start Session').isVisible();
-      if (inStartView) {
-        throw new Error('E2E test mode did not auto-create session - still in StartSessionView');
-      }
-      throw e;
-    }
+    // Real user flow: Click "Create New Database"
+    await page.click('text=Create New Database');
+    await page.waitForLoadState('networkidle');
+
+    // Start a workout session
+    await page.click('text=Start Session');
+    await page.waitForLoadState('networkidle');
+
+    // Fill in exercise name
+    await page.fill('input[placeholder="Exercise Name"]', 'Test Bench Press');
+
+    // Select "Weighted" exercise type
+    await page.click('text=Weighted');
+
+    // Submit the form
+    await page.click('button:has-text("Start Workout")');
+
+    // Wait for ActiveSession to render with the RPE slider
+    await page.waitForSelector('.rpe-slider-container', {
+      state: 'visible',
+      timeout: 10000
+    });
 
     // Allow WASM hydration and event handlers to attach
-    await page.waitForTimeout(1000);
+    await page.waitForTimeout(500);
   });
 
   test('range input interaction updates value', async ({ page }) => {
