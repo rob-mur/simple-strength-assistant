@@ -22,6 +22,16 @@ progress:
 
 ## What Just Happened
 
+**Quick Task 9 PARTIAL:** E2E Test Isolation - Database Cleanup (2026-03-01)
+- Added database cleanup (db.close()) in initDatabase() to prevent test contamination
+- Fixed Dioxus session state persistence by clearing current_session on new database creation
+- Corrected test selectors (getByLabel vs non-existent placeholder) and flow (removed invalid button click)
+- Applied 3 auto-fix deviations (Rule 1 bugs) - reached attempt limit per deviation rules
+- **Status**: Infrastructure fixes complete, tests still 0/18 passing
+- **Blocker**: WASM/Playwright timing/synchronization issue - StartSessionView renders but Playwright can't interact within timeout
+- **Evidence**: Screenshots show UI rendering correctly, issue is purely timing not logic
+- **Next**: Requires separate investigation task for WASM hydration delays and element accessibility
+
 **Quick Task 8 MAJOR ACHIEVEMENT:** Storage Abstraction for E2E Testing (2026-03-01)
 - Created proper storage abstraction layer with StorageBackend trait (clean architecture!)
 - Implemented InMemoryStorage for tests (bypasses OPFS file picker dialogs entirely)
@@ -29,9 +39,6 @@ progress:
 - Removed test mode user-agent detection (wrong approach) - E2E tests now use real UI flow
 - Fixed chromium path export and enabled headless mode in playwright.config.ts
 - All changes pass format, clippy, cargo test (34/34), and BDD tests (9 scenarios/38 steps)
-- **Status**: Infrastructure complete, E2E tests launch successfully but 0/18 passing
-- **Blocker**: Tests find existing "Bench Press" session despite fresh state attempts
-- **Next**: Quick task 9 to fix test isolation and get all 18 E2E tests passing
 
 **Quick Task 7 COMPLETE:** Fix Playwright Infrastructure - Chromium Path & Webkit Removal (2026-03-01)
 - Exported CHROMIUM_EXECUTABLE_PATH in ci-test.sh to ensure Playwright subprocess uses devenv chromium
@@ -118,7 +125,7 @@ See: `.planning/PROJECT.md`, `.planning/REQUIREMENTS.md`, `.planning/ROADMAP.md`
 
 ## Blockers/Concerns
 
-None.
+**E2E Test Timing Issue:** All 18 Playwright tests fail due to WASM/Playwright synchronization problem. UI renders correctly (proven by screenshots) but Playwright times out waiting for elements to be interactive. Needs investigation into WASM hydration delays and element accessibility timing.
 
 ### Quick Tasks Completed
 
@@ -132,7 +139,8 @@ None.
 | 6 | add chromium to devenv to fix playwright browser dependencies | 2026-03-01 | e945cdd | [6-add-chromium-to-devenv-to-fix-playwright](./quick/6-add-chromium-to-devenv-to-fix-playwright/) |
 | 7 | Fix 30 failing Playwright tests: export chromium path, remove webkit Mobile Safari project, implement E2E test mode | 2026-03-01 | 85e55ae | [7-fix-30-failing-playwright-tests-css-sele](./quick/7-fix-30-failing-playwright-tests-css-sele/) |
 | 8 | fix remaining 12 failing playwright tests - element timing and selector issues | 2026-03-01 | 2fb8a0a | [8-fix-remaining-12-failing-playwright-test](./quick/8-fix-remaining-12-failing-playwright-test/) |
+| 9 | Fix E2E test isolation with database cleanup and session clearing (PARTIAL - timing issue remains) | 2026-03-01 | 861980e | [9-task-9](./quick/9-task-9/) |
 
 ---
 
-Last activity: 2026-03-01 - Completed quick task 8: storage abstraction with test-mode feature flag (E2E infrastructure ready, test flow needs debugging - task 9)
+Last activity: 2026-03-01 - Partial completion of quick task 9: database cleanup and test flow fixes applied, but tests still fail due to WASM/Playwright timing issue (blocker documented)
