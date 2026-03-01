@@ -1,74 +1,65 @@
-# Requirements: Tactile Training Experience (v1.1)
+# Requirements: Simple Strength Assistant
 
-**Defined:** 2026-02-27
-**Core Value:** Recording sets with zero typing friction.
+**Defined:** 2026-03-01
+**Core Value:** Users must be able to reliably persist their workout data to a file they control on their device.
 
-## v1 Requirements
+## v1.1 Requirements
 
-Requirements for the tactile, "no-typing" interface.
+Exercise Library milestone - centralized view to browse and search exercises.
 
-### Tape Measure (Reps & Weight)
+### Exercise Library
 
-- [ ] **TAPE-01**: User can swipe a horizontal tape measure to adjust weight.
-- [ ] **TAPE-02**: User can swipe a horizontal tape measure to adjust reps.
-- [ ] **TAPE-03**: Tape measure snaps to discrete increments (e.g., 0.5kg for weight, 1 for reps).
-- [ ] **TAPE-04**: User can click on any visible tick mark on the tape measure to jump to that value (desktop support).
-- [ ] **TAPE-05**: Component prevents browser scrolling while the tape is being swiped (`touch-action: none`).
+- [ ] **LIB-01**: User can view Exercise Library tab in the main interface
+- [ ] **LIB-02**: User can switch between Workout and Library tabs without losing active session
+- [ ] **LIB-03**: User can see all exercises they've created in a list view
+- [ ] **LIB-04**: User can search exercises by name with instant filtering
+- [ ] **LIB-05**: User sees exercise type indicator (weighted vs bodyweight) for each exercise
+- [ ] **LIB-06**: User sees clear empty state message when no exercises exist
 
-### RPE Slider
+## v2 Requirements
 
-- [ ] **RPE-01**: User can adjust RPE using a horizontal slider from 1 to 10.
-- [ ] **RPE-02**: RPE slider snaps to 0.5 increments.
-- [ ] **RPE-03**: Current RPE value is displayed prominently above the slider.
+Deferred to future release. Tracked but not in current roadmap.
 
-### Big Step Controls
+### Exercise Metadata
 
-- [ ] **STEP-01**: User can click "Big Step" buttons (e.g., ±5, ±10, ±25) to jump larger distances on the weight tape measure.
-- [ ] **STEP-02**: User can click "Small Step" buttons (e.g., ±1) to jump on the reps tape measure.
+- **LIB-07**: User can see last performed date for each exercise
+- **LIB-08**: User can see total sessions count for each exercise
 
-### UI Integration
+### Exercise Management
 
-- [ ] **INT-01**: The new tactile components replace existing number inputs in the set recording row.
-- [ ] **INT-02**: Tactile components are sized appropriately for thumb interaction on mobile devices.
-- [ ] **INT-03**: Current values are synchronized with the application's global state (`WorkoutState`).
-
-## v2 Requirements (Future)
-
-- **PRES-01**: Tape measure defaults to predicted/last set values.
-- **HAPT-01**: Vibration feedback on set completion.
-- **MOMENT-01**: Momentum scrolling for the tape measure.
+- **LIB-09**: User can archive exercises to hide from library
+- **LIB-10**: User can edit exercise name and settings
 
 ## Out of Scope
 
+Explicitly excluded. Documented to prevent scope creep.
+
 | Feature | Reason |
 |---------|--------|
-| Native Keyboard Entry | The goal is specifically to eliminate the keyboard friction. |
-| Progress Charts | Moved to v1.2 milestone to focus on input usability first. |
-| Voice Entry | High complexity, not requested. |
+| Pre-populated exercise database | User builds personal library through workouts; avoids naming conflicts and bloat |
+| Exercise categorization by muscle group | Adds complexity without validation; users already know exercise names |
+| Delete exercises | Archive instead to preserve workout history and prevent orphaned data |
+| Exercise video/image tutorials | Massive storage overhead, scope creep; user can Google form cues |
+| Workout prescription from library | Belongs in future prescription milestone, not library browsing |
 
 ## Traceability
 
+Which phases cover which requirements. Updated during roadmap creation.
+
 | Requirement | Phase | Status |
 |-------------|-------|--------|
-| TAPE-01 | Phase 4 | Pending |
-| TAPE-02 | Phase 4 | Pending |
-| TAPE-03 | Phase 4 | Pending |
-| TAPE-04 | Phase 4 | Pending |
-| TAPE-05 | Phase 4 | Pending |
-| RPE-01 | Phase 5 | Pending |
-| RPE-02 | Phase 5 | Pending |
-| RPE-03 | Phase 5 | Pending |
-| STEP-01 | Phase 6 | Complete |
-| STEP-02 | Phase 6 | Complete |
-| INT-01 | Phase 7 | Pending |
-| INT-02 | Phase 7 | Pending |
-| INT-03 | Phase 7 | Pending |
+| LIB-01 | TBD | Pending |
+| LIB-02 | TBD | Pending |
+| LIB-03 | TBD | Pending |
+| LIB-04 | TBD | Pending |
+| LIB-05 | TBD | Pending |
+| LIB-06 | TBD | Pending |
 
 **Coverage:**
-- v1 requirements: 13 total
-- Mapped to phases: 13
-- Unmapped: 0 ✓
+- v1.1 requirements: 6 total
+- Mapped to phases: 0 (pending roadmap)
+- Unmapped: 6 ⚠️
 
 ---
-*Requirements defined: 2026-02-27*
-*Last updated: 2026-02-27 after initial definition*
+*Requirements defined: 2026-03-01*
+*Last updated: 2026-03-01 after initial definition*
