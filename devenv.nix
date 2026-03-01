@@ -9,6 +9,7 @@
     devcontainer
     claude-code
     gemini-cli-bin
+    chromium
   ];
 
   languages.rust = {
@@ -25,10 +26,21 @@
     };
   };
 
+  env = {
+    CHROMIUM_EXECUTABLE_PATH = "${pkgs.chromium}/bin/chromium";
+    PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD = "1";
+  };
+
   scripts = {
     build.exec = "dx bundle --web --release --debug-symbols=false";
     format.exec = "cargo fmt";
     lint.exec = "./scripts/lint.sh";
+    ci-test.exec = "./scripts/ci-test.sh";
+  };
+
+  processes = {
+    serve.exec = "dx serve --port 8080";
+    test-serve.exec = "dx serve --port 8080 --features test-mode";
   };
 
   git-hooks.hooks = {
@@ -38,7 +50,7 @@
       entry = ''
         format
         lint
-        test
+        ci-test
         build
       '';
       stages = ["pre-commit" "pre-push"];

@@ -10,8 +10,8 @@ if [ -n "$GITHUB_ACTIONS" ]; then
   # In CI, check commits in the PR
   npx commitlint --from "$BASE_SHA" --to "$HEAD_SHA" --verbose
 else
-  # Locally, check the last commit
-  npx commitlint --from HEAD~1 --to HEAD --verbose
+  # Locally, check from main
+  npx commitlint --from main --to HEAD --verbose
 fi
 echo "✓ Commit messages valid"
 echo ""

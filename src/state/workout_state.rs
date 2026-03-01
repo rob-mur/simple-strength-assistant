@@ -1,5 +1,7 @@
 use crate::models::{CompletedSet, ExerciseMetadata, SetType};
-use crate::state::{Database, FileSystemManager, error::WorkoutError};
+#[cfg(feature = "test-mode")]
+use crate::state::StorageBackend;
+use crate::state::{Database, Storage, error::WorkoutError};
 use dioxus::prelude::*;
 
 // Initial prediction constants
@@ -11,7 +13,7 @@ const RPE_THRESHOLD_LOW: f32 = 7.0;
 const RPE_REDUCTION: f32 = 0.5;
 const RPE_MINIMUM: f32 = 6.0;
 
-#[derive(Clone, Debug, PartialEq)]
+#[derive(Clone, Copy, Debug, PartialEq)]
 pub struct PredictedParameters {
     pub weight: Option<f32>,
     pub reps: u32,
@@ -43,7 +45,7 @@ pub struct WorkoutState {
     error: Signal<Option<WorkoutError>>,
     save_error: Signal<Option<String>>,
     database: Signal<Option<Database>>,
-    file_manager: Signal<Option<FileSystemManager>>,
+    file_manager: Signal<Option<Storage>>,
     last_save_time: Signal<f64>,
 }
 
@@ -101,7 +103,7 @@ impl WorkoutState {
         sig.set(Some(database));
     }
 
-    pub fn set_file_manager(&self, file_manager: FileSystemManager) {
+    pub fn set_file_manager(&self, file_manager: Storage) {
         let mut sig = self.file_manager;
         sig.set(Some(file_manager));
     }
@@ -110,7 +112,7 @@ impl WorkoutState {
         (self.database)()
     }
 
-    pub fn file_manager(&self) -> Option<FileSystemManager> {
+    pub fn file_manager(&self) -> Option<Storage> {
         (self.file_manager)()
     }
 
@@ -145,7 +147,7 @@ impl WorkoutStateManager {
         state.set_initialization_state(InitializationState::Initializing);
 
         log::debug!("[DB Init] Creating file manager...");
-        let mut file_manager = FileSystemManager::new();
+        let mut file_manager = Storage::new();
 
         log::debug!("[DB Init] Checking for cached file handle...");
         let has_cached = file_manager.check_cached_handle().await.map_err(|e| {
@@ -159,9 +161,7 @@ impl WorkoutStateManager {
             // Store it even if we might fail later (e.g. permission check)
             // This allows the Error UI to see we have a handle and re-request permission.
             state.set_file_manager(file_manager.clone());
-        }
-
-        if !has_cached {
+        } else {
             log::debug!("[DB Init] No cached handle, transitioning to SelectingFile state");
             log::debug!("[DB Init] File picker requires user gesture - waiting for button click");
             state.set_initialization_state(InitializationState::SelectingFile);

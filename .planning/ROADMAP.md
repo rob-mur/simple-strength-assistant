@@ -1,35 +1,66 @@
-# Roadmap: Simple Strength Assistant
+# Roadmap: Tactile Training Experience (v1.1)
 
-## Milestones
+**Milestone:** v1.1
+**Goal:** Implement a tactile, "no-typing" interface for recording workout sets.
 
-- ✅ **v1.0: File Picker Fix** — Phases 1-3 (shipped 2026-02-26)
-- 🚧 **v1.1: Data Management** — Phases 4-5 (planned)
+## Proposed Phases
 
-## Phases
+**4 phases** | **13 requirements mapped** | All covered ✓
 
-<details>
-<summary>✅ v1.0: File Picker Fix (Phases 1-3) — SHIPPED 2026-02-26</summary>
-
-- [x] Phase 1: Development Environment (1 plan) — completed 2026-02-26
-- [x] Phase 2: Debug and Fix File Picker (4 plans) — completed 2026-02-26
-- [x] Phase 3: Verify and Polish (1 plan) — completed 2026-02-26
-
-</details>
-
-### 🚧 v1.1: Data Management (Planned)
-
-- [ ] Phase 4: Data Portability (3 plans)
-- [ ] Phase 5: Database Maintenance (2 plans)
-
-## Progress
-
-| Phase | Milestone | Plans Complete | Status | Completed |
-|-------|-----------|----------------|--------|-----------|
-| 1. Development Environment | v1.0 | 1/1 | Complete | 2026-02-26 |
-| 2. Debug and Fix File Picker | v1.0 | 4/4 | Complete | 2026-02-26 |
-| 3. Verify and Polish | v1.0 | 1/1 | Complete | 2026-02-26 |
-| 4. Data Portability | v1.1 | 0/3 | Not started | - |
-| 5. Database Maintenance | v1.1 | 0/2 | Not started | - |
+| # | Phase | Goal | Requirements | Success Criteria |
+|---|-------|------|--------------|------------------|
+| 4 | **Tape Measure** | Core implementation of swipeable inputs for Reps & Weight. | TAPE-[01-05] | **Plans:** 3 plans |
+| 5 | **RPE Slider** | Discrete slider-based input for RPE (1-10 in 0.5 steps). | RPE-[01-03] | 1 |
+| 6 | **Jump Controls** | Buttons for rapid adjustment (±1, ±5, ±10, ±25). | STEP-[01-02] | ✓ |
+| 7 | **UI Integration** | Replace current inputs and sync with global state. | INT-[01-03] | 2 |
 
 ---
-*Roadmap updated: 2026-02-26 after v1.0 completion*
+
+### Phase Details
+
+#### Phase 4: Swipeable Tape Measure
+**Plans:**
+- [ ] 04-01-PLAN.md — Core Component Foundation & Physics
+- [ ] 04-02-PLAN.md — SVG Rendering & Aesthetic Polish
+- [ ] 04-03-PLAN.md — UI Integration & Physics Tuning
+**Goal:** Implementation of the tape measure component using SVG and pointer events.
+**Requirements:**
+- TAPE-01: Swipe to adjust weight
+- TAPE-02: Swipe to adjust reps
+- TAPE-03: Snap to increments (0.5/1.0)
+- TAPE-04: Desktop support (click to jump)
+- TAPE-05: Scroll locking (`touch-action: none`)
+**Success Criteria:**
+1. Component can be swiped on mobile and clicked on desktop.
+2. Value updates correctly based on swipe distance and increments.
+
+#### Phase 5: RPE Slider
+**Goal:** Implementation of the discrete slider for RPE.
+**Requirements:**
+- RPE-01: Adjust RPE via slider (1-10)
+- RPE-02: Snap to 0.5 increments
+- RPE-03: Prominent value display
+**Success Criteria:**
+1. Slider operates smoothly and snaps accurately.
+2. Value display updates instantly.
+
+#### Phase 6: Jump & Step Controls
+**Goal:** Implementation of "Big Step" and "Small Step" buttons.
+**Requirements:**
+- STEP-01: Big Step buttons (±5, ±10, ±25)
+- STEP-02: Small Step buttons (±1)
+**Success Criteria:**
+1. Buttons correctly modify the associated tape measure value.
+
+#### Phase 7: UI Integration & Refinement
+**Goal:** Integration into the main app and mobile-first refinement.
+**Requirements:**
+- INT-01: Replace existing number inputs
+- INT-02: Sized for thumb interaction
+- INT-03: Synchronize with global state (`WorkoutState`)
+**Success Criteria:**
+1. Recording a set in the app works end-to-end without opening the keyboard.
+2. Components are usable and well-spaced on a mobile device.
+
+---
+*Roadmap defined: 2026-02-27*

@@ -19,6 +19,17 @@ export async function initDatabase(fileData) {
     try {
         await ensureSQLLoaded();
 
+        // CRITICAL: Close existing database to ensure test isolation
+        // Without this, tests share state and see data from previous tests
+        if (db) {
+            try {
+                db.close();
+            } catch (e) {
+                console.warn('Failed to close existing database:', e);
+            }
+            db = null;
+        }
+
         if (fileData && fileData.length > 0) {
             const uint8Array = new Uint8Array(fileData);
             db = new SQL.Database(uint8Array);

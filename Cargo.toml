@@ -8,6 +8,11 @@ authors = ["rob-mur"]
 description = "A simple strength training assistant built with Rust and Dioxus"
 license = "AGPLv3"
 
+[features]
+# Enable test mode to use in-memory storage instead of OPFS
+# This allows E2E tests to run without file picker dialogs
+test-mode = []
+
 [dependencies]
 dioxus = { version = "=0.7.2", features = ["web"] }
 wasm-bindgen = "=0.2.106"
@@ -25,14 +30,22 @@ web-sys = { version = "0.3", features = [
     "File",
     "Blob",
     "FileReader",
+    "PointerEvent",
+    "Element",
+    "HtmlElement",
+    "EventTarget",
 ] }
 gloo-storage = "0.3"
 gloo-utils = "0.2"
+gloo-timers = { version = "0.3", features = ["futures"] }
 thiserror = "2.0"
 log = "0.4"
 tracing = "0.1"
+async-trait = "0.1"
 
 [dev-dependencies]
 wasm-bindgen-test = "0.3"
+cucumber = { version = "0.21", features = ["macros"] }
+tokio = { version = "1", features = ["rt-multi-thread", "macros"] }
 
 
