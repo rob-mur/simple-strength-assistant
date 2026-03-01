@@ -22,6 +22,12 @@ progress:
 
 ## What Just Happened
 
+**Quick Task 15 COMPLETE:** Refactor E2E Tests to BDD (2026-03-01)
+- Installed `playwright-bdd` and `@cucumber/cucumber`.
+- Migrated 18 E2E test cases from Playwright spec files to Cucumber `.feature` files.
+- Implemented reusable BDD step definitions and updated test scripts to generate them automatically.
+- Deleted the old `.spec.ts` files, achieving full BDD alignment across both unit tests (Rust) and E2E tests (Playwright).
+
 **Quick Task 14 COMPLETE:** Fix CI Lints and Playwright Timeout Issues (2026-03-01)
 - Identified commitlint failures caused by older Phase 6 commits with uppercase subjects in the PR.
 - Executed an automated interactive rebase to fix the capitalization of those commit messages.
@@ -180,8 +186,9 @@ None - All E2E tests passing (18/18). Full CI pipeline green.
 | 11 | Fix remaining 7 failing E2E tests - achieve 100% test pass rate (18/18) by correcting test assertions | 2026-03-01 | 3fc301c | [11-fix-remaining-7-failing-e2e-tests-test-l](./quick/11-fix-remaining-7-failing-e2e-tests-test-l/) |
 | 12 | please fix the ci-tests (they were working pre linting) | 2026-03-01 | 0f690af | [12-please-fix-the-ci-tests-they-were-workin](./quick/12-please-fix-the-ci-tests-they-were-workin/) |
 | 13 | Fix ci-test.sh exit code and verify Playwright test failures are captured in CI | 2026-03-01 | a8eb792 | [13-fix-ci-test-sh-exit-code-and-verify-play](./quick/13-fix-ci-test-sh-exit-code-and-verify-play/) |
-| 14 | Fix lints and investigate CI run timeout/exit code issue | 2026-03-01 | ba66705 | [14-fix-lints-and-investigate-ci-run-timeout](./quick/14-fix-lints-and-investigate-ci-run-timeout/) |
+| 14 | Fix lints and investigate CI run timeout/exit code issue | 2026-03-01 | d11b93e | [14-fix-lints-and-investigate-ci-run-timeout](./quick/14-fix-lints-and-investigate-ci-run-timeout/) |
+| 15 | Refactor E2E tests to use BDD | 2026-03-01 | ce86118 | [15-refactor-e2e-tests-to-use-bdd](./quick/15-refactor-e2e-tests-to-use-bdd/) |
 
 ---
 
-Last activity: 2026-03-01 - Completed quick task 14: Fix lints and investigate CI run timeout/exit code issue
+Last activity: 2026-03-01 - Completed quick task 15: Refactor E2E tests to use BDD
