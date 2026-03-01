@@ -25,11 +25,11 @@ Users must be able to reliably persist their workout data to a file they control
 
 ### Active
 
-- [ ] User can export database to JSON format
-- [ ] User can import data from previous exports
-- [ ] User can vacuum/optimize database file
-- [ ] Workout prescription based on history (suggest weight/reps)
-- [ ] Historical data view showing past sessions
+- [ ] User can view all exercises in a dedicated Exercise Library tab
+- [ ] User can see exercise metadata (last performed, total sessions, performance indicators)
+- [ ] User can search and filter exercises by name
+- [ ] User can edit exercise details (name, settings)
+- [ ] User can archive exercises to prevent orphaned workout data
 
 ### Out of Scope
 
@@ -37,6 +37,11 @@ Users must be able to reliably persist their workout data to a file they control
 - Multi-device sync — Requires cloud infrastructure
 - Social features — Not relevant to personal workout tracking
 - Workout programs library — Defer until prescription system exists
+- Exercise deletion — Archive instead to prevent orphaned workout references
+- Exercise categorization by muscle group — Keep simple for v1.1, defer to future
+- Database export/import — Deferred to future milestone
+- Workout prescription based on history — Deferred to future milestone
+- Tactile input components (tape measure, RPE slider) — Previous v1.1 scope, deferred
 
 ## Current State (v1.0)
 
@@ -51,13 +56,16 @@ Users must be able to reliably persist their workout data to a file they control
 - Reactive UI state using Dioxus 0.7 Signals.
 - User-friendly error handling with recovery instructions.
 
-## Next Milestone Goals (v1.1)
+## Current Milestone: v1.1 Exercise Library
 
-- Implement a tactile, "no-typing" interface for set recording.
-- Develop a swipeable tape measure component for reps and weight inputs.
-- Create a slider-based input for RPE (1-10 in 0.5 increments).
-- Add "big step" jump buttons for rapid weight/rep adjustments.
-- Ensure desktop compatibility for touch-optimized components (mouse click support).
+**Goal:** Provide users with a centralized view to manage and browse their exercise collection.
+
+**Target features:**
+- Exercise Library tab with list view
+- Exercise metadata display (last performed, total sessions, performance indicators)
+- Search and filter functionality
+- Edit exercise details
+- Archive exercises (soft delete to preserve workout history)
 
 ## Key Decisions
 
@@ -70,4 +78,4 @@ Users must be able to reliably persist their workout data to a file they control
 | User gesture button | Browser security requirement for file picker | ✓ Good - required for API |
 
 ---
-*Last updated: 2026-02-26 after v1.0 milestone*
+*Last updated: 2026-03-01 after v1.1 milestone reset*
