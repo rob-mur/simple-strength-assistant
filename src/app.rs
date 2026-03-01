@@ -557,6 +557,23 @@ pub fn App() -> Element {
 fn WorkoutInterface(state: WorkoutState) -> Element {
     let current_session = state.current_session();
 
+    // Set data-hydrated attribute after WASM initialization
+    use_effect(move || {
+        spawn(async move {
+            if let Some(window) = web_sys::window() {
+                if let Some(document) = window.document() {
+                    if let Some(body) = document.body() {
+                        if let Err(e) = body.set_attribute("data-hydrated", "true") {
+                            log::error!("Failed to set data-hydrated attribute: {:?}", e);
+                        } else {
+                            log::debug!("WASM hydration complete - data-hydrated attribute set");
+                        }
+                    }
+                }
+            }
+        });
+    });
+
     if let Some(session) = current_session {
         log::debug!(
             "[WorkoutInterface] Rendering ActiveSession for exercise: {}",
