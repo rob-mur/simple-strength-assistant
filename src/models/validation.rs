@@ -211,11 +211,13 @@ pub fn validate_completed_set(
         }
         (SetType::Weighted { .. }, SetTypeConfig::Bodyweight) => {
             // This shouldn't happen - weighted set for bodyweight exercise
-            // For now we'll allow it, but could add a validation error variant for this
+            // TODO: Track as a future ValidationError variant (e.g. SetTypeMismatch)
+            // to make the contract explicit rather than silently valid.
         }
         (SetType::Bodyweight, SetTypeConfig::Weighted { .. }) => {
             // This shouldn't happen - bodyweight set for weighted exercise
-            // For now we'll allow it, but could add a validation error variant for this
+            // TODO: Track as a future ValidationError variant (e.g. SetTypeMismatch)
+            // to make the contract explicit rather than silently valid.
         }
     }
 

@@ -91,6 +91,22 @@ pub fn App() -> Element {
         });
     });
 
+    // Set data-hydrated attribute after WASM initialization
+    use_effect(move || {
+        spawn(async move {
+            if let Some(window) = web_sys::window()
+                && let Some(document) = window.document()
+                && let Some(body) = document.body()
+            {
+                if let Err(e) = body.set_attribute("data-hydrated", "true") {
+                    log::error!("Failed to set data-hydrated attribute: {:?}", e);
+                } else {
+                    log::debug!("WASM hydration complete - data-hydrated attribute set");
+                }
+            }
+        });
+    });
+
     rsx! {
         div {
             class: "flex flex-col min-h-screen bg-base-200",
@@ -468,13 +484,13 @@ pub fn App() -> Element {
                                 class: "pb-safe-nav",
                                 {storage_mode_banner}
                                 {save_error_banner}
-                                match (active_tab)() {
+                                match active_tab() {
                                     Tab::Workout => rsx! { WorkoutView { state: workout_state } },
                                     Tab::Library => rsx! { LibraryView {} },
                                 }
                             }
                             TabBar {
-                                active_tab: (active_tab)(),
+                                active_tab: active_tab(),
                                 on_change: move |tab| {
                                     active_tab.set(tab);
                                 }

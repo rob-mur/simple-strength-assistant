@@ -165,7 +165,7 @@ pub fn LibraryView() -> Element {
                     class: "grid gap-4",
                     for exercise in filtered_exercises() {
                         div {
-                            key: "{exercise.name}",
+                            key: "{exercise.id.unwrap_or(0)}",
                             class: "card bg-base-100 shadow-md hover:shadow-lg transition-all border border-base-200",
                             div {
                                 class: "card-body p-4",

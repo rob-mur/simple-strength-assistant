@@ -7,22 +7,8 @@ use dioxus::prelude::*;
 pub fn WorkoutView(state: WorkoutState) -> Element {
     let current_session = state.current_session();
     let mut active_tab = consume_context::<Signal<Tab>>();
-
-    // Set data-hydrated attribute after WASM initialization
-    use_effect(move || {
-        spawn(async move {
-            if let Some(window) = web_sys::window()
-                && let Some(document) = window.document()
-                && let Some(body) = document.body()
-            {
-                if let Err(e) = body.set_attribute("data-hydrated", "true") {
-                    log::error!("Failed to set data-hydrated attribute: {:?}", e);
-                } else {
-                    log::debug!("WASM hydration complete - data-hydrated attribute set");
-                }
-            }
-        });
-    });
+    // Note: active_tab is implicitly coupled via context. Consider passing on_navigate
+    // as a prop in the future to improve component isolation and testability.
 
     if let Some(session) = current_session {
         log::debug!(
