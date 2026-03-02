@@ -378,6 +378,7 @@ mod tests {
     #[test]
     fn test_validate_completed_set_weighted_valid() {
         let exercise = ExerciseMetadata {
+            id: None,
             name: "Bench Press".to_string(),
             set_type_config: SetTypeConfig::Weighted {
                 min_weight: 20.0,
@@ -398,6 +399,7 @@ mod tests {
     #[test]
     fn test_validate_completed_set_bodyweight_valid() {
         let exercise = ExerciseMetadata {
+            id: None,
             name: "Pull-ups".to_string(),
             set_type_config: SetTypeConfig::Bodyweight,
         };
@@ -415,6 +417,7 @@ mod tests {
     #[test]
     fn test_validate_completed_set_invalid_weight() {
         let exercise = ExerciseMetadata {
+            id: None,
             name: "Bench Press".to_string(),
             set_type_config: SetTypeConfig::Weighted {
                 min_weight: 20.0,
@@ -442,6 +445,7 @@ mod tests {
     #[test]
     fn test_validate_completed_set_invalid_rpe() {
         let exercise = ExerciseMetadata {
+            id: None,
             name: "Pull-ups".to_string(),
             set_type_config: SetTypeConfig::Bodyweight,
         };
@@ -460,6 +464,7 @@ mod tests {
     #[test]
     fn test_validate_completed_set_zero_reps() {
         let exercise = ExerciseMetadata {
+            id: None,
             name: "Pull-ups".to_string(),
             set_type_config: SetTypeConfig::Bodyweight,
         };

@@ -1,3 +1,4 @@
+pub mod exercise_form;
 pub mod library_view;
 pub mod rpe_slider;
 pub mod step_controls;

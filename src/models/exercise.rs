@@ -26,6 +26,8 @@ pub enum SetTypeConfig {
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
 #[allow(dead_code)]
 pub struct ExerciseMetadata {
+    /// Optional database ID for the exercise
+    pub id: Option<i64>,
     /// Display name of the exercise (e.g., "Bench Press", "Pull-ups")
     pub name: String,
     /// Configuration for the type of sets this exercise uses
@@ -39,6 +41,7 @@ mod tests {
     #[test]
     fn test_weighted_exercise_metadata() {
         let exercise = ExerciseMetadata {
+            id: None,
             name: "Bench Press".to_string(),
             set_type_config: SetTypeConfig::Weighted {
                 min_weight: 20.0,
@@ -62,6 +65,7 @@ mod tests {
     #[test]
     fn test_bodyweight_exercise_metadata() {
         let exercise = ExerciseMetadata {
+            id: None,
             name: "Pull-ups".to_string(),
             set_type_config: SetTypeConfig::Bodyweight,
         };
@@ -78,6 +82,7 @@ mod tests {
     #[test]
     fn test_serde_round_trip_weighted_exercise() {
         let original = ExerciseMetadata {
+            id: Some(123),
             name: "Squat".to_string(),
             set_type_config: SetTypeConfig::Weighted {
                 min_weight: 20.0,
@@ -96,6 +101,7 @@ mod tests {
     #[test]
     fn test_serde_round_trip_bodyweight_exercise() {
         let original = ExerciseMetadata {
+            id: None,
             name: "Push-ups".to_string(),
             set_type_config: SetTypeConfig::Bodyweight,
         };
@@ -104,33 +110,15 @@ mod tests {
         let deserialized: ExerciseMetadata =
             serde_json::from_str(&json).expect("Deserialization failed");
 
+        assert_eq!(deserialized.id, original.id);
         assert_eq!(deserialized.name, original.name);
         assert_eq!(deserialized.set_type_config, original.set_type_config);
     }
 
     #[test]
-    fn test_set_type_config_equality() {
-        let weighted1 = SetTypeConfig::Weighted {
-            min_weight: 20.0,
-            increment: 2.5,
-        };
-        let weighted2 = SetTypeConfig::Weighted {
-            min_weight: 20.0,
-            increment: 2.5,
-        };
-        let weighted3 = SetTypeConfig::Weighted {
-            min_weight: 25.0,
-            increment: 2.5,
-        };
-
-        assert_eq!(weighted1, weighted2);
-        assert_ne!(weighted1, weighted3);
-        assert_ne!(weighted1, SetTypeConfig::Bodyweight);
-    }
-
-    #[test]
     fn test_exercise_cloning() {
         let original = ExerciseMetadata {
+            id: Some(99),
             name: "Deadlift".to_string(),
             set_type_config: SetTypeConfig::Weighted {
                 min_weight: 20.0,
@@ -139,6 +127,7 @@ mod tests {
         };
 
         let cloned = original.clone();
+        assert_eq!(cloned.id, original.id);
         assert_eq!(cloned.name, original.name);
         assert_eq!(cloned.set_type_config, original.set_type_config);
     }

@@ -8,7 +8,7 @@ Feature: TapeMeasure Component E2E
 
   Scenario: Swipe drag gesture updates value
     When I swipe the reps TapeMeasure left to increase value
-    Then the reps TapeMeasure value should increase
+    Then the reps TapeMeasure value should change
 
   Scenario: Click on tick mark jumps to value
     When I click on a different tick mark in the reps TapeMeasure

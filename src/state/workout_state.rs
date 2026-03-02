@@ -242,17 +242,45 @@ impl WorkoutStateManager {
         Ok(())
     }
 
-    pub async fn start_session(
+    pub async fn save_exercise(
         state: &WorkoutState,
         exercise: ExerciseMetadata,
-    ) -> Result<(), WorkoutError> {
+    ) -> Result<i64, WorkoutError> {
         let db = state.database().ok_or(WorkoutError::NotInitialized)?;
 
-        db.save_exercise(&exercise)
+        let id = db
+            .save_exercise(&exercise)
             .await
             .map_err(|e: crate::state::DatabaseError| {
                 WorkoutError::SaveExerciseError(e.to_string())
             })?;
+
+        // Sync exercises in state after saving
+        if let Err(e) = Self::sync_exercises(state).await {
+            log::warn!("Failed to sync exercises after saving: {}", e);
+        }
+
+        // Auto-save the database file
+        if let Err(e) = Self::save_database(state).await {
+            log::warn!("Auto-save after exercise save failed: {}", e);
+        }
+
+        Ok(id)
+    }
+
+    pub async fn start_session(
+        state: &WorkoutState,
+        mut exercise: ExerciseMetadata,
+    ) -> Result<(), WorkoutError> {
+        let db = state.database().ok_or(WorkoutError::NotInitialized)?;
+
+        let id = db
+            .save_exercise(&exercise)
+            .await
+            .map_err(|e: crate::state::DatabaseError| {
+                WorkoutError::SaveExerciseError(e.to_string())
+            })?;
+        exercise.id = Some(id);
 
         // Sync exercises in state after saving new one
         if let Err(e) = Self::sync_exercises(state).await {
@@ -455,6 +483,7 @@ mod tests {
     #[test]
     fn test_initial_predictions_weighted() {
         let exercise = ExerciseMetadata {
+            id: Some(1),
             name: "Bench Press".to_string(),
             set_type_config: SetTypeConfig::Weighted {
                 min_weight: 45.0,
@@ -472,6 +501,7 @@ mod tests {
     #[test]
     fn test_initial_predictions_bodyweight() {
         let exercise = ExerciseMetadata {
+            id: Some(2),
             name: "Pull-ups".to_string(),
             set_type_config: SetTypeConfig::Bodyweight,
         };
@@ -486,6 +516,7 @@ mod tests {
     #[test]
     fn test_next_predictions_progression() {
         let exercise = ExerciseMetadata {
+            id: Some(3),
             name: "Bench Press".to_string(),
             set_type_config: SetTypeConfig::Weighted {
                 min_weight: 45.0,

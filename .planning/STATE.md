@@ -2,10 +2,10 @@
 gsd_state_version: 1.0
 milestone: v1.1
 milestone_name: Exercise Library
-status: complete
-last_updated: "2026-03-02T12:28:00.000Z"
+status: in-progress
+last_updated: "2026-03-02T13:00:00.000Z"
 progress:
-  total_phases: 5
+  total_phases: 6
   completed_phases: 5
   total_plans: 13
   completed_plans: 13
@@ -18,15 +18,15 @@ progress:
 See: .planning/PROJECT.md (updated 2026-03-01)
 
 **Core value:** Users must be able to reliably persist their workout data to a file they control on their device.
-**Current focus:** Completed v1.1 Exercise Library
+**Current focus:** UI Refinement and Exercise Flow Corrections (v1.1)
 
 ## Current Position
 
-Phase: Complete (5 of 5)
-Status: Milestone v1.1 Shipped
-Last activity: 2026-03-02 — Completed Phase 5 and verified with Playwright E2E tests.
+Phase: Phase 6
+Status: In Progress
+Last activity: 2026-03-02 — Added Phase 6 based on user feedback to refine UI and management flow.
 
-Progress: [██████████] 100% (v1.1 complete)
+Progress: [████████░░] 83% (v1.1 current)
 
 ## Performance Metrics
 
@@ -57,6 +57,10 @@ Recent decisions affecting current work:
 - [Phase 05-03]: Used context injection in components to support easier unit testing of internal state filters using VirtualDom SSR rendering without complex event firing.
 - [Phase 05-04]: Fixed SQLite boolean retrieval by handling 0/1 integers correctly in JS integration.
 - [Phase 05-04]: Implemented explicit `sync_exercises` to ensure state reactivity when exercises are added or database is initialized.
+
+### Roadmap Evolution
+
+- Phase 6 added: UI Refinement and Exercise Flow Corrections
 
 ### Pending Todos
 

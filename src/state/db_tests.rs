@@ -24,6 +24,7 @@ async fn test_database_initialization_with_existing_data() {
     db1.init(None).await.expect("Initial db init failed");
 
     let exercise = ExerciseMetadata {
+        id: None,
         name: "Test Exercise".to_string(),
         set_type_config: SetTypeConfig::Weighted {
             min_weight: 45.0,
@@ -131,6 +132,7 @@ async fn test_save_exercise() {
     db.init(None).await.expect("Database init failed");
 
     let exercise = ExerciseMetadata {
+        id: None,
         name: "Deadlift".to_string(),
         set_type_config: SetTypeConfig::Weighted {
             min_weight: 135.0,
@@ -144,6 +146,7 @@ async fn test_save_exercise() {
 
     // Test updating the same exercise (should replace)
     let updated_exercise = ExerciseMetadata {
+        id: None,
         name: "Deadlift".to_string(),
         set_type_config: SetTypeConfig::Weighted {
             min_weight: 145.0,
@@ -162,6 +165,7 @@ async fn test_export_database() {
     db.init(None).await.expect("Database init failed");
 
     let exercise = ExerciseMetadata {
+        id: None,
         name: "Test Exercise".to_string(),
         set_type_config: SetTypeConfig::Bodyweight,
     };
@@ -200,6 +204,7 @@ async fn test_sql_injection_protection() {
     let malicious_name = "Test'; DROP TABLE sessions; --";
 
     let exercise = ExerciseMetadata {
+        id: None,
         name: malicious_name.to_string(),
         set_type_config: SetTypeConfig::Weighted {
             min_weight: 45.0,
@@ -230,6 +235,7 @@ async fn test_export_import_round_trip() {
     db1.init(None).await.expect("DB1 init failed");
 
     let exercise = ExerciseMetadata {
+        id: None,
         name: "Bench Press".to_string(),
         set_type_config: SetTypeConfig::Weighted {
             min_weight: 45.0,

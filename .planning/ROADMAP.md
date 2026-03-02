@@ -3,7 +3,7 @@
 ## Milestones
 
 - ✅ **v1.0 MVP** - Phases 1-3 (shipped 2026-02-26)
-- ✅ **v1.1 Exercise Library** - Phases 4-5 (shipped 2026-03-02)
+- 🏗️ **v1.1 Exercise Library** - Phases 4-6 (in progress)
 
 ## Phases
 
@@ -38,7 +38,7 @@ Plans:
 </details>
 
 <details>
-<summary>✅ v1.1 Exercise Library (Phases 4-5) - SHIPPED 2026-03-02</summary>
+<summary>🏗️ v1.1 Exercise Library (Phases 4-6) - IN PROGRESS</summary>
 
 ### Phase 4: Tab Navigation Foundation
 **Goal**: Users can navigate between Workout and Library tabs without losing active workout session state
@@ -73,12 +73,27 @@ Plans:
 - [x] 05-03-PLAN.md — Search Filtering Component and Empty States
 - [x] 05-04-PLAN.md — Integration and Playwright E2E Tests
 
+### Phase 6: UI Refinement and Exercise Flow Corrections
+**Goal**: Fix navigation bar rendering and move exercise management/configuration to the Library tab to streamline workout sessions.
+**Depends on**: Phase 5
+**Success Criteria**:
+  1. Navigation bar is correctly positioned at the bottom and styled properly.
+  2. Exercise creation and configuration (min weight, increments) are accessible in the Library tab.
+  3. "Start session" flow is removed in favor of direct exercise selection from the Library.
+**Plans**: 4 plans
+
+Plans:
+- [ ] 06-01-PLAN.md — BDD Test Scaffolding for UI Refinement and Flow
+- [ ] 06-02-PLAN.md — Navigation Bar Polish and Safe Area Support
+- [ ] 06-03-PLAN.md — Exercise Management in Library
+- [ ] 06-04-PLAN.md — Streamlined Workout Flow Implementation
+
 </details>
 
 ## Progress
 
 **Execution Order:**
-Phases execute in numeric order: 4 → 5
+Phases execute in numeric order: 4 → 5 → 6
 
 | Phase | Milestone | Plans Complete | Status | Completed |
 |-------|-----------|----------------|--------|-----------|
@@ -87,3 +102,4 @@ Phases execute in numeric order: 4 → 5
 | 3. PWA Deployment & Polish | v1.0 | 2/2 | Complete | 2026-02-26 |
 | 4. Tab Navigation Foundation | v1.1 | 2/2 | Complete | 2026-03-02 |
 | 5. Exercise List & Search | v1.1 | 4/4 | Complete | 2026-03-02 |
+| 6. UI Refinement and Exercise Flow Corrections | v1.1 | 0/4 | In Progress | - |

@@ -2,7 +2,8 @@ import { Given, When, Then, expect } from './fixtures';
 
 Given('the user is on the Library tab', async ({ page }) => {
   await page.click('button[role="tab"]:has-text("Library")');
-  await expect(page.locator('h2:has-text("Exercise Library")')).toBeVisible();
+  // New UI uses uppercase "LIBRARY" in h2
+  await expect(page.locator('h2:has-text("Library")')).toBeVisible();
 });
 
 Given('the database contains standard exercises', async ({ page }) => {
@@ -11,12 +12,19 @@ Given('the database contains standard exercises', async ({ page }) => {
     { name: 'Push-up', isWeighted: false }
   ];
 
+  await page.click('button[role="tab"]:has-text("Library")');
+
   for (const ex of exercises) {
-    // Navigate to Workout tab
-    await page.click('button[role="tab"]:has-text("Workout")');
+    // Click Add Exercise or FAB
+    const addBtn = page.locator('button:has-text("Add First Exercise"), button:has-text("Add New Exercise")').first();
+    if (await addBtn.isVisible()) {
+      await addBtn.click();
+    } else {
+       await page.locator('button.btn-circle.btn-primary').click();
+    }
     
     // Fill exercise name
-    await page.getByLabel('Exercise Name').fill(ex.name);
+    await page.fill('#exercise-name-input', ex.name);
     
     // Handle weighted/bodyweight toggle
     const checkbox = page.locator('input[type="checkbox"].checkbox');
@@ -25,36 +33,29 @@ Given('the database contains standard exercises', async ({ page }) => {
       await checkbox.click();
     }
     
-    // Start session
-    await page.click('button:has-text("Start Session")');
-    // Wait for ActiveSession to appear
-    await expect(page.locator('button:has-text("LOG SET")')).toBeVisible();
-    
-    // Finish session to save it to library
-    await page.click('button:has-text("Finish Workout Session")');
-    // Wait for return to StartSessionView
-    await expect(page.locator('button:has-text("Start Session")')).toBeVisible();
+    // Save exercise
+    await page.click('button:has-text("Save Exercise")');
+    // Wait for form to disappear
+    await expect(page.locator('#exercise-name-input')).not.toBeVisible();
   }
-  
-  // Go back to Library
-  await page.click('button[role="tab"]:has-text("Library")');
 });
 
 Then('the user should see a list of exercises', async ({ page }) => {
-  const listItems = page.locator('ul.menu li');
+  const listItems = page.locator('div.card-body h3');
   await expect(listItems).toHaveCount(2);
 });
 
 Then('each exercise should display its name and type badge', async ({ page }) => {
-  await expect(page.locator('li:has-text("Squat")')).toBeVisible();
-  await expect(page.locator('li:has-text("Squat") .badge-primary')).toHaveText('Weighted');
+  await expect(page.locator('h3:has-text("Squat")')).toBeVisible();
+  // New UI uses uppercase "WEIGHTED"
+  await expect(page.locator('div.card', { hasText: 'Squat' }).locator('.badge')).toHaveText('WEIGHTED');
   
-  await expect(page.locator('li:has-text("Push-up")')).toBeVisible();
-  await expect(page.locator('li:has-text("Push-up") .badge-secondary')).toHaveText('Bodyweight');
+  await expect(page.locator('h3:has-text("Push-up")')).toBeVisible();
+  // New UI uses uppercase "BODYWEIGHT"
+  await expect(page.locator('div.card', { hasText: 'Push-up' }).locator('.badge')).toHaveText('BODYWEIGHT');
 });
 
 Given('the user is on the Library tab with multiple exercises', async ({ page }) => {
-  // We can reuse the setup
   const exercises = [
     { name: 'Back Squat', isWeighted: true },
     { name: 'Front Squat', isWeighted: true },
@@ -62,21 +63,25 @@ Given('the user is on the Library tab with multiple exercises', async ({ page })
     { name: 'Pull-up', isWeighted: false }
   ];
 
+  await page.click('button[role="tab"]:has-text("Library")');
+
   for (const ex of exercises) {
-    await page.click('button[role="tab"]:has-text("Workout")');
-    await page.getByLabel('Exercise Name').fill(ex.name);
+    const addBtn = page.locator('button:has-text("Add First Exercise"), button:has-text("Add New Exercise")').first();
+    if (await addBtn.isVisible()) {
+      await addBtn.click();
+    } else {
+       await page.locator('button.btn-circle.btn-primary').click();
+    }
+    await page.fill('#exercise-name-input', ex.name);
     const checkbox = page.locator('input[type="checkbox"].checkbox');
     const isChecked = await checkbox.isChecked();
     if (ex.isWeighted !== isChecked) {
       await checkbox.click();
     }
-    await page.click('button:has-text("Start Session")');
-    await expect(page.locator('button:has-text("LOG SET")')).toBeVisible();
-    await page.click('button:has-text("Finish Workout Session")');
-    await expect(page.locator('button:has-text("Start Session")')).toBeVisible();
+    await page.click('button:has-text("Save Exercise")');
+    await expect(page.locator('#exercise-name-input')).not.toBeVisible();
   }
   
-  await page.click('button[role="tab"]:has-text("Library")');
   await expect(page.getByPlaceholder("Search exercises...")).toBeVisible();
 });
 
@@ -86,11 +91,12 @@ When('the user searches for a specific exercise', async ({ page }) => {
 });
 
 Then('the list should instantly filter to show only matching exercises', async ({ page }) => {
-  const listItems = page.locator('ul.menu li');
+  const listItems = page.locator('div.card-body h3');
+  // Matches "Back Squat" and "Front Squat"
   await expect(listItems).toHaveCount(2);
-  await expect(page.locator('li:has-text("Back Squat")')).toBeVisible();
-  await expect(page.locator('li:has-text("Front Squat")')).toBeVisible();
-  await expect(page.locator('li:has-text("Push-up")')).not.toBeVisible();
+  await expect(page.locator('h3:has-text("Back Squat")')).toBeVisible();
+  await expect(page.locator('h3:has-text("Front Squat")')).toBeVisible();
+  await expect(page.locator('h3:has-text("Push-up")')).not.toBeVisible();
 });
 
 When('the user clears the search', async ({ page }) => {
@@ -99,6 +105,6 @@ When('the user clears the search', async ({ page }) => {
 });
 
 Then('the list should show all exercises again', async ({ page }) => {
-  const listItems = page.locator('ul.menu li');
+  const listItems = page.locator('div.card-body h3');
   await expect(listItems).toHaveCount(4);
 });

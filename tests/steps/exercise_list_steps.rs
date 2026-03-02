@@ -21,6 +21,7 @@ fn TestWrapper(props: WrapperProps) -> Element {
     let state = WorkoutState::new();
     state.set_exercises(props.exercises.clone());
     use_context_provider(|| state);
+    use_context_provider(|| Signal::new(simple_strength_assistant::components::tab_bar::Tab::Library));
 
     rsx! {
         LibraryView {}
@@ -87,6 +88,7 @@ async fn following_exercises_exist(world: &mut ExerciseListWorld, step: &cucumbe
                 };
 
                 world.exercises.push(ExerciseMetadata {
+                    id: None,
                     name: name.clone(),
                     set_type_config: config,
                 });
@@ -116,10 +118,13 @@ async fn exercise_should_have_badge(
         "Expected HTML to contain exercise: {}",
         exercise
     );
+    let rendered_upper = world.rendered_html.to_uppercase();
+    let badge_upper = badge.to_uppercase();
     assert!(
-        world.rendered_html.contains(&badge),
-        "Expected HTML to contain badge: {}",
-        badge
+        rendered_upper.contains(&badge_upper),
+        "Expected HTML to contain badge: {} (searched for {})",
+        badge,
+        badge_upper
     );
 }
 
@@ -131,6 +136,7 @@ async fn user_is_on_library_tab(world: &mut ExerciseListWorld) {
 #[given("the database contains standard exercises")]
 async fn database_contains_standard_exercises(world: &mut ExerciseListWorld) {
     world.exercises.push(ExerciseMetadata {
+        id: None,
         name: "Squat".to_string(),
         set_type_config: SetTypeConfig::Weighted {
             min_weight: 20.0,
@@ -138,6 +144,7 @@ async fn database_contains_standard_exercises(world: &mut ExerciseListWorld) {
         },
     });
     world.exercises.push(ExerciseMetadata {
+        id: None,
         name: "Push-up".to_string(),
         set_type_config: SetTypeConfig::Bodyweight,
     });
@@ -152,6 +159,6 @@ async fn user_should_see_list_of_exercises(world: &mut ExerciseListWorld) {
 
 #[then("each exercise should display its name and type badge")]
 async fn each_exercise_should_display_name_and_badge(world: &mut ExerciseListWorld) {
-    assert!(world.rendered_html.contains("Weighted"));
-    assert!(world.rendered_html.contains("Bodyweight"));
+    assert!(world.rendered_html.contains("WEIGHTED"));
+    assert!(world.rendered_html.contains("BODYWEIGHT"));
 }

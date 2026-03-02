@@ -34,7 +34,7 @@ Feature: Exercise Search and Filtering
       | Name           | Type       |
       | Back Squat     | Weighted   |
     When I type "Deadlift" into the search bar
-    Then I should see the "No matching exercises" empty state message
+    Then I should see the "No exercises match your search" empty state message
     And the exercise list should be empty
 
   @e2e

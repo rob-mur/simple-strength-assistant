@@ -22,6 +22,7 @@ fn TestWrapper(props: WrapperProps) -> Element {
     let state = WorkoutState::new();
     state.set_exercises(props.exercises.clone());
     use_context_provider(|| state);
+    use_context_provider(|| Signal::new(simple_strength_assistant::components::tab_bar::Tab::Library));
 
     // Inject the search term for testing
     use_context_provider(|| props.search_term.clone());
@@ -71,6 +72,7 @@ async fn following_exercises_exist(
                 };
 
                 world.exercises.push(ExerciseMetadata {
+                    id: None,
                     name: name.clone(),
                     set_type_config: config,
                 });
@@ -106,6 +108,7 @@ async fn should_not_see_exercise_in_list(world: &mut ExerciseSearchWorld, exerci
 
 #[then(regex = r#"^I should see the "([^"]*)" empty state message$"#)]
 async fn should_see_empty_state_message(world: &mut ExerciseSearchWorld, message: String) {
+    // The message might be wrapped in tags, so we check for existence
     assert!(
         world.rendered_html.contains(&message),
         "Expected HTML to contain empty state message: {}, but got {}",

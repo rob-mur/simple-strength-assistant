@@ -8,7 +8,7 @@ Feature: Exercise List Display
     Given the app is loaded
     And there are no exercises in the database
     When I navigate to the Library tab
-    Then I should see the "No exercises yet" empty state message
+    Then I should see the "Your library is empty" empty state message
 
   @unit
   Scenario: Viewing populated exercise list
@@ -29,7 +29,7 @@ Feature: Exercise List Display
       | Squat     | Weighted   |
       | Push-up   | Bodyweight |
     When I navigate to the Library tab
-    Then the "Squat" exercise should have a "Weighted" badge
+    Then the "Squat" exercise should have a "WEIGHTED" badge
     And the "Push-up" exercise should have a "Bodyweight" badge
 
   @e2e
@@ -38,3 +38,4 @@ Feature: Exercise List Display
     And the database contains standard exercises
     Then the user should see a list of exercises
     And each exercise should display its name and type badge
+    # (In the new UI, these are "WEIGHTED" and "BODYWEIGHT")
