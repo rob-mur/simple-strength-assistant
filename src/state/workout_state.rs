@@ -50,6 +50,12 @@ pub struct WorkoutState {
     exercises: Signal<Vec<ExerciseMetadata>>,
 }
 
+impl Default for WorkoutState {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl WorkoutState {
     pub fn new() -> Self {
         Self {
