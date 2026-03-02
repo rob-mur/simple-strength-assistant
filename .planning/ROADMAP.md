@@ -3,7 +3,7 @@
 ## Milestones
 
 - ✅ **v1.0 MVP** - Phases 1-3 (shipped 2026-02-26)
-- 🚧 **v1.1 Exercise Library** - Phases 4-5 (in progress)
+- ✅ **v1.1 Exercise Library** - Phases 4-5 (shipped 2026-03-02)
 
 ## Phases
 
@@ -37,14 +37,8 @@ Plans:
 
 </details>
 
-### 🚧 v1.1 Exercise Library (In Progress)
-
-**Milestone Goal:** Provide users with a centralized view to browse and search their exercise collection.
-
-- [ ] **Phase 4: Tab Navigation Foundation** - Enable navigation between Workout and Library views
-- [ ] **Phase 5: Exercise List & Search** - Browse and search exercises with type indicators
-
-## Phase Details
+<details>
+<summary>✅ v1.1 Exercise Library (Phases 4-5) - SHIPPED 2026-03-02</summary>
 
 ### Phase 4: Tab Navigation Foundation
 **Goal**: Users can navigate between Workout and Library tabs without losing active workout session state
@@ -58,8 +52,8 @@ Plans:
 **Plans**: 2 plans
 
 Plans:
-- [ ] 04-01-PLAN.md — BDD test scaffolding (feature files and step definitions)
-- [ ] 04-02-PLAN.md — Tab navigation implementation (TabBar, view components, conditional rendering)
+- [x] 04-01-PLAN.md — BDD test scaffolding (feature files and step definitions)
+- [x] 04-02-PLAN.md — Tab navigation implementation (TabBar, view components, conditional rendering)
 
 ### Phase 5: Exercise List & Search
 **Goal**: Users can browse all exercises they've created and search by name with instant filtering
@@ -71,12 +65,15 @@ Plans:
   3. User can type in search box and see exercise list filter instantly as they type
   4. User sees clear empty state message "No exercises yet. Add exercises during your first workout." when no exercises exist
   5. User sees "No matching exercises" when search returns zero results
-**Plans**: TBD
+**Plans**: 4 plans
 
 Plans:
 - [x] 05-01-PLAN.md — BDD Feature Files and Test Harness Setup
 - [x] 05-02-PLAN.md — Exercise List Component and Type Badges
 - [x] 05-03-PLAN.md — Search Filtering Component and Empty States
+- [x] 05-04-PLAN.md — Integration and Playwright E2E Tests
+
+</details>
 
 ## Progress
 
@@ -88,5 +85,5 @@ Phases execute in numeric order: 4 → 5
 | 1. File Picker Foundation | v1.0 | 3/3 | Complete | 2026-02-26 |
 | 2. LocalStorage Fallback | v1.0 | 2/2 | Complete | 2026-02-26 |
 | 3. PWA Deployment & Polish | v1.0 | 2/2 | Complete | 2026-02-26 |
-| 4. Tab Navigation Foundation | v1.1 | 0/2 | Ready | - |
-| 5. Exercise List & Search | v1.1 | 0/TBD | Not started | - |
+| 4. Tab Navigation Foundation | v1.1 | 2/2 | Complete | 2026-03-02 |
+| 5. Exercise List & Search | v1.1 | 4/4 | Complete | 2026-03-02 |
