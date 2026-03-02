@@ -1,9 +1,9 @@
-use cucumber::{given, then, when, World};
+use cucumber::{World, given, then, when};
 use dioxus::prelude::*;
 use simple_strength_assistant::components::tab_bar::Tab;
 use simple_strength_assistant::components::workout_view::WorkoutView;
 use simple_strength_assistant::models::{ExerciseMetadata, SetTypeConfig};
-use simple_strength_assistant::state::{WorkoutState, WorkoutSession, PredictedParameters};
+use simple_strength_assistant::state::{PredictedParameters, WorkoutSession, WorkoutState};
 
 #[derive(Debug, Default, World)]
 pub struct WorkoutWorld {
@@ -80,7 +80,11 @@ async fn step_click_start(world: &mut WorkoutWorld) {
 
 #[then(expr = "the application should switch to the {string} tab")]
 async fn step_check_tab(world: &mut WorkoutWorld, tab: String) {
-    let expected = if tab == "Workout" { Tab::Workout } else { Tab::Library };
+    let expected = if tab == "Workout" {
+        Tab::Workout
+    } else {
+        Tab::Library
+    };
     assert_eq!(world.active_tab, expected);
 }
 
@@ -98,7 +102,11 @@ async fn step_no_active_session(world: &mut WorkoutWorld) {
 
 #[when(expr = "I open the {string} tab")]
 async fn step_open_tab(world: &mut WorkoutWorld, tab: String) {
-    world.active_tab = if tab == "Workout" { Tab::Workout } else { Tab::Library };
+    world.active_tab = if tab == "Workout" {
+        Tab::Workout
+    } else {
+        Tab::Library
+    };
     world.render_component();
 }
 

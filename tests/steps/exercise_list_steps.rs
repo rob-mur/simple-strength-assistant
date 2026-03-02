@@ -21,7 +21,9 @@ fn TestWrapper(props: WrapperProps) -> Element {
     let state = WorkoutState::new();
     state.set_exercises(props.exercises.clone());
     use_context_provider(|| state);
-    use_context_provider(|| Signal::new(simple_strength_assistant::components::tab_bar::Tab::Library));
+    use_context_provider(|| {
+        Signal::new(simple_strength_assistant::components::tab_bar::Tab::Library)
+    });
 
     rsx! {
         LibraryView {}

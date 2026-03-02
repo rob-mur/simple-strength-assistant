@@ -1,6 +1,9 @@
 import { Given } from './fixtures';
 
 Given('I have a fresh context and clear storage', async ({ page, context }) => {
+  page.on('console', msg => console.log('BROWSER:', msg.text()));
+  page.on('pageerror', error => console.error('BROWSER ERROR:', error));
+
   await context.clearCookies();
   await page.goto('/');
   await page.evaluate(() => localStorage.clear());
