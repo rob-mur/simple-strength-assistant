@@ -232,6 +232,13 @@ pub fn App() -> Element {
                                                                         // Store database and file manager in state
                                                                         workout_state.set_database(database);
                                                                         workout_state.set_file_manager(file_manager);
+
+                                                                        // Sync exercises from database
+                                                                        let ws = workout_state;
+                                                                        spawn(async move {
+                                                                            let _ = WorkoutStateManager::sync_exercises(&ws).await;
+                                                                        });
+
                                                                         workout_state.set_initialization_state(InitializationState::Ready);
 
                                                                         log::debug!("[UI] Setup complete! State is now Ready");
@@ -337,6 +344,13 @@ pub fn App() -> Element {
                                                                         // Store database and file manager in state
                                                                         workout_state.set_database(database);
                                                                         workout_state.set_file_manager(file_manager);
+
+                                                                        // Sync exercises from database
+                                                                        let ws = workout_state;
+                                                                        spawn(async move {
+                                                                            let _ = WorkoutStateManager::sync_exercises(&ws).await;
+                                                                        });
+
                                                                         workout_state.set_initialization_state(InitializationState::Ready);
 
                                                                         log::debug!("[UI] Setup complete! State is now Ready");
