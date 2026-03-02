@@ -74,7 +74,7 @@ Plans:
 **Plans**: TBD
 
 Plans:
-- [ ] 05-01: TBD (to be defined during phase planning)
+- [x] 05-01-PLAN.md — BDD Feature Files and Test Harness Setup
 
 ## Progress
 
