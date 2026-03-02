@@ -9,8 +9,8 @@ Exercise Library milestone - centralized view to browse and search exercises.
 
 ### Exercise Library
 
-- [ ] **LIB-01**: User can view Exercise Library tab in the main interface
-- [ ] **LIB-02**: User can switch between Workout and Library tabs without losing active session
+- [x] **LIB-01**: User can view Exercise Library tab in the main interface
+- [x] **LIB-02**: User can switch between Workout and Library tabs without losing active session
 - [ ] **LIB-03**: User can see all exercises they've created in a list view
 - [ ] **LIB-04**: User can search exercises by name with instant filtering
 - [ ] **LIB-05**: User sees exercise type indicator (weighted vs bodyweight) for each exercise
@@ -48,8 +48,8 @@ Which phases cover which requirements. Updated during roadmap creation.
 
 | Requirement | Phase | Status |
 |-------------|-------|--------|
-| LIB-01 | Phase 4 | Pending |
-| LIB-02 | Phase 4 | Pending |
+| LIB-01 | Phase 4 | Complete |
+| LIB-02 | Phase 4 | Complete |
 | LIB-03 | Phase 5 | Pending |
 | LIB-04 | Phase 5 | Pending |
 | LIB-05 | Phase 5 | Pending |
