@@ -1,9 +1,4 @@
-mod app;
-mod components;
-mod models;
-mod state;
-
-use app::App;
+use simple_strength_assistant::App;
 
 fn main() {
     // Initialize logger with Debug level for development

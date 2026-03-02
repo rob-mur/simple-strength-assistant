@@ -1,66 +1,89 @@
-# Roadmap: Tactile Training Experience (v1.1)
+# Roadmap: Simple Strength Assistant
 
-**Milestone:** v1.1
-**Goal:** Implement a tactile, "no-typing" interface for recording workout sets.
+## Milestones
 
-## Proposed Phases
+- ✅ **v1.0 MVP** - Phases 1-3 (shipped 2026-02-26)
+- ✅ **v1.1 Exercise Library** - Phases 4-5 (shipped 2026-03-02)
 
-**4 phases** | **13 requirements mapped** | All covered ✓
+## Phases
 
-| # | Phase | Goal | Requirements | Success Criteria |
-|---|-------|------|--------------|------------------|
-| 4 | **Tape Measure** | Core implementation of swipeable inputs for Reps & Weight. | TAPE-[01-05] | **Plans:** 3 plans |
-| 5 | **RPE Slider** | Discrete slider-based input for RPE (1-10 in 0.5 steps). | RPE-[01-03] | 1 |
-| 6 | **Jump Controls** | Buttons for rapid adjustment (±1, ±5, ±10, ±25). | STEP-[01-02] | ✓ |
-| 7 | **UI Integration** | Replace current inputs and sync with global state. | INT-[01-03] | 2 |
+<details>
+<summary>✅ v1.0 MVP (Phases 1-3) - SHIPPED 2026-02-26</summary>
 
----
+### Phase 1: File Picker Foundation
+**Goal**: Enable users to select and create database files via File System Access API
+**Plans**: 3 plans
 
-### Phase Details
+Plans:
+- [x] 01-01: Implement file picker with user gesture detection
+- [x] 01-02: Handle database creation and loading
+- [x] 01-03: Add permission re-requesting for cached handles
 
-#### Phase 4: Swipeable Tape Measure
-**Plans:**
-- [ ] 04-01-PLAN.md — Core Component Foundation & Physics
-- [ ] 04-02-PLAN.md — SVG Rendering & Aesthetic Polish
-- [ ] 04-03-PLAN.md — UI Integration & Physics Tuning
-**Goal:** Implementation of the tape measure component using SVG and pointer events.
-**Requirements:**
-- TAPE-01: Swipe to adjust weight
-- TAPE-02: Swipe to adjust reps
-- TAPE-03: Snap to increments (0.5/1.0)
-- TAPE-04: Desktop support (click to jump)
-- TAPE-05: Scroll locking (`touch-action: none`)
-**Success Criteria:**
-1. Component can be swiped on mobile and clicked on desktop.
-2. Value updates correctly based on swipe distance and increments.
+### Phase 2: LocalStorage Fallback
+**Goal**: Support browsers without File System Access API
+**Plans**: 2 plans
 
-#### Phase 5: RPE Slider
-**Goal:** Implementation of the discrete slider for RPE.
-**Requirements:**
-- RPE-01: Adjust RPE via slider (1-10)
-- RPE-02: Snap to 0.5 increments
-- RPE-03: Prominent value display
-**Success Criteria:**
-1. Slider operates smoothly and snaps accurately.
-2. Value display updates instantly.
+Plans:
+- [x] 02-01: Implement LocalStorage persistence layer
+- [x] 02-02: Add browser compatibility detection
 
-#### Phase 6: Jump & Step Controls
-**Goal:** Implementation of "Big Step" and "Small Step" buttons.
-**Requirements:**
-- STEP-01: Big Step buttons (±5, ±10, ±25)
-- STEP-02: Small Step buttons (±1)
-**Success Criteria:**
-1. Buttons correctly modify the associated tape measure value.
+### Phase 3: PWA Deployment & Polish
+**Goal**: Deploy installable PWA with polished error handling
+**Plans**: 2 plans
 
-#### Phase 7: UI Integration & Refinement
-**Goal:** Integration into the main app and mobile-first refinement.
-**Requirements:**
-- INT-01: Replace existing number inputs
-- INT-02: Sized for thumb interaction
-- INT-03: Synchronize with global state (`WorkoutState`)
-**Success Criteria:**
-1. Recording a set in the app works end-to-end without opening the keyboard.
-2. Components are usable and well-spaced on a mobile device.
+Plans:
+- [x] 03-01: Fix Vercel deployment and PWA installability
+- [x] 03-02: Polish error UI with recovery instructions
 
----
-*Roadmap defined: 2026-02-27*
+</details>
+
+<details>
+<summary>✅ v1.1 Exercise Library (Phases 4-5) - SHIPPED 2026-03-02</summary>
+
+### Phase 4: Tab Navigation Foundation
+**Goal**: Users can navigate between Workout and Library tabs without losing active workout session state
+**Depends on**: Phase 3
+**Requirements**: LIB-01, LIB-02
+**Success Criteria** (what must be TRUE):
+  1. User can see "Workout" and "Library" tabs in the main interface
+  2. User can click Library tab and see placeholder content
+  3. User can switch back to Workout tab and see active session preserved (exercises, sets, timer state)
+  4. Tab selection persists when user refreshes browser (active tab restored)
+**Plans**: 2 plans
+
+Plans:
+- [x] 04-01-PLAN.md — BDD test scaffolding (feature files and step definitions)
+- [x] 04-02-PLAN.md — Tab navigation implementation (TabBar, view components, conditional rendering)
+
+### Phase 5: Exercise List & Search
+**Goal**: Users can browse all exercises they've created and search by name with instant filtering
+**Depends on**: Phase 4
+**Requirements**: LIB-03, LIB-04, LIB-05, LIB-06
+**Success Criteria** (what must be TRUE):
+  1. User sees all exercises they've created in a scrollable list when Library tab is active
+  2. User sees exercise type badge (weighted vs bodyweight) for each exercise in the list
+  3. User can type in search box and see exercise list filter instantly as they type
+  4. User sees clear empty state message "No exercises yet. Add exercises during your first workout." when no exercises exist
+  5. User sees "No matching exercises" when search returns zero results
+**Plans**: 4 plans
+
+Plans:
+- [x] 05-01-PLAN.md — BDD Feature Files and Test Harness Setup
+- [x] 05-02-PLAN.md — Exercise List Component and Type Badges
+- [x] 05-03-PLAN.md — Search Filtering Component and Empty States
+- [x] 05-04-PLAN.md — Integration and Playwright E2E Tests
+
+</details>
+
+## Progress
+
+**Execution Order:**
+Phases execute in numeric order: 4 → 5
+
+| Phase | Milestone | Plans Complete | Status | Completed |
+|-------|-----------|----------------|--------|-----------|
+| 1. File Picker Foundation | v1.0 | 3/3 | Complete | 2026-02-26 |
+| 2. LocalStorage Fallback | v1.0 | 2/2 | Complete | 2026-02-26 |
+| 3. PWA Deployment & Polish | v1.0 | 2/2 | Complete | 2026-02-26 |
+| 4. Tab Navigation Foundation | v1.1 | 2/2 | Complete | 2026-03-02 |
+| 5. Exercise List & Search | v1.1 | 4/4 | Complete | 2026-03-02 |

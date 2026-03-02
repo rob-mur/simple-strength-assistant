@@ -1,11 +1,15 @@
+use crate::components::library_view::LibraryView;
 use crate::components::rpe_slider::RPESlider;
 use crate::components::step_controls::StepControls;
+use crate::components::tab_bar::{Tab, TabBar};
 use crate::components::tape_measure::TapeMeasure;
+use crate::components::workout_view::WorkoutView;
 use crate::models::{CompletedSet, ExerciseMetadata, SetType, SetTypeConfig};
 #[cfg(feature = "test-mode")]
 use crate::state::StorageBackend;
 use crate::state::{InitializationState, WorkoutError, WorkoutState, WorkoutStateManager};
 use dioxus::prelude::*;
+use gloo_storage::{LocalStorage, Storage};
 use wasm_bindgen::JsCast;
 
 struct ErrorInfo {
@@ -69,6 +73,7 @@ fn parse_error_for_ui(error: &WorkoutError) -> ErrorInfo {
 #[component]
 pub fn App() -> Element {
     let workout_state = use_context_provider(WorkoutState::new);
+    let mut active_tab = use_signal(|| LocalStorage::get("active_tab").unwrap_or(Tab::Workout));
 
     use_effect(move || {
         spawn(async move {
@@ -227,6 +232,13 @@ pub fn App() -> Element {
                                                                         // Store database and file manager in state
                                                                         workout_state.set_database(database);
                                                                         workout_state.set_file_manager(file_manager);
+
+                                                                        // Sync exercises from database
+                                                                        let ws = workout_state;
+                                                                        spawn(async move {
+                                                                            let _ = WorkoutStateManager::sync_exercises(&ws).await;
+                                                                        });
+
                                                                         workout_state.set_initialization_state(InitializationState::Ready);
 
                                                                         log::debug!("[UI] Setup complete! State is now Ready");
@@ -332,6 +344,13 @@ pub fn App() -> Element {
                                                                         // Store database and file manager in state
                                                                         workout_state.set_database(database);
                                                                         workout_state.set_file_manager(file_manager);
+
+                                                                        // Sync exercises from database
+                                                                        let ws = workout_state;
+                                                                        spawn(async move {
+                                                                            let _ = WorkoutStateManager::sync_exercises(&ws).await;
+                                                                        });
+
                                                                         workout_state.set_initialization_state(InitializationState::Ready);
 
                                                                         log::debug!("[UI] Setup complete! State is now Ready");
@@ -450,9 +469,20 @@ pub fn App() -> Element {
 
                         rsx! {
                             div {
+                                class: "pb-20",
                                 {storage_mode_banner}
                                 {save_error_banner}
-                                WorkoutInterface { state: workout_state }
+                                match active_tab() {
+                                    Tab::Workout => rsx! { WorkoutView { state: workout_state } },
+                                    Tab::Library => rsx! { LibraryView {} },
+                                }
+                            }
+                            TabBar {
+                                active_tab: active_tab(),
+                                on_change: move |tab| {
+                                    active_tab.set(tab);
+                                    let _ = LocalStorage::set("active_tab", tab);
+                                }
                             }
                         }
                     }
@@ -553,42 +583,6 @@ pub fn App() -> Element {
     }
 }
 
-#[component]
-fn WorkoutInterface(state: WorkoutState) -> Element {
-    let current_session = state.current_session();
-
-    // Set data-hydrated attribute after WASM initialization
-    use_effect(move || {
-        spawn(async move {
-            if let Some(window) = web_sys::window()
-                && let Some(document) = window.document()
-                && let Some(body) = document.body()
-            {
-                if let Err(e) = body.set_attribute("data-hydrated", "true") {
-                    log::error!("Failed to set data-hydrated attribute: {:?}", e);
-                } else {
-                    log::debug!("WASM hydration complete - data-hydrated attribute set");
-                }
-            }
-        });
-    });
-
-    if let Some(session) = current_session {
-        log::debug!(
-            "[WorkoutInterface] Rendering ActiveSession for exercise: {}",
-            session.exercise.name
-        );
-        rsx! {
-            ActiveSession { state: state, session }
-        }
-    } else {
-        log::debug!("[WorkoutInterface] No current_session, rendering StartSessionView");
-        rsx! {
-            StartSessionView { state: state }
-        }
-    }
-}
-
 const MAX_EXERCISE_NAME_LENGTH: usize = 100;
 
 fn validate_exercise_name(name: &str) -> Result<(), String> {
@@ -608,7 +602,7 @@ fn validate_exercise_name(name: &str) -> Result<(), String> {
 }
 
 #[component]
-fn StartSessionView(state: WorkoutState) -> Element {
+pub fn StartSessionView(state: WorkoutState) -> Element {
     let mut exercise_name = use_signal(|| "Bench Press".to_string());
     let mut is_weighted = use_signal(|| true);
     let mut min_weight = use_signal(|| 45.0);
@@ -780,7 +774,7 @@ fn StartSessionView(state: WorkoutState) -> Element {
 }
 
 #[component]
-fn ActiveSession(state: WorkoutState, session: crate::state::WorkoutSession) -> Element {
+pub fn ActiveSession(state: WorkoutState, session: crate::state::WorkoutSession) -> Element {
     let session_clone = session.clone();
     let session_for_display = session_clone.clone();
     let mut reps_input = use_signal(|| session.predicted.reps as f64);
