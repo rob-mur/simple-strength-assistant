@@ -55,10 +55,11 @@ Plans:
   2. User can click Library tab and see placeholder content
   3. User can switch back to Workout tab and see active session preserved (exercises, sets, timer state)
   4. Tab selection persists when user refreshes browser (active tab restored)
-**Plans**: TBD
+**Plans**: 2 plans
 
 Plans:
-- [ ] 04-01: TBD (to be defined during phase planning)
+- [ ] 04-01-PLAN.md — BDD test scaffolding (feature files and step definitions)
+- [ ] 04-02-PLAN.md — Tab navigation implementation (TabBar, view components, conditional rendering)
 
 ### Phase 5: Exercise List & Search
 **Goal**: Users can browse all exercises they've created and search by name with instant filtering
@@ -85,5 +86,5 @@ Phases execute in numeric order: 4 → 5
 | 1. File Picker Foundation | v1.0 | 3/3 | Complete | 2026-02-26 |
 | 2. LocalStorage Fallback | v1.0 | 2/2 | Complete | 2026-02-26 |
 | 3. PWA Deployment & Polish | v1.0 | 2/2 | Complete | 2026-02-26 |
-| 4. Tab Navigation Foundation | v1.1 | 0/TBD | Not started | - |
+| 4. Tab Navigation Foundation | v1.1 | 0/2 | Ready | - |
 | 5. Exercise List & Search | v1.1 | 0/TBD | Not started | - |
