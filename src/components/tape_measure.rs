@@ -19,7 +19,6 @@ const VIEWPORT_WIDTH: f64 = 300.0;
 const VIEWPORT_HEIGHT: f64 = 80.0;
 const CENTER_X: f64 = VIEWPORT_WIDTH / 2.0;
 const EPSILON_TOLERANCE: f64 = 1e-9;
-const CLICK_SUPPRESSION_DELAY_MS: u32 = 200;
 const CLICK_DRAG_THRESHOLD: f64 = 5.0;
 
 #[component]
@@ -230,6 +229,7 @@ pub fn TapeMeasure(props: TapeMeasureProps) -> Element {
 
                         // If it was a small drag, treat it as a click
                         if drag_distance < CLICK_DRAG_THRESHOLD {
+                            #[allow(clippy::collapsible_if)]
                             if let Some(el) = container_element.peek().as_ref() {
                                 let rect = el.get_bounding_client_rect();
                                 let relative_x = e.client_x() as f64 - rect.left();

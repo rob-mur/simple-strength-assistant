@@ -27,7 +27,11 @@ fn TestWrapper(props: WrapperProps) -> Element {
     });
 
     // Inject the search term for testing
-    use_context_provider(|| props.search_term.clone());
+    use_context_provider(|| {
+        simple_strength_assistant::components::library_view::TestSearchQuery(
+            props.search_term.clone(),
+        )
+    });
 
     rsx! {
         LibraryView {}

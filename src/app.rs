@@ -70,11 +70,17 @@ fn parse_error_for_ui(error: &WorkoutError) -> ErrorInfo {
     }
 }
 
+pub const ACTIVE_TAB_KEY: &str = "active_tab";
+
 #[component]
 pub fn App() -> Element {
     let workout_state = use_context_provider(WorkoutState::new);
     let mut active_tab = use_context_provider(|| {
-        Signal::new(LocalStorage::get("active_tab").unwrap_or(Tab::Workout))
+        Signal::new(LocalStorage::get(ACTIVE_TAB_KEY).unwrap_or(Tab::Workout))
+    });
+
+    use_effect(move || {
+        let _ = LocalStorage::set(ACTIVE_TAB_KEY, active_tab());
     });
 
     use_effect(move || {
@@ -483,7 +489,6 @@ pub fn App() -> Element {
                                 active_tab: (active_tab)(),
                                 on_change: move |tab| {
                                     active_tab.set(tab);
-                                    let _ = LocalStorage::set("active_tab", tab);
                                 }
                             }
                         }

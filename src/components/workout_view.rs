@@ -2,7 +2,6 @@ use crate::app::ActiveSession;
 use crate::components::tab_bar::Tab;
 use crate::state::WorkoutState;
 use dioxus::prelude::*;
-use gloo_storage::{LocalStorage, Storage};
 
 #[component]
 pub fn WorkoutView(state: WorkoutState) -> Element {
@@ -69,7 +68,6 @@ pub fn WorkoutView(state: WorkoutState) -> Element {
                                 class: "btn btn-primary btn-lg px-8 shadow-lg font-bold",
                                 onclick: move |_| {
                                     active_tab.set(Tab::Library);
-                                    let _ = LocalStorage::set("active_tab", Tab::Library);
                                 },
                                 "Go to Library"
                             }

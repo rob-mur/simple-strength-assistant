@@ -3,45 +3,64 @@ use crate::components::tab_bar::Tab;
 use crate::models::{ExerciseMetadata, SetTypeConfig};
 use crate::state::{WorkoutState, WorkoutStateManager};
 use dioxus::prelude::*;
-use gloo_storage::{LocalStorage, Storage};
+
+#[derive(Clone, PartialEq)]
+pub struct TestSearchQuery(pub String);
+
+#[derive(Clone, PartialEq)]
+pub enum FormState {
+    Closed,
+    New,
+    Edit(ExerciseMetadata),
+}
 
 #[component]
 pub fn LibraryView() -> Element {
     let workout_state = consume_context::<WorkoutState>();
     let mut active_tab = consume_context::<Signal<Tab>>();
     // Allow injecting a search query context for easier unit testing
-    let test_query = try_consume_context::<String>();
-    let mut search_query = use_signal(|| test_query.unwrap_or_default());
-    let mut show_form = use_signal(|| None::<Option<ExerciseMetadata>>);
-    let exercises = workout_state.exercises();
+    let test_query = try_consume_context::<TestSearchQuery>();
+    let mut search_query = use_signal(|| test_query.map(|t| t.0).unwrap_or_default());
+    let mut show_form = use_signal(|| FormState::Closed);
+    let filtered_exercises = use_memo(move || {
+        workout_state
+            .exercises()
+            .iter()
+            .filter(|e| {
+                e.name
+                    .to_lowercase()
+                    .contains(&search_query().to_lowercase())
+            })
+            .cloned()
+            .collect::<Vec<_>>()
+    });
 
-    let filtered_exercises: Vec<_> = exercises
-        .iter()
-        .filter(|e| {
-            e.name
-                .to_lowercase()
-                .contains(&search_query().to_lowercase())
-        })
-        .collect();
-
-    if let Some(initial_exercise) = show_form() {
-        return rsx! {
-            div {
-                class: "max-w-2xl mx-auto p-4",
-                ExerciseForm {
-                    initial_exercise,
-                    on_cancel: move |_| show_form.set(None),
-                    on_save: move |exercise| {
-                        spawn(async move {
-                            if let Err(e) = WorkoutStateManager::save_exercise(&workout_state, exercise).await {
-                                WorkoutStateManager::handle_error(&workout_state, e);
-                            }
-                            show_form.set(None);
-                        });
+    match show_form() {
+        FormState::New | FormState::Edit(_) => {
+            let initial_exercise = if let FormState::Edit(e) = show_form() {
+                Some(e)
+            } else {
+                None
+            };
+            return rsx! {
+                div {
+                    class: "max-w-2xl mx-auto p-4",
+                    ExerciseForm {
+                        initial_exercise,
+                        on_cancel: move |_| show_form.set(FormState::Closed),
+                        on_save: move |exercise| {
+                            spawn(async move {
+                                if let Err(e) = WorkoutStateManager::save_exercise(&workout_state, exercise).await {
+                                    WorkoutStateManager::handle_error(&workout_state, e);
+                                }
+                                show_form.set(FormState::Closed);
+                            });
+                        }
                     }
                 }
-            }
-        };
+            };
+        }
+        FormState::Closed => {}
     }
 
     rsx! {
@@ -55,7 +74,7 @@ pub fn LibraryView() -> Element {
                 }
                 button {
                     class: "btn btn-primary btn-circle shadow-lg",
-                    onclick: move |_| show_form.set(Some(None)),
+                    onclick: move |_| show_form.set(FormState::New),
                     svg {
                         xmlns: "http://www.w3.org/2000/svg",
                         fill: "none",
@@ -102,7 +121,7 @@ pub fn LibraryView() -> Element {
                 }
             }
 
-            if exercises.is_empty() {
+            if workout_state.exercises().is_empty() {
                 div {
                     class: "card bg-base-100 shadow-xl py-12 text-center",
                     div {
@@ -130,12 +149,12 @@ pub fn LibraryView() -> Element {
                         }
                         button {
                             class: "btn btn-primary mt-6",
-                            onclick: move |_| show_form.set(Some(None)),
+                            onclick: move |_| show_form.set(FormState::New),
                             "Add First Exercise"
                         }
                     }
                 }
-            } else if filtered_exercises.is_empty() {
+            } else if filtered_exercises().is_empty() {
                 div {
                     class: "text-center py-12",
                     p { class: "text-base-content/50 italic", "No exercises match your search" }
@@ -143,7 +162,7 @@ pub fn LibraryView() -> Element {
             } else {
                 div {
                     class: "grid gap-4",
-                    for exercise in filtered_exercises {
+                    for exercise in filtered_exercises() {
                         div {
                             key: "{exercise.name}",
                             class: "card bg-base-100 shadow-md hover:shadow-lg transition-all border border-base-200",
@@ -172,7 +191,7 @@ pub fn LibraryView() -> Element {
                                             class: "btn btn-ghost btn-sm btn-circle",
                                             onclick: {
                                                 let e = exercise.clone();
-                                                move |_| show_form.set(Some(Some(e.clone())))
+                                                move |_| show_form.set(FormState::Edit(e.clone()))
                                             },
                                             svg {
                                                 xmlns: "http://www.w3.org/2000/svg",
@@ -199,7 +218,6 @@ pub fn LibraryView() -> Element {
                                                             WorkoutStateManager::handle_error(&workout_state, err);
                                                         } else {
                                                             active_tab.set(Tab::Workout);
-                                                            let _ = LocalStorage::set("active_tab", Tab::Workout);
                                                         }
                                                     });
                                                 }

@@ -9,12 +9,15 @@ fn validate_exercise_name(name: &str) -> Result<(), String> {
     if name.trim().is_empty() {
         return Err("Exercise name cannot be empty".to_string());
     }
-    if name.len() > MAX_EXERCISE_NAME_LENGTH {
+    if name.chars().count() > MAX_EXERCISE_NAME_LENGTH {
         return Err(format!(
             "Exercise name must be {} characters or less",
             MAX_EXERCISE_NAME_LENGTH
         ));
     }
+    // Basic security validation: We only check for '<' and '>' to prevent
+    // basic XSS injection when the exercise name is rendered in the DOM.
+    // A full sanitization library would be overkill for this simple check.
     if name.contains('<') || name.contains('>') {
         return Err("Exercise name cannot contain HTML characters".to_string());
     }

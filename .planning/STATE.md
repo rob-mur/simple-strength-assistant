@@ -24,7 +24,7 @@ See: .planning/PROJECT.md (updated 2026-03-01)
 
 Phase: Phase 6
 Status: In Progress
-Last activity: 2026-03-02 — Added Phase 6 based on user feedback to refine UI and management flow.
+Last activity: 2026-03-02 - Completed quick task 16: please resolve these review comments PR Review: Exercise Library Tab (STR-31)
 
 Progress: [████████░░] 83% (v1.1 current)
 
@@ -69,6 +69,12 @@ None for v1.1.
 ### Blockers/Concerns
 
 None.
+
+### Quick Tasks Completed
+
+| # | Description | Date | Commit | Directory |
+|---|-------------|------|--------|-----------|
+| 16 | please resolve these review comments PR Review: Exercise Library Tab (STR-31)... | 2026-03-02 | 7c4cd8f | [16-please-resolve-these-review-comments-pr-](./quick/16-please-resolve-these-review-comments-pr-/) |
 
 ## Session Continuity
 

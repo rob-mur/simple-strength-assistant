@@ -17,6 +17,7 @@ pub fn TabBar(active_tab: Tab, on_change: EventHandler<Tab>) -> Element {
 
             button {
                 role: "tab",
+                aria_selected: if active_tab == Tab::Workout { "true" } else { "false" },
                 class: if active_tab == Tab::Workout {
                     "tab tab-active h-12"
                 } else {
@@ -28,6 +29,7 @@ pub fn TabBar(active_tab: Tab, on_change: EventHandler<Tab>) -> Element {
 
             button {
                 role: "tab",
+                aria_selected: if active_tab == Tab::Library { "true" } else { "false" },
                 class: if active_tab == Tab::Library {
                     "tab tab-active h-12"
                 } else {

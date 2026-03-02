@@ -252,8 +252,12 @@ impl Database {
             self.execute(sql, &params).await?
         } else {
             let sql = r#"
-                INSERT OR REPLACE INTO exercises (name, is_weighted, min_weight, increment)
+                INSERT INTO exercises (name, is_weighted, min_weight, increment)
                 VALUES (?, ?, ?, ?)
+                ON CONFLICT(name) DO UPDATE SET
+                    is_weighted = excluded.is_weighted,
+                    min_weight = excluded.min_weight,
+                    increment = excluded.increment
                 RETURNING id
             "#;
             let params = vec![
