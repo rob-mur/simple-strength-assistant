@@ -252,6 +252,60 @@ impl Database {
         Ok(())
     }
 
+    pub async fn get_exercises(&self) -> Result<Vec<ExerciseMetadata>, DatabaseError> {
+        let sql = "SELECT name, is_weighted, min_weight, increment FROM exercises ORDER BY name";
+        let result = self.execute(sql, &[]).await?;
+
+        let array = result
+            .dyn_ref::<js_sys::Array>()
+            .ok_or_else(|| DatabaseError::QueryError("Expected array result".to_string()))?;
+
+        let mut exercises = Vec::new();
+        for i in 0..array.length() {
+            let row = array.get(i);
+            let name = js_sys::Reflect::get(&row, &JsValue::from_str("name"))?
+                .as_string()
+                .ok_or_else(|| DatabaseError::QueryError("Failed to get name".to_string()))?;
+
+            let is_weighted_val = js_sys::Reflect::get(&row, &JsValue::from_str("is_weighted"))?;
+            let is_weighted = if let Some(b) = is_weighted_val.as_bool() {
+                b
+            } else if let Some(f) = is_weighted_val.as_f64() {
+                f == 1.0
+            } else {
+                return Err(DatabaseError::QueryError(
+                    "Failed to get is_weighted as bool or number".to_string(),
+                ));
+            };
+
+            let set_type_config = if is_weighted {
+                let min_weight = js_sys::Reflect::get(&row, &JsValue::from_str("min_weight"))?
+                    .as_f64()
+                    .ok_or_else(|| {
+                        DatabaseError::QueryError("Failed to get min_weight".to_string())
+                    })? as f32;
+                let increment = js_sys::Reflect::get(&row, &JsValue::from_str("increment"))?
+                    .as_f64()
+                    .ok_or_else(|| {
+                        DatabaseError::QueryError("Failed to get increment".to_string())
+                    })? as f32;
+                crate::models::SetTypeConfig::Weighted {
+                    min_weight,
+                    increment,
+                }
+            } else {
+                crate::models::SetTypeConfig::Bodyweight
+            };
+
+            exercises.push(ExerciseMetadata {
+                name,
+                set_type_config,
+            });
+        }
+
+        Ok(exercises)
+    }
+
     pub async fn export(&self) -> Result<Vec<u8>, DatabaseError> {
         if !self.initialized {
             return Err(DatabaseError::NotInitialized);
