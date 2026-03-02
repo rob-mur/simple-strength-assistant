@@ -76,6 +76,7 @@ Plans:
 Plans:
 - [x] 05-01-PLAN.md — BDD Feature Files and Test Harness Setup
 - [x] 05-02-PLAN.md — Exercise List Component and Type Badges
+- [x] 05-03-PLAN.md — Search Filtering Component and Empty States
 
 ## Progress
 
