@@ -17,20 +17,19 @@ pub enum FormState {
 #[component]
 pub fn LibraryView() -> Element {
     let workout_state = consume_context::<WorkoutState>();
+    // Note: active_tab is implicitly coupled via context. Consider passing on_navigate
+    // as a prop in the future to improve component isolation and testability.
     let mut active_tab = consume_context::<Signal<Tab>>();
     // Allow injecting a search query context for easier unit testing
     let test_query = try_consume_context::<TestSearchQuery>();
     let mut search_query = use_signal(|| test_query.map(|t| t.0).unwrap_or_default());
     let mut show_form = use_signal(|| FormState::Closed);
     let filtered_exercises = use_memo(move || {
+        let query = search_query().to_lowercase();
         workout_state
             .exercises()
             .iter()
-            .filter(|e| {
-                e.name
-                    .to_lowercase()
-                    .contains(&search_query().to_lowercase())
-            })
+            .filter(|e| e.name.to_lowercase().contains(&query))
             .cloned()
             .collect::<Vec<_>>()
     });
@@ -53,6 +52,8 @@ pub fn LibraryView() -> Element {
                                 if let Err(e) = WorkoutStateManager::save_exercise(&workout_state, exercise).await {
                                     WorkoutStateManager::handle_error(&workout_state, e);
                                 }
+                                // Ordering dependency: show_form.set(FormState::Closed) only executes after
+                                // sync_exercises completes inside save_exercise, avoiding stale ID async races.
                                 show_form.set(FormState::Closed);
                             });
                         }
@@ -191,6 +192,8 @@ pub fn LibraryView() -> Element {
                                             class: "btn btn-ghost btn-sm btn-circle",
                                             onclick: {
                                                 let e = exercise.clone();
+                                                // Note: e must be cloned again here because the onclick handler is an FnMut
+                                                // and FormState::Edit takes ownership of the value.
                                                 move |_| show_form.set(FormState::Edit(e.clone()))
                                             },
                                             svg {

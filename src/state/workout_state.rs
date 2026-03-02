@@ -134,7 +134,7 @@ impl WorkoutState {
     }
 
     pub fn exercises(&self) -> Vec<ExerciseMetadata> {
-        (self.exercises)().clone()
+        (self.exercises)()
     }
 
     pub fn set_exercises(&self, exercises: Vec<ExerciseMetadata>) {

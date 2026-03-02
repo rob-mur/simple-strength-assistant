@@ -14,6 +14,9 @@ pub enum DatabaseError {
     #[error("Database not initialized")]
     NotInitialized,
 
+    #[error("Exercise not found")]
+    ExerciseNotFound,
+
     #[error("JavaScript error: {0}")]
     JsError(String),
 }
@@ -278,6 +281,9 @@ impl Database {
             .ok_or_else(|| DatabaseError::QueryError("Expected array result".to_string()))?;
 
         if array.length() == 0 {
+            if exercise.id.is_some() {
+                return Err(DatabaseError::ExerciseNotFound);
+            }
             return Err(DatabaseError::QueryError("No rows returned".to_string()));
         }
 

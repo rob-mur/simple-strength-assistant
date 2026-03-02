@@ -147,7 +147,7 @@ pub fn TapeMeasure(props: TapeMeasureProps) -> Element {
                 } else if let Some(raw) = el.data.downcast::<web_sys::Element>() {
                     container_element.set(Some(raw.clone()));
                 } else {
-                    web_sys::console::log_1(&"TapeMeasure: Failed to downcast mounted element to HtmlElement or Element".into());
+                    log::warn!("TapeMeasure: Failed to downcast mounted element to HtmlElement or Element");
                 }
             },
             onpointerdown: move |evt| {
@@ -162,12 +162,8 @@ pub fn TapeMeasure(props: TapeMeasureProps) -> Element {
                     if let Some(el) = container_element.peek().as_ref() {
                         let _ = el.set_pointer_capture(e.pointer_id());
                     }
-
-                    if let Some(el) = container_element.peek().as_ref() {
-                        let _ = el.set_pointer_capture(e.pointer_id());
-                    }
                 } else {
-                    web_sys::console::log_1(&"Unexpected event type in TapeMeasure onpointerdown".into());
+                    log::warn!("Unexpected event type in TapeMeasure onpointerdown");
                 }
             },
             onpointermove: move |evt| {
@@ -210,7 +206,7 @@ pub fn TapeMeasure(props: TapeMeasureProps) -> Element {
                         last_pointer_x.set(current_x);
                         last_update_time.set(now);
                     } else {
-                        web_sys::console::log_1(&"Unexpected event type in TapeMeasure onpointermove".into());
+                        log::warn!("Unexpected event type in TapeMeasure onpointermove");
                     }
                 }
             },
@@ -248,7 +244,7 @@ pub fn TapeMeasure(props: TapeMeasureProps) -> Element {
                                 velocity.set(0.0);
                                 offset.set(target_offset);
 
-                                web_sys::console::log_1(&format!("TapeMeasure Calculated Click: updating to {}", final_val).into());
+                                log::debug!("TapeMeasure Calculated Click: updating to {}", final_val);
                                 props.on_change.call(final_val);
                             }
                         }
@@ -257,7 +253,7 @@ pub fn TapeMeasure(props: TapeMeasureProps) -> Element {
                             let _ = el.release_pointer_capture(e.pointer_id());
                         }
                     } else {
-                        web_sys::console::log_1(&"Unexpected event type in TapeMeasure onpointerup".into());
+                        log::warn!("Unexpected event type in TapeMeasure onpointerup");
                     }
                 }
             },
@@ -270,7 +266,7 @@ pub fn TapeMeasure(props: TapeMeasureProps) -> Element {
                             let _ = el.release_pointer_capture(e.pointer_id());
                         }
                     } else {
-                        web_sys::console::log_1(&"Unexpected event type in TapeMeasure onpointercancel".into());
+                        log::warn!("Unexpected event type in TapeMeasure onpointercancel");
                     }
                 }
             },

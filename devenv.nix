@@ -29,7 +29,7 @@
   env = {
     CHROMIUM_EXECUTABLE_PATH = "${pkgs.chromium}/bin/chromium";
     PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD = "1";
-    GOOGLE_CLOUD_PROJECT = "duet-assistant";
+
   };
 
   scripts = {

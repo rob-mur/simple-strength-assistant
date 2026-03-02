@@ -16,7 +16,8 @@ fn validate_exercise_name(name: &str) -> Result<(), String> {
         ));
     }
     // Basic security validation: We only check for '<' and '>' to prevent
-    // basic XSS injection when the exercise name is rendered in the DOM.
+    // basic XSS injection. Note: Dioxus automatically HTML-escapes text in
+    // RSX interpolations (the primary XSS defense), making this supplementary.
     // A full sanitization library would be overkill for this simple check.
     if name.contains('<') || name.contains('>') {
         return Err("Exercise name cannot contain HTML characters".to_string());
@@ -30,15 +31,14 @@ pub fn ExerciseForm(
     on_cancel: EventHandler<()>,
     on_save: EventHandler<ExerciseMetadata>,
 ) -> Element {
-    let initial_exercise_sig = use_signal(|| initial_exercise.clone());
     let mut exercise_name = use_signal(|| {
-        initial_exercise_sig()
+        initial_exercise
             .as_ref()
             .map(|e| e.name.clone())
             .unwrap_or_else(|| "Bench Press".to_string())
     });
     let mut is_weighted = use_signal(|| {
-        initial_exercise_sig()
+        initial_exercise
             .as_ref()
             .map(|e| matches!(e.set_type_config, SetTypeConfig::Weighted { .. }))
             .unwrap_or(true)
@@ -47,9 +47,9 @@ pub fn ExerciseForm(
         if let Some(ExerciseMetadata {
             set_type_config: SetTypeConfig::Weighted { min_weight, .. },
             ..
-        }) = initial_exercise_sig()
+        }) = &initial_exercise
         {
-            min_weight
+            *min_weight
         } else {
             45.0
         }
@@ -58,14 +58,18 @@ pub fn ExerciseForm(
         if let Some(ExerciseMetadata {
             set_type_config: SetTypeConfig::Weighted { increment, .. },
             ..
-        }) = initial_exercise_sig()
+        }) = &initial_exercise
         {
-            increment
+            *increment
         } else {
+            // 2.5 kg is a common barbell increment (1.25kg plates on each side)
             2.5
         }
     });
     let mut validation_error = use_signal(|| None::<String>);
+
+    let initial_id = initial_exercise.as_ref().and_then(|e| e.id);
+    let is_edit = initial_exercise.is_some();
 
     let handle_save = move |_| {
         let name = exercise_name().trim().to_string();
@@ -78,7 +82,7 @@ pub fn ExerciseForm(
         validation_error.set(None);
 
         let exercise = ExerciseMetadata {
-            id: initial_exercise_sig().as_ref().and_then(|e| e.id),
+            id: initial_id,
             name,
             set_type_config: if is_weighted() {
                 SetTypeConfig::Weighted {
@@ -100,7 +104,7 @@ pub fn ExerciseForm(
                 class: "card-body",
                 h2 {
                     class: "card-title text-2xl mb-4",
-                    if initial_exercise_sig().is_some() { "Edit Exercise" } else { "Add New Exercise" }
+                    if is_edit { "Edit Exercise" } else { "Add New Exercise" }
                 }
                 div {
                     class: "form-control",
