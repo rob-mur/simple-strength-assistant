@@ -47,6 +47,7 @@ pub struct WorkoutState {
     database: Signal<Option<Database>>,
     file_manager: Signal<Option<Storage>>,
     last_save_time: Signal<f64>,
+    exercises: Signal<Vec<ExerciseMetadata>>,
 }
 
 impl WorkoutState {
@@ -59,6 +60,7 @@ impl WorkoutState {
             database: Signal::new(None),
             file_manager: Signal::new(None),
             last_save_time: Signal::new(0.0),
+            exercises: Signal::new(Vec::new()),
         }
     }
 
@@ -123,6 +125,15 @@ impl WorkoutState {
     pub fn set_last_save_time(&self, time: f64) {
         let mut sig = self.last_save_time;
         sig.set(time);
+    }
+
+    pub fn exercises(&self) -> Vec<ExerciseMetadata> {
+        (self.exercises)().clone()
+    }
+
+    pub fn set_exercises(&self, exercises: Vec<ExerciseMetadata>) {
+        let mut sig = self.exercises;
+        sig.set(exercises);
     }
 }
 
