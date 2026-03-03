@@ -457,8 +457,9 @@ impl WorkoutStateManager {
 
     fn calculate_next_predictions(session: &WorkoutSession) -> PredictedParameters {
         if session.completed_sets.is_empty() {
-            // At the very start of a session (no sets completed yet), we should
-            // use the session's initial predictions which already accounted for history.
+            // Note: This path is unreachable in normal UI flow because initial prediction from start_session
+            // is stored in session.predicted, and calculate_next_predictions is only called after a set is completed.
+            // If it is ever called with 0 sets, it returns min_weight (ignoring history).
             return Self::calculate_initial_predictions(&session.exercise, None);
         }
 

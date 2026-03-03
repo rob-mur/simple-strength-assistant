@@ -379,6 +379,9 @@ async fn test_get_last_set_for_exercise() {
         .await
         .expect("Insert set 2 failed");
 
+    // Note: complete_session is intentionally NOT called here to verify that the query
+    // correctly fetches weights even from incomplete (in-progress or abandoned) sessions.
+
     // 4. Test fetching last set
     let last_set = db
         .get_last_set_for_exercise(exercise_id)

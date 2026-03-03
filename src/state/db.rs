@@ -360,8 +360,10 @@ impl Database {
         &self,
         exercise_id: i64,
     ) -> Result<Option<crate::models::CompletedSet>, DatabaseError> {
-        // Note: Joining on exercise_name is fragile if an exercise is renamed.
-        // Sessions table should ideally store exercise_id directly for better integrity.
+        // TODO: Joining on exercise_name is fragile if an exercise is renamed.
+        // If a user renames "Bench Press" to "Barbell Bench Press", get_last_set_for_exercise
+        // will silently return None for all prior sessions and suggestions will fall back to min_weight: 0.0.
+        // Sessions table should ideally store exercise_id directly for better integrity (requires schema migration).
         let sql = r#"
             SELECT cs.set_number, cs.reps, cs.rpe, cs.weight, cs.is_bodyweight
             FROM completed_sets cs
