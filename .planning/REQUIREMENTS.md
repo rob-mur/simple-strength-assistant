@@ -1,20 +1,31 @@
 # Requirements: Simple Strength Assistant
 
-**Defined:** 2026-03-01
+**Defined:** 2026-03-03
 **Core Value:** Users must be able to reliably persist their workout data to a file they control on their device.
 
-## v1.1 Requirements
+## v1.2 Requirements
 
-Exercise Library milestone - centralized view to browse and search exercises.
+Minimum Weight milestone - ensure actionable weight suggestions by replacing 'starting weight' with a configurable 'minimum weight'.
 
-### Exercise Library
+### Exercise Configuration
+
+- [ ] **CONF-01**: User can define a minimum weight for each exercise (e.g., 20kg for barbell)
+- [ ] **CONF-02**: Minimum weight input validates as a positive numerical value and defaults to 0
+- [ ] **CONF-03**: Application no longer provides UI or logic for 'Starting Weight'
+
+### Suggestion Engine
+
+- [ ] **SUGG-01**: Session suggestion uses most recent recorded weight from previous session of the exercise
+- [ ] **SUGG-02**: Session suggestion falls back to defined Minimum Weight if no previous records exist
+
+## v1.1 Requirements (Completed)
 
 - [x] **LIB-01**: User can view Exercise Library tab in the main interface
 - [x] **LIB-02**: User can switch between Workout and Library tabs without losing active session
-- [ ] **LIB-03**: User can see all exercises they've created in a list view
-- [ ] **LIB-04**: User can search exercises by name with instant filtering
-- [ ] **LIB-05**: User sees exercise type indicator (weighted vs bodyweight) for each exercise
-- [ ] **LIB-06**: User sees clear empty state message when no exercises exist
+- [x] **LIB-03**: User can see all exercises they've created in a list view
+- [x] **LIB-04**: User can search exercises by name with instant filtering
+- [x] **LIB-05**: User sees exercise type indicator (weighted vs bodyweight) for each exercise
+- [x] **LIB-06**: User sees clear empty state message when no exercises exist
 
 ## v2 Requirements
 
@@ -41,6 +52,7 @@ Explicitly excluded. Documented to prevent scope creep.
 | Delete exercises | Archive instead to preserve workout history and prevent orphaned data |
 | Exercise video/image tutorials | Massive storage overhead, scope creep; user can Google form cues |
 | Workout prescription from library | Belongs in future prescription milestone, not library browsing |
+| Workout prescription based on history | Complex feature reserved for a future milestone (only recent/min weight for now) |
 
 ## Traceability
 
@@ -48,18 +60,17 @@ Which phases cover which requirements. Updated during roadmap creation.
 
 | Requirement | Phase | Status |
 |-------------|-------|--------|
-| LIB-01 | Phase 4 | Complete |
-| LIB-02 | Phase 4 | Complete |
-| LIB-03 | Phase 5 | Pending |
-| LIB-04 | Phase 5 | Pending |
-| LIB-05 | Phase 5 | Pending |
-| LIB-06 | Phase 5 | Pending |
+| CONF-01 | Pending | Pending |
+| CONF-02 | Pending | Pending |
+| CONF-03 | Pending | Pending |
+| SUGG-01 | Pending | Pending |
+| SUGG-02 | Pending | Pending |
 
 **Coverage:**
-- v1.1 requirements: 6 total
-- Mapped to phases: 6
-- Unmapped: 0 ✓
+- v1.2 requirements: 5 total
+- Mapped to phases: 0
+- Unmapped: 5 ⚠️
 
 ---
-*Requirements defined: 2026-03-01*
-*Last updated: 2026-03-02 after roadmap creation*
+*Requirements defined: 2026-03-03*
+*Last updated: 2026-03-03 after requirement definition*
