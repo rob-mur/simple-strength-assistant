@@ -1,11 +1,15 @@
+use crate::components::library_view::LibraryView;
 use crate::components::rpe_slider::RPESlider;
 use crate::components::step_controls::StepControls;
+use crate::components::tab_bar::{Tab, TabBar};
 use crate::components::tape_measure::TapeMeasure;
-use crate::models::{CompletedSet, ExerciseMetadata, SetType, SetTypeConfig};
+use crate::components::workout_view::WorkoutView;
+use crate::models::{CompletedSet, SetType, SetTypeConfig};
 #[cfg(feature = "test-mode")]
 use crate::state::StorageBackend;
 use crate::state::{InitializationState, WorkoutError, WorkoutState, WorkoutStateManager};
 use dioxus::prelude::*;
+use gloo_storage::{LocalStorage, Storage};
 use wasm_bindgen::JsCast;
 
 struct ErrorInfo {
@@ -66,14 +70,39 @@ fn parse_error_for_ui(error: &WorkoutError) -> ErrorInfo {
     }
 }
 
+pub(crate) const ACTIVE_TAB_KEY: &str = "active_tab";
+
 #[component]
 pub fn App() -> Element {
     let workout_state = use_context_provider(WorkoutState::new);
+    let mut active_tab = use_context_provider(|| {
+        Signal::new(LocalStorage::get(ACTIVE_TAB_KEY).unwrap_or(Tab::Workout))
+    });
+
+    use_effect(move || {
+        let _ = LocalStorage::set(ACTIVE_TAB_KEY, active_tab());
+    });
 
     use_effect(move || {
         spawn(async move {
             if let Err(e) = WorkoutStateManager::setup_database(&workout_state).await {
                 WorkoutStateManager::handle_error(&workout_state, e);
+            }
+        });
+    });
+
+    // Set data-hydrated attribute after WASM initialization
+    use_effect(move || {
+        spawn(async move {
+            if let Some(window) = web_sys::window()
+                && let Some(document) = window.document()
+                && let Some(body) = document.body()
+            {
+                if let Err(e) = body.set_attribute("data-hydrated", "true") {
+                    log::error!("Failed to set data-hydrated attribute: {:?}", e);
+                } else {
+                    log::debug!("WASM hydration complete - data-hydrated attribute set");
+                }
             }
         });
     });
@@ -227,6 +256,7 @@ pub fn App() -> Element {
                                                                         // Store database and file manager in state
                                                                         workout_state.set_database(database);
                                                                         workout_state.set_file_manager(file_manager);
+
                                                                         workout_state.set_initialization_state(InitializationState::Ready);
 
                                                                         log::debug!("[UI] Setup complete! State is now Ready");
@@ -332,6 +362,7 @@ pub fn App() -> Element {
                                                                         // Store database and file manager in state
                                                                         workout_state.set_database(database);
                                                                         workout_state.set_file_manager(file_manager);
+
                                                                         workout_state.set_initialization_state(InitializationState::Ready);
 
                                                                         log::debug!("[UI] Setup complete! State is now Ready");
@@ -450,9 +481,19 @@ pub fn App() -> Element {
 
                         rsx! {
                             div {
+                                class: "pb-safe-nav",
                                 {storage_mode_banner}
                                 {save_error_banner}
-                                WorkoutInterface { state: workout_state }
+                                match active_tab() {
+                                    Tab::Workout => rsx! { WorkoutView { state: workout_state } },
+                                    Tab::Library => rsx! { LibraryView {} },
+                                }
+                            }
+                            TabBar {
+                                active_tab: active_tab(),
+                                on_change: move |tab| {
+                                    active_tab.set(tab);
+                                }
                             }
                         }
                     }
@@ -554,233 +595,7 @@ pub fn App() -> Element {
 }
 
 #[component]
-fn WorkoutInterface(state: WorkoutState) -> Element {
-    let current_session = state.current_session();
-
-    // Set data-hydrated attribute after WASM initialization
-    use_effect(move || {
-        spawn(async move {
-            if let Some(window) = web_sys::window()
-                && let Some(document) = window.document()
-                && let Some(body) = document.body()
-            {
-                if let Err(e) = body.set_attribute("data-hydrated", "true") {
-                    log::error!("Failed to set data-hydrated attribute: {:?}", e);
-                } else {
-                    log::debug!("WASM hydration complete - data-hydrated attribute set");
-                }
-            }
-        });
-    });
-
-    if let Some(session) = current_session {
-        log::debug!(
-            "[WorkoutInterface] Rendering ActiveSession for exercise: {}",
-            session.exercise.name
-        );
-        rsx! {
-            ActiveSession { state: state, session }
-        }
-    } else {
-        log::debug!("[WorkoutInterface] No current_session, rendering StartSessionView");
-        rsx! {
-            StartSessionView { state: state }
-        }
-    }
-}
-
-const MAX_EXERCISE_NAME_LENGTH: usize = 100;
-
-fn validate_exercise_name(name: &str) -> Result<(), String> {
-    if name.trim().is_empty() {
-        return Err("Exercise name cannot be empty".to_string());
-    }
-    if name.len() > MAX_EXERCISE_NAME_LENGTH {
-        return Err(format!(
-            "Exercise name must be {} characters or less",
-            MAX_EXERCISE_NAME_LENGTH
-        ));
-    }
-    if name.contains('<') || name.contains('>') {
-        return Err("Exercise name cannot contain HTML characters".to_string());
-    }
-    Ok(())
-}
-
-#[component]
-fn StartSessionView(state: WorkoutState) -> Element {
-    let mut exercise_name = use_signal(|| "Bench Press".to_string());
-    let mut is_weighted = use_signal(|| true);
-    let mut min_weight = use_signal(|| 45.0);
-    let mut increment = use_signal(|| 5.0);
-    let mut validation_error = use_signal(|| None::<String>);
-
-    let start_session = move |_| {
-        let name = exercise_name().trim().to_string();
-
-        if let Err(e) = validate_exercise_name(&name) {
-            validation_error.set(Some(e));
-            return;
-        }
-
-        validation_error.set(None);
-
-        let exercise = ExerciseMetadata {
-            name,
-            set_type_config: if is_weighted() {
-                SetTypeConfig::Weighted {
-                    min_weight: min_weight(),
-                    increment: increment(),
-                }
-            } else {
-                SetTypeConfig::Bodyweight
-            },
-        };
-
-        let state_clone = state;
-        spawn(async move {
-            if let Err(e) = WorkoutStateManager::start_session(&state_clone, exercise).await {
-                WorkoutStateManager::handle_error(&state_clone, e);
-            }
-        });
-    };
-
-    rsx! {
-        div {
-            class: "max-w-2xl mx-auto",
-            div {
-                class: "card bg-base-100 shadow-xl",
-                div {
-                    class: "card-body",
-                    h2 {
-                        class: "card-title text-2xl mb-4",
-                        "Start New Workout Session"
-                    }
-                    div {
-                        class: "form-control",
-                        label {
-                            class: "label",
-                            r#for: "exercise-name-input",
-                            span {
-                                class: "label-text",
-                                "Exercise Name"
-                            }
-                        }
-                        input {
-                            id: "exercise-name-input",
-                            class: if validation_error().is_some() {
-                                "input input-bordered input-error"
-                            } else {
-                                "input input-bordered"
-                            },
-                            r#type: "text",
-                            value: "{exercise_name}",
-                            maxlength: MAX_EXERCISE_NAME_LENGTH,
-                            oninput: move |e| {
-                                exercise_name.set(e.value());
-                                validation_error.set(None);
-                            }
-                        }
-                        if let Some(error) = validation_error() {
-                            label {
-                                class: "label",
-                                span {
-                                    class: "label-text-alt text-error",
-                                    "{error}"
-                                }
-                            }
-                        }
-                    }
-                    div {
-                        class: "form-control mt-4",
-                        label {
-                            class: "label cursor-pointer",
-                            span {
-                                class: "label-text",
-                                "Weighted Exercise"
-                            }
-                            input {
-                                class: "checkbox",
-                                r#type: "checkbox",
-                                checked: is_weighted(),
-                                oninput: move |e| is_weighted.set(e.checked())
-                            }
-                        }
-                    }
-                    if is_weighted() {
-                        div {
-                            class: "flex flex-col gap-8 mt-6",
-                            div {
-                                class: "form-control w-full",
-                                label {
-                                    class: "label",
-                                    span {
-                                        class: "label-text font-bold text-lg",
-                                        "Starting Weight (kg)"
-                                    }
-                                }
-                                TapeMeasure {
-                                    value: min_weight() as f64,
-                                    min: 0.0,
-                                    max: 500.0,
-                                    step: increment() as f64,
-                                    on_change: move |val| min_weight.set(val as f32)
-                                }
-                                div {
-                                    class: "text-center text-3xl font-black text-primary mt-2",
-                                    "{min_weight} kg"
-                                }
-                                StepControls {
-                                    value: min_weight() as f64,
-                                    steps: vec![-10.0, 10.0],
-                                    min: 0.0,
-                                    max: 500.0,
-                                    on_change: move |val| min_weight.set(val as f32)
-                                }
-                            }
-                            div {
-                                class: "form-control w-full",
-                                label {
-                                    class: "label",
-                                    span {
-                                        class: "label-text font-bold text-lg",
-                                        "Weight Increment (kg)"
-                                    }
-                                }
-                                div {
-                                    class: "flex flex-wrap gap-3 justify-center mt-2",
-                                    for &inc in &[1.25, 2.5, 5.0, 10.0] {
-                                        button {
-                                            key: "{inc}",
-                                            class: if (increment() - inc as f32).abs() < 0.001 {
-                                                "btn btn-primary btn-md flex-1 min-w-[70px] shadow-lg"
-                                            } else {
-                                                "btn btn-outline btn-md flex-1 min-w-[70px]"
-                                            },
-                                            onclick: move |_| increment.set(inc as f32),
-                                            "{inc}"
-                                        }
-                                    }
-                                }
-                            }
-                        }
-                    }
-                    div {
-                        class: "card-actions justify-end mt-6",
-                        button {
-                            class: "btn btn-primary",
-                            onclick: start_session,
-                            "Start Session"
-                        }
-                    }
-                }
-            }
-        }
-    }
-}
-
-#[component]
-fn ActiveSession(state: WorkoutState, session: crate::state::WorkoutSession) -> Element {
+pub fn ActiveSession(state: WorkoutState, session: crate::state::WorkoutSession) -> Element {
     let session_clone = session.clone();
     let session_for_display = session_clone.clone();
     let mut reps_input = use_signal(|| session.predicted.reps as f64);

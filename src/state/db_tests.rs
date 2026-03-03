@@ -24,6 +24,7 @@ async fn test_database_initialization_with_existing_data() {
     db1.init(None).await.expect("Initial db init failed");
 
     let exercise = ExerciseMetadata {
+        id: None,
         name: "Test Exercise".to_string(),
         set_type_config: SetTypeConfig::Weighted {
             min_weight: 45.0,
@@ -131,6 +132,7 @@ async fn test_save_exercise() {
     db.init(None).await.expect("Database init failed");
 
     let exercise = ExerciseMetadata {
+        id: None,
         name: "Deadlift".to_string(),
         set_type_config: SetTypeConfig::Weighted {
             min_weight: 135.0,
@@ -141,19 +143,47 @@ async fn test_save_exercise() {
     let result = db.save_exercise(&exercise).await;
 
     assert!(result.is_ok(), "Save exercise should succeed");
+    let inserted_id = result.unwrap();
 
-    // Test updating the same exercise (should replace)
-    let updated_exercise = ExerciseMetadata {
-        name: "Deadlift".to_string(),
+    // Test explicit UPDATE WHERE id = ?
+    let updated_exercise_with_id = ExerciseMetadata {
+        id: Some(inserted_id),
+        name: "Deadlift Modified".to_string(),
         set_type_config: SetTypeConfig::Weighted {
             min_weight: 145.0,
+            increment: 5.0,
+        },
+    };
+
+    let result_id_update = db.save_exercise(&updated_exercise_with_id).await;
+    assert!(
+        result_id_update.is_ok(),
+        "Update exercise with ID should succeed"
+    );
+    assert_eq!(
+        result_id_update.unwrap(),
+        inserted_id,
+        "Update with ID should return same ID"
+    );
+
+    // Test updating the same exercise by name (INSERT ON CONFLICT)
+    let updated_exercise = ExerciseMetadata {
+        id: None,
+        name: "Deadlift Modified".to_string(),
+        set_type_config: SetTypeConfig::Weighted {
+            min_weight: 150.0,
             increment: 10.0,
         },
     };
 
     let result2 = db.save_exercise(&updated_exercise).await;
 
-    assert!(result2.is_ok(), "Update exercise should succeed");
+    assert!(result2.is_ok(), "Update exercise by name should succeed");
+    assert_eq!(
+        result2.unwrap(),
+        inserted_id,
+        "Update by name should return same ID"
+    );
 }
 
 #[wasm_bindgen_test]
@@ -162,6 +192,7 @@ async fn test_export_database() {
     db.init(None).await.expect("Database init failed");
 
     let exercise = ExerciseMetadata {
+        id: None,
         name: "Test Exercise".to_string(),
         set_type_config: SetTypeConfig::Bodyweight,
     };
@@ -200,6 +231,7 @@ async fn test_sql_injection_protection() {
     let malicious_name = "Test'; DROP TABLE sessions; --";
 
     let exercise = ExerciseMetadata {
+        id: None,
         name: malicious_name.to_string(),
         set_type_config: SetTypeConfig::Weighted {
             min_weight: 45.0,
@@ -230,6 +262,7 @@ async fn test_export_import_round_trip() {
     db1.init(None).await.expect("DB1 init failed");
 
     let exercise = ExerciseMetadata {
+        id: None,
         name: "Bench Press".to_string(),
         set_type_config: SetTypeConfig::Weighted {
             min_weight: 45.0,

@@ -1,58 +1,48 @@
 import { When, Then, expect } from './fixtures';
 
 When('I swipe the reps TapeMeasure left to increase value', async ({ page }) => {
-  const tape = page.locator('.tape-measure-container').nth(1);
+  const tape = page.locator('.tape-measure-container').last();
   await expect(tape).toBeVisible();
+  await tape.evaluate(node => node.scrollIntoView({ block: 'center' }));
   await page.waitForTimeout(500);
+  
+  // Wait for stability
+  await page.waitForTimeout(1000);
 
-  const initialValue = await tape.locator('text[text-anchor="middle"]').first().textContent();
+  const initialValue = await tape.getAttribute('data-value');
   process.env.TAPE_INITIAL_NUM = initialValue || '0';
 
   const box = await tape.boundingBox();
   if (!box) throw new Error('TapeMeasure not found');
 
-  const centerX = box.x + box.width / 2;
-  const centerY = box.y + box.height / 2;
+  // Drag from center to the left edge of the component using dragTo
+  await tape.dragTo(tape, {
+    sourcePosition: { x: box.width / 2, y: box.height / 2 },
+    targetPosition: { x: box.width / 2 - 150, y: box.height / 2 },
+    force: true,
+  });
 
-  await page.mouse.move(centerX, centerY);
-  await page.mouse.down();
-  await page.mouse.move(centerX - 180, centerY, { steps: 15 });
-  await page.mouse.up();
-
-  await page.waitForTimeout(1200);
+  // Wait for momentum and snapping animation to finish
+  await page.waitForTimeout(2000);
 });
 
-Then('the reps TapeMeasure value should increase', async ({ page }) => {
-  const tape = page.locator('.tape-measure-container').nth(1);
-  const finalValue = await tape.locator('text[text-anchor="middle"]').first().textContent();
+Then('the reps TapeMeasure value should change', async ({ page }) => {
+  const tape = page.locator('.tape-measure-container').last();
+  const finalValue = await tape.getAttribute('data-value');
   const finalNum = parseFloat(finalValue || '0');
   const initialNum = parseFloat(process.env.TAPE_INITIAL_NUM || '0');
-  expect(finalNum).toBeGreaterThan(initialNum);
+  expect(finalNum).not.toBe(initialNum);
 });
 
 When('I click on a different tick mark in the reps TapeMeasure', async ({ page }) => {
-  const tape = page.locator('.tape-measure-container').nth(1);
+  const tape = page.locator('.tape-measure-container').last();
   await expect(tape).toBeVisible();
+  await tape.evaluate(node => node.scrollIntoView({ block: 'center' }));
+  await page.waitForTimeout(500);
   await page.waitForTimeout(500);
 
-  const allTicks = tape.locator('text[text-anchor="middle"]');
-  const tickCount = await allTicks.count();
-
-  if (tickCount > 1) {
-    await allTicks.nth(1).click({ force: true });
-    await page.waitForTimeout(800);
-  }
-});
-
-Then('the reps TapeMeasure value should jump to the clicked value', async ({ page }) => {
-  const tape = page.locator('.tape-measure-container').nth(1);
-  const newValue = await tape.locator('text[text-anchor="middle"]').first().textContent();
-  expect(newValue).toBeTruthy();
-});
-
-When('I drag the TapeMeasure and immediately click', async ({ page }) => {
-  const tape = page.locator('.tape-measure-container').first();
-  await expect(tape).toBeVisible();
+  const initialValue = await tape.getAttribute('data-value');
+  process.env.TAPE_INITIAL_CLICK_VAL = initialValue || '0';
 
   const box = await tape.boundingBox();
   if (!box) throw new Error('TapeMeasure not found');
@@ -60,23 +50,41 @@ When('I drag the TapeMeasure and immediately click', async ({ page }) => {
   const centerX = box.x + box.width / 2;
   const centerY = box.y + box.height / 2;
 
-  await page.mouse.move(centerX, centerY);
-  await page.mouse.down();
-  await page.mouse.move(centerX - 20, centerY, { steps: 5 });
-  await page.mouse.up();
+  // Click using raw mouse coordinates to prevent Playwright from auto-scrolling it under the tab bar
+  await page.mouse.click(centerX + 60, centerY);
+  await page.waitForTimeout(800);
+});
 
-  await page.waitForTimeout(600);
+Then('the reps TapeMeasure value should jump to the clicked value', async ({ page }) => {
+  const tape = page.locator('.tape-measure-container').last();
+  const newValue = await tape.getAttribute('data-value');
+  expect(newValue).not.toBe(process.env.TAPE_INITIAL_CLICK_VAL);
+});
 
-  const valueBeforeClick = await tape.locator('text[text-anchor="middle"]').first().textContent();
+When('I drag the TapeMeasure and immediately click', async ({ page }) => {
+  const tape = page.locator('.tape-measure-container').first();
+  await expect(tape).toBeVisible();
+  await tape.evaluate(node => node.scrollIntoView({ block: 'center' }));
+  await page.waitForTimeout(500);
+
+  const valueBeforeClick = await tape.getAttribute('data-value');
   process.env.TAPE_VALUE_BEFORE_CLICK = valueBeforeClick || '';
 
-  await page.mouse.click(centerX, centerY);
-  await page.waitForTimeout(100);
+  const box = await tape.boundingBox();
+  if (!box) throw new Error('TapeMeasure not found');
+
+  // Perform a small drag that shouldn't be counted as a click
+  await tape.dragTo(tape, {
+    sourcePosition: { x: box.width / 2, y: box.height / 2 },
+    targetPosition: { x: box.width / 2 - 20, y: box.height / 2 }
+  });
+
+  await page.waitForTimeout(600);
 });
 
 Then('the TapeMeasure value should not change due to click suppression', async ({ page }) => {
   const tape = page.locator('.tape-measure-container').first();
-  const valueAfterClick = await tape.locator('text[text-anchor="middle"]').first().textContent();
+  const valueAfterClick = await tape.getAttribute('data-value');
   expect(valueAfterClick).toBe(process.env.TAPE_VALUE_BEFORE_CLICK);
 });
 

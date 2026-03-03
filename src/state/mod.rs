@@ -14,7 +14,9 @@ pub use error::WorkoutError;
 pub use file_system::FileSystemError;
 #[cfg(not(feature = "test-mode"))]
 pub use file_system::FileSystemManager;
-pub use workout_state::{InitializationState, WorkoutSession, WorkoutState, WorkoutStateManager};
+pub use workout_state::{
+    InitializationState, PredictedParameters, WorkoutSession, WorkoutState, WorkoutStateManager,
+};
 
 #[cfg(feature = "test-mode")]
 pub use storage::StorageBackend;

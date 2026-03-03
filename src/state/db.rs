@@ -14,6 +14,9 @@ pub enum DatabaseError {
     #[error("Database not initialized")]
     NotInitialized,
 
+    #[error("Exercise not found")]
+    ExerciseNotFound,
+
     #[error("JavaScript error: {0}")]
     JsError(String),
 }
@@ -223,7 +226,7 @@ impl Database {
         Ok(id)
     }
 
-    pub async fn save_exercise(&self, exercise: &ExerciseMetadata) -> Result<(), DatabaseError> {
+    pub async fn save_exercise(&self, exercise: &ExerciseMetadata) -> Result<i64, DatabaseError> {
         let (is_weighted, min_weight, increment) = match exercise.set_type_config {
             crate::models::SetTypeConfig::Weighted {
                 min_weight,
@@ -232,24 +235,125 @@ impl Database {
             crate::models::SetTypeConfig::Bodyweight => (false, None, None),
         };
 
-        let sql = r#"
-            INSERT OR REPLACE INTO exercises (name, is_weighted, min_weight, increment)
-            VALUES (?, ?, ?, ?)
-        "#;
+        let result = if let Some(id) = exercise.id {
+            let sql = r#"
+                UPDATE exercises SET name = ?, is_weighted = ?, min_weight = ?, increment = ?
+                WHERE id = ?
+                RETURNING id
+            "#;
+            let params = vec![
+                JsValue::from_str(&exercise.name),
+                JsValue::from_bool(is_weighted),
+                min_weight
+                    .map(|w| JsValue::from_f64(w as f64))
+                    .unwrap_or(JsValue::NULL),
+                increment
+                    .map(|i| JsValue::from_f64(i as f64))
+                    .unwrap_or(JsValue::NULL),
+                JsValue::from_f64(id as f64),
+            ];
+            self.execute(sql, &params).await?
+        } else {
+            let sql = r#"
+                INSERT INTO exercises (name, is_weighted, min_weight, increment)
+                VALUES (?, ?, ?, ?)
+                ON CONFLICT(name) DO UPDATE SET
+                    is_weighted = excluded.is_weighted,
+                    min_weight = excluded.min_weight,
+                    increment = excluded.increment
+                RETURNING id
+            "#;
+            let params = vec![
+                JsValue::from_str(&exercise.name),
+                JsValue::from_bool(is_weighted),
+                min_weight
+                    .map(|w| JsValue::from_f64(w as f64))
+                    .unwrap_or(JsValue::NULL),
+                increment
+                    .map(|i| JsValue::from_f64(i as f64))
+                    .unwrap_or(JsValue::NULL),
+            ];
+            self.execute(sql, &params).await?
+        };
 
-        let params = vec![
-            JsValue::from_str(&exercise.name),
-            JsValue::from_bool(is_weighted),
-            min_weight
-                .map(|w| JsValue::from_f64(w as f64))
-                .unwrap_or(JsValue::NULL),
-            increment
-                .map(|i| JsValue::from_f64(i as f64))
-                .unwrap_or(JsValue::NULL),
-        ];
+        let array = result
+            .dyn_ref::<js_sys::Array>()
+            .ok_or_else(|| DatabaseError::QueryError("Expected array result".to_string()))?;
 
-        self.execute(sql, &params).await?;
-        Ok(())
+        if array.length() == 0 {
+            if exercise.id.is_some() {
+                return Err(DatabaseError::ExerciseNotFound);
+            }
+            return Err(DatabaseError::QueryError("No rows returned".to_string()));
+        }
+
+        let first_row = array.get(0);
+        let id = js_sys::Reflect::get(&first_row, &JsValue::from_str("id"))?
+            .as_f64()
+            .ok_or_else(|| DatabaseError::QueryError("Failed to get exercise id".to_string()))?
+            as i64;
+
+        Ok(id)
+    }
+
+    pub async fn get_exercises(&self) -> Result<Vec<ExerciseMetadata>, DatabaseError> {
+        let sql =
+            "SELECT id, name, is_weighted, min_weight, increment FROM exercises ORDER BY name";
+        let result = self.execute(sql, &[]).await?;
+
+        let array = result
+            .dyn_ref::<js_sys::Array>()
+            .ok_or_else(|| DatabaseError::QueryError("Expected array result".to_string()))?;
+
+        let mut exercises = Vec::new();
+        for i in 0..array.length() {
+            let row = array.get(i);
+            let id = js_sys::Reflect::get(&row, &JsValue::from_str("id"))?
+                .as_f64()
+                .map(|f| f as i64);
+
+            let name = js_sys::Reflect::get(&row, &JsValue::from_str("name"))?
+                .as_string()
+                .ok_or_else(|| DatabaseError::QueryError("Failed to get name".to_string()))?;
+
+            let is_weighted_val = js_sys::Reflect::get(&row, &JsValue::from_str("is_weighted"))?;
+            let is_weighted = if let Some(b) = is_weighted_val.as_bool() {
+                b
+            } else if let Some(f) = is_weighted_val.as_f64() {
+                f == 1.0
+            } else {
+                return Err(DatabaseError::QueryError(
+                    "Failed to get is_weighted as bool or number".to_string(),
+                ));
+            };
+
+            let set_type_config = if is_weighted {
+                let min_weight = js_sys::Reflect::get(&row, &JsValue::from_str("min_weight"))?
+                    .as_f64()
+                    .ok_or_else(|| {
+                        DatabaseError::QueryError("Failed to get min_weight".to_string())
+                    })? as f32;
+                let increment = js_sys::Reflect::get(&row, &JsValue::from_str("increment"))?
+                    .as_f64()
+                    .ok_or_else(|| {
+                        DatabaseError::QueryError("Failed to get increment".to_string())
+                    })? as f32;
+                crate::models::SetTypeConfig::Weighted {
+                    min_weight,
+                    increment,
+                }
+            } else {
+                crate::models::SetTypeConfig::Bodyweight
+            };
+
+            exercises.push(ExerciseMetadata {
+                id,
+                name,
+                set_type_config,
+            });
+        }
+
+        Ok(exercises)
     }
 
     pub async fn export(&self) -> Result<Vec<u8>, DatabaseError> {

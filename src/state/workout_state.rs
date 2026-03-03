@@ -47,6 +47,13 @@ pub struct WorkoutState {
     database: Signal<Option<Database>>,
     file_manager: Signal<Option<Storage>>,
     last_save_time: Signal<f64>,
+    exercises: Signal<Vec<ExerciseMetadata>>,
+}
+
+impl Default for WorkoutState {
+    fn default() -> Self {
+        Self::new()
+    }
 }
 
 impl WorkoutState {
@@ -59,6 +66,7 @@ impl WorkoutState {
             database: Signal::new(None),
             file_manager: Signal::new(None),
             last_save_time: Signal::new(0.0),
+            exercises: Signal::new(Vec::new()),
         }
     }
 
@@ -123,6 +131,15 @@ impl WorkoutState {
     pub fn set_last_save_time(&self, time: f64) {
         let mut sig = self.last_save_time;
         sig.set(time);
+    }
+
+    pub fn exercises(&self) -> Vec<ExerciseMetadata> {
+        (self.exercises)()
+    }
+
+    pub fn set_exercises(&self, exercises: Vec<ExerciseMetadata>) {
+        let mut sig = self.exercises;
+        sig.set(exercises);
     }
 }
 
@@ -213,23 +230,62 @@ impl WorkoutStateManager {
 
         state.set_database(database);
         state.set_file_manager(file_manager);
+
+        // Load exercises from database
+        if let Err(e) = Self::sync_exercises(state).await {
+            log::warn!("Failed to load exercises after DB setup: {}", e);
+        }
+
         state.set_initialization_state(InitializationState::Ready);
 
         log::debug!("[DB Init] Setup complete! State is now Ready");
         Ok(())
     }
 
-    pub async fn start_session(
+    pub async fn save_exercise(
         state: &WorkoutState,
         exercise: ExerciseMetadata,
-    ) -> Result<(), WorkoutError> {
+    ) -> Result<i64, WorkoutError> {
         let db = state.database().ok_or(WorkoutError::NotInitialized)?;
 
-        db.save_exercise(&exercise)
+        let id = db
+            .save_exercise(&exercise)
             .await
             .map_err(|e: crate::state::DatabaseError| {
                 WorkoutError::SaveExerciseError(e.to_string())
             })?;
+
+        // Sync exercises in state after saving
+        if let Err(e) = Self::sync_exercises(state).await {
+            log::warn!("Failed to sync exercises after saving: {}", e);
+        }
+
+        // Auto-save the database file
+        if let Err(e) = Self::save_database(state).await {
+            log::warn!("Auto-save after exercise save failed: {}", e);
+        }
+
+        Ok(id)
+    }
+
+    pub async fn start_session(
+        state: &WorkoutState,
+        mut exercise: ExerciseMetadata,
+    ) -> Result<(), WorkoutError> {
+        let db = state.database().ok_or(WorkoutError::NotInitialized)?;
+
+        let id = db
+            .save_exercise(&exercise)
+            .await
+            .map_err(|e: crate::state::DatabaseError| {
+                WorkoutError::SaveExerciseError(e.to_string())
+            })?;
+        exercise.id = Some(id);
+
+        // Sync exercises in state after saving new one
+        if let Err(e) = Self::sync_exercises(state).await {
+            log::warn!("Failed to sync exercises after saving: {}", e);
+        }
 
         let session_id =
             db.create_session(&exercise.name)
@@ -343,6 +399,21 @@ impl WorkoutStateManager {
         Ok(())
     }
 
+    /// Fetches all exercises from the database and updates the state's exercise signal.
+    pub async fn sync_exercises(state: &WorkoutState) -> Result<(), WorkoutError> {
+        let db = state.database().ok_or(WorkoutError::NotInitialized)?;
+
+        let exercises = db.get_exercises().await.map_err(WorkoutError::Database)?;
+
+        log::debug!(
+            "[WorkoutState] Syncing {} exercises from database",
+            exercises.len()
+        );
+        state.set_exercises(exercises);
+
+        Ok(())
+    }
+
     fn calculate_initial_predictions(exercise: &ExerciseMetadata) -> PredictedParameters {
         match exercise.set_type_config {
             crate::models::SetTypeConfig::Weighted { min_weight, .. } => PredictedParameters {
@@ -412,6 +483,7 @@ mod tests {
     #[test]
     fn test_initial_predictions_weighted() {
         let exercise = ExerciseMetadata {
+            id: Some(1),
             name: "Bench Press".to_string(),
             set_type_config: SetTypeConfig::Weighted {
                 min_weight: 45.0,
@@ -429,6 +501,7 @@ mod tests {
     #[test]
     fn test_initial_predictions_bodyweight() {
         let exercise = ExerciseMetadata {
+            id: Some(2),
             name: "Pull-ups".to_string(),
             set_type_config: SetTypeConfig::Bodyweight,
         };
@@ -443,6 +516,7 @@ mod tests {
     #[test]
     fn test_next_predictions_progression() {
         let exercise = ExerciseMetadata {
+            id: Some(3),
             name: "Bench Press".to_string(),
             set_type_config: SetTypeConfig::Weighted {
                 min_weight: 45.0,

@@ -211,11 +211,13 @@ pub fn validate_completed_set(
         }
         (SetType::Weighted { .. }, SetTypeConfig::Bodyweight) => {
             // This shouldn't happen - weighted set for bodyweight exercise
-            // For now we'll allow it, but could add a validation error variant for this
+            // TODO: Track as a future ValidationError variant (e.g. SetTypeMismatch)
+            // to make the contract explicit rather than silently valid.
         }
         (SetType::Bodyweight, SetTypeConfig::Weighted { .. }) => {
             // This shouldn't happen - bodyweight set for weighted exercise
-            // For now we'll allow it, but could add a validation error variant for this
+            // TODO: Track as a future ValidationError variant (e.g. SetTypeMismatch)
+            // to make the contract explicit rather than silently valid.
         }
     }
 
@@ -378,6 +380,7 @@ mod tests {
     #[test]
     fn test_validate_completed_set_weighted_valid() {
         let exercise = ExerciseMetadata {
+            id: None,
             name: "Bench Press".to_string(),
             set_type_config: SetTypeConfig::Weighted {
                 min_weight: 20.0,
@@ -398,6 +401,7 @@ mod tests {
     #[test]
     fn test_validate_completed_set_bodyweight_valid() {
         let exercise = ExerciseMetadata {
+            id: None,
             name: "Pull-ups".to_string(),
             set_type_config: SetTypeConfig::Bodyweight,
         };
@@ -415,6 +419,7 @@ mod tests {
     #[test]
     fn test_validate_completed_set_invalid_weight() {
         let exercise = ExerciseMetadata {
+            id: None,
             name: "Bench Press".to_string(),
             set_type_config: SetTypeConfig::Weighted {
                 min_weight: 20.0,
@@ -442,6 +447,7 @@ mod tests {
     #[test]
     fn test_validate_completed_set_invalid_rpe() {
         let exercise = ExerciseMetadata {
+            id: None,
             name: "Pull-ups".to_string(),
             set_type_config: SetTypeConfig::Bodyweight,
         };
@@ -460,6 +466,7 @@ mod tests {
     #[test]
     fn test_validate_completed_set_zero_reps() {
         let exercise = ExerciseMetadata {
+            id: None,
             name: "Pull-ups".to_string(),
             set_type_config: SetTypeConfig::Bodyweight,
         };

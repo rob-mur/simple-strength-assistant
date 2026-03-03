@@ -19,7 +19,6 @@ const VIEWPORT_WIDTH: f64 = 300.0;
 const VIEWPORT_HEIGHT: f64 = 80.0;
 const CENTER_X: f64 = VIEWPORT_WIDTH / 2.0;
 const EPSILON_TOLERANCE: f64 = 1e-9;
-const CLICK_SUPPRESSION_DELAY_MS: u32 = 200;
 const CLICK_DRAG_THRESHOLD: f64 = 5.0;
 
 #[component]
@@ -32,7 +31,6 @@ pub fn TapeMeasure(props: TapeMeasureProps) -> Element {
     let mut last_update_time = use_signal(|| 0.0);
     let mut is_snapping = use_signal(|| false);
     let mut container_element = use_signal(|| None::<web_sys::Element>);
-    let mut click_allowed = use_signal(|| true);
     let mut drag_start_offset = use_signal(|| 0.0);
 
     // Sync state if props change (prop-to-signal sync pattern)
@@ -107,6 +105,9 @@ pub fn TapeMeasure(props: TapeMeasureProps) -> Element {
                     let steps_from_min = (target_offset / -PIXELS_PER_STEP).round();
                     let final_value = props.min + steps_from_min * props.step;
                     if (final_value - props.value).abs() > 0.001 {
+                        web_sys::console::log_1(
+                            &format!("TapeMeasure Snapping to new value: {}", final_value).into(),
+                        );
                         props.on_change.call(final_value);
                     }
                 }
@@ -135,6 +136,7 @@ pub fn TapeMeasure(props: TapeMeasureProps) -> Element {
     rsx! {
         div {
             class: "tape-measure-container bg-base-100 rounded-lg shadow-inner",
+            "data-value": "{props.value}",
             style: "touch-action: none; overflow: hidden; width: 100%; height: {VIEWPORT_HEIGHT}px; position: relative; cursor: grab;",
             onmounted: move |el| {
                 // Try HtmlElement first, then fallback to Element
@@ -145,7 +147,7 @@ pub fn TapeMeasure(props: TapeMeasureProps) -> Element {
                 } else if let Some(raw) = el.data.downcast::<web_sys::Element>() {
                     container_element.set(Some(raw.clone()));
                 } else {
-                    web_sys::console::log_1(&"TapeMeasure: Failed to downcast mounted element to HtmlElement or Element".into());
+                    log::warn!("TapeMeasure: Failed to downcast mounted element to HtmlElement or Element");
                 }
             },
             onpointerdown: move |evt| {
@@ -155,14 +157,13 @@ pub fn TapeMeasure(props: TapeMeasureProps) -> Element {
                     last_pointer_x.set(e.client_x() as f64);
                     last_update_time.set(js_sys::Date::now());
                     velocity.set(0.0);
-                    click_allowed.set(false);
                     drag_start_offset.set(offset());
 
                     if let Some(el) = container_element.peek().as_ref() {
                         let _ = el.set_pointer_capture(e.pointer_id());
                     }
                 } else {
-                    web_sys::console::log_1(&"Unexpected event type in TapeMeasure onpointerdown".into());
+                    log::warn!("Unexpected event type in TapeMeasure onpointerdown");
                 }
             },
             onpointermove: move |evt| {
@@ -205,7 +206,7 @@ pub fn TapeMeasure(props: TapeMeasureProps) -> Element {
                         last_pointer_x.set(current_x);
                         last_update_time.set(now);
                     } else {
-                        web_sys::console::log_1(&"Unexpected event type in TapeMeasure onpointermove".into());
+                        log::warn!("Unexpected event type in TapeMeasure onpointermove");
                     }
                 }
             },
@@ -222,23 +223,37 @@ pub fn TapeMeasure(props: TapeMeasureProps) -> Element {
                             is_snapping.set(true);
                         }
 
-                        // Re-enable clicks after delay if drag distance was small
+                        // If it was a small drag, treat it as a click
                         if drag_distance < CLICK_DRAG_THRESHOLD {
-                            let mut click_allowed_clone = click_allowed;
-                            spawn(async move {
-                                gloo_timers::future::TimeoutFuture::new(CLICK_SUPPRESSION_DELAY_MS).await;
-                                click_allowed_clone.set(true);
-                            });
-                        } else {
-                            // Large drag: immediately re-enable clicks
-                            click_allowed.set(true);
+                            #[allow(clippy::collapsible_if)]
+                            if let Some(el) = container_element.peek().as_ref() {
+                                let rect = el.get_bounding_client_rect();
+                                let relative_x = e.client_x() as f64 - rect.left();
+                                let scale_factor = if rect.width() > 0.0 { VIEWPORT_WIDTH / rect.width() } else { 1.0 };
+                                let svg_x = relative_x * scale_factor;
+
+                                // Calculate which value was clicked based on SVG coordinates
+                                let clicked_steps = ((svg_x - CENTER_X - offset()) / PIXELS_PER_STEP).round();
+                                let mut final_val = props.min + clicked_steps * props.step;
+
+                                // Clamp final_val
+                                if final_val < props.min { final_val = props.min; }
+                                if final_val > props.max { final_val = props.max; }
+
+                                let target_offset = (final_val - props.min) / props.step * -PIXELS_PER_STEP;
+                                velocity.set(0.0);
+                                offset.set(target_offset);
+
+                                log::debug!("TapeMeasure Calculated Click: updating to {}", final_val);
+                                props.on_change.call(final_val);
+                            }
                         }
 
                         if let Some(el) = container_element.peek().as_ref() {
                             let _ = el.release_pointer_capture(e.pointer_id());
                         }
                     } else {
-                        web_sys::console::log_1(&"Unexpected event type in TapeMeasure onpointerup".into());
+                        log::warn!("Unexpected event type in TapeMeasure onpointerup");
                     }
                 }
             },
@@ -251,7 +266,7 @@ pub fn TapeMeasure(props: TapeMeasureProps) -> Element {
                             let _ = el.release_pointer_capture(e.pointer_id());
                         }
                     } else {
-                        web_sys::console::log_1(&"Unexpected event type in TapeMeasure onpointercancel".into());
+                        log::warn!("Unexpected event type in TapeMeasure onpointercancel");
                     }
                 }
             },
@@ -284,30 +299,11 @@ pub fn TapeMeasure(props: TapeMeasureProps) -> Element {
                             let is_major = (val % (props.step * 2.0)).abs() < EPSILON_TOLERANCE || props.step >= 1.0;
 
                             rsx! {
-                                g {
-                                    key: "{val}",
-                                    style: "opacity: {opacity}",
-                                    onclick: move |_| {
-                                        if !click_allowed() {
-                                            return;
-                                        }
-                                        let target_offset = (val - props.min) / props.step * -PIXELS_PER_STEP;
-                                        velocity.set(0.0);
-                                        offset.set(target_offset);
-                                        props.on_change.call(val);
-                                    },
-                                    // Broad hitbox for clicks
-                                    rect {
-                                        x: "{x - PIXELS_PER_STEP / 2.0}",
-                                        y: "0",
-                                        width: "{PIXELS_PER_STEP}",
-                                        height: "{VIEWPORT_HEIGHT}",
-                                        fill: "transparent",
-                                        style: "cursor: pointer;"
-                                    }
-                                    line {
-                                        x1: "{x}", y1: if is_major { "50" } else { "55" },
-                                        x2: "{x}", y2: "70",
+                                                                    g {
+                                                                        key: "{val}",
+                                                                        style: "opacity: {opacity}",
+                                                                        line {
+                                                                            x1: "{x}", y1: if is_major { "50" } else { "55" },                                        x2: "{x}", y2: "70",
                                         stroke: "currentColor", stroke_width: "2"
                                     }
                                     if is_major {
