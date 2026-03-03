@@ -63,13 +63,13 @@ async fn step_click_start(world: &mut WorkoutWorld) {
             id: Some(1),
             name: "Bench Press".to_string(),
             set_type_config: SetTypeConfig::Weighted {
-                min_weight: 45.0,
+                min_weight: 0.0,
                 increment: 5.0,
             },
         },
         completed_sets: Vec::new(),
         predicted: PredictedParameters {
-            weight: Some(45.0),
+            weight: Some(0.0),
             reps: 8,
             rpe: 7.0,
         },

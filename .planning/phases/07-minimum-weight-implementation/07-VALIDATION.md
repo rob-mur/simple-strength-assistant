@@ -1,9 +1,9 @@
 ---
 phase: 7
 slug: minimum-weight-implementation
-status: draft
-nyquist_compliant: false
-wave_0_complete: false
+status: complete
+nyquist_compliant: true
+wave_0_complete: true
 created: 2026-03-03
 ---
 
@@ -38,11 +38,11 @@ created: 2026-03-03
 
 | Task ID | Plan | Wave | Requirement | Test Type | Automated Command | File Exists | Status |
 |---------|------|------|-------------|-----------|-------------------|-------------|--------|
-| 7-01-01 | 01 | 1 | CONF-01 | unit | `cargo test` | ✅ W0 | ⬜ pending |
-| 7-01-02 | 01 | 1 | CONF-02 | unit | `cargo test` | ✅ W0 | ⬜ pending |
-| 7-01-03 | 01 | 1 | CONF-03 | e2e | `./scripts/ci-test.sh` | ✅ W0 | ⬜ pending |
-| 7-02-01 | 02 | 2 | SUGG-01 | unit | `cargo test` | ✅ W0 | ⬜ pending |
-| 7-02-02 | 02 | 2 | SUGG-02 | e2e | `./scripts/ci-test.sh` | ✅ W0 | ⬜ pending |
+| 7-01-01 | 01 | 1 | CONF-01 | unit | `cargo test` | ✅ W0 | ✅ green |
+| 7-01-02 | 01 | 1 | CONF-02 | unit | `cargo test` | ✅ W0 | ✅ green |
+| 7-01-03 | 01 | 1 | CONF-03 | e2e | `./scripts/ci-test.sh` | ✅ W0 | ✅ green |
+| 7-02-01 | 02 | 2 | SUGG-01 | unit | `cargo test` | ✅ W0 | ✅ green |
+| 7-02-02 | 02 | 2 | SUGG-02 | e2e | `./scripts/ci-test.sh` | ✅ W0 | ✅ green |
 
 *Status: ⬜ pending · ✅ green · ❌ red · ⚠️ flaky*
 
@@ -50,8 +50,8 @@ created: 2026-03-03
 
 ## Wave 0 Requirements
 
-- [ ] `tests/steps/workout_steps.rs` — update stubs for SUGG-01
-- [ ] `tests/steps/library_steps.rs` — update stubs for CONF-03
+- [x] `tests/steps/workout_steps.rs` — update stubs for SUGG-01
+- [x] `tests/steps/library_steps.rs` — update stubs for CONF-03
 
 *If none: "Existing infrastructure covers all phase requirements."*
 
@@ -69,11 +69,11 @@ created: 2026-03-03
 
 ## Validation Sign-Off
 
-- [ ] All tasks have `<automated>` verify or Wave 0 dependencies
-- [ ] Sampling continuity: no 3 consecutive tasks without automated verify
-- [ ] Wave 0 covers all MISSING references
-- [ ] No watch-mode flags
-- [ ] Feedback latency < 60s
-- [ ] `nyquist_compliant: true` set in frontmatter
+- [x] All tasks have `<automated>` verify or Wave 0 dependencies
+- [x] Sampling continuity: no 3 consecutive tasks without automated verify
+- [x] Wave 0 covers all MISSING references
+- [x] No watch-mode flags
+- [x] Feedback latency < 60s
+- [x] `nyquist_compliant: true` set in frontmatter
 
-**Approval:** pending
+**Approval:** 2026-03-03

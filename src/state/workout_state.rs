@@ -282,6 +282,17 @@ impl WorkoutStateManager {
             })?;
         exercise.id = Some(id);
 
+        // Fetch last set for suggestions from previous sessions (only for weighted exercises)
+        let last_set = match exercise.set_type_config {
+            crate::models::SetTypeConfig::Weighted { .. } => {
+                db.get_last_set_for_exercise(id).await.unwrap_or_else(|e| {
+                    log::warn!("Failed to fetch last set for suggestion: {}", e);
+                    None
+                })
+            }
+            _ => None,
+        };
+
         // Sync exercises in state after saving new one
         if let Err(e) = Self::sync_exercises(state).await {
             log::warn!("Failed to sync exercises after saving: {}", e);
@@ -294,7 +305,7 @@ impl WorkoutStateManager {
                     WorkoutError::CreateSessionError(e.to_string())
                 })?;
 
-        let predicted = Self::calculate_initial_predictions(&exercise);
+        let predicted = Self::calculate_initial_predictions(&exercise, last_set.as_ref());
 
         let session = WorkoutSession {
             session_id: Some(session_id),
@@ -414,13 +425,28 @@ impl WorkoutStateManager {
         Ok(())
     }
 
-    fn calculate_initial_predictions(exercise: &ExerciseMetadata) -> PredictedParameters {
-        match exercise.set_type_config {
-            crate::models::SetTypeConfig::Weighted { min_weight, .. } => PredictedParameters {
-                weight: Some(min_weight),
-                reps: DEFAULT_WEIGHTED_REPS,
-                rpe: DEFAULT_RPE,
-            },
+    fn calculate_initial_predictions(
+        exercise: &ExerciseMetadata,
+        last_set: Option<&CompletedSet>,
+    ) -> PredictedParameters {
+        match &exercise.set_type_config {
+            crate::models::SetTypeConfig::Weighted { min_weight, .. } => {
+                let weight = last_set
+                    .and_then(|ls| {
+                        if let SetType::Weighted { weight } = ls.set_type {
+                            Some(weight)
+                        } else {
+                            None
+                        }
+                    })
+                    .unwrap_or(*min_weight);
+
+                PredictedParameters {
+                    weight: Some(weight),
+                    reps: DEFAULT_WEIGHTED_REPS,
+                    rpe: DEFAULT_RPE,
+                }
+            }
             crate::models::SetTypeConfig::Bodyweight => PredictedParameters {
                 weight: None,
                 reps: DEFAULT_BODYWEIGHT_REPS,
@@ -431,7 +457,9 @@ impl WorkoutStateManager {
 
     fn calculate_next_predictions(session: &WorkoutSession) -> PredictedParameters {
         if session.completed_sets.is_empty() {
-            return Self::calculate_initial_predictions(&session.exercise);
+            // At the very start of a session (no sets completed yet), we should
+            // use the session's initial predictions which already accounted for history.
+            return Self::calculate_initial_predictions(&session.exercise, None);
         }
 
         let last_set = &session.completed_sets[session.completed_sets.len() - 1];
@@ -464,7 +492,11 @@ impl WorkoutStateManager {
                 reps: last_set.reps,
                 rpe: predicted_rpe,
             },
-            _ => Self::calculate_initial_predictions(&session.exercise),
+            // Fallback for unexpected state: Within an active session, suggestions
+            // should come from the session's own sets. If this fails, we fall back
+            // to initial predictions ignoring previous session history to maintain
+            // focus on the current session's performance.
+            _ => Self::calculate_initial_predictions(&session.exercise, None),
         }
     }
 
@@ -486,14 +518,40 @@ mod tests {
             id: Some(1),
             name: "Bench Press".to_string(),
             set_type_config: SetTypeConfig::Weighted {
-                min_weight: 45.0,
+                min_weight: 0.0,
                 increment: 5.0,
             },
         };
 
-        let predicted = WorkoutStateManager::calculate_initial_predictions(&exercise);
+        let predicted = WorkoutStateManager::calculate_initial_predictions(&exercise, None);
 
-        assert_eq!(predicted.weight, Some(45.0));
+        assert_eq!(predicted.weight, Some(0.0));
+        assert_eq!(predicted.reps, 8);
+        assert_eq!(predicted.rpe, 7.0);
+    }
+
+    #[test]
+    fn test_initial_predictions_weighted_with_history() {
+        let exercise = ExerciseMetadata {
+            id: Some(1),
+            name: "Bench Press".to_string(),
+            set_type_config: SetTypeConfig::Weighted {
+                min_weight: 0.0,
+                increment: 5.0,
+            },
+        };
+
+        let last_set = CompletedSet {
+            set_number: 1,
+            reps: 5,
+            rpe: 8.0,
+            set_type: SetType::Weighted { weight: 100.0 },
+        };
+
+        let predicted =
+            WorkoutStateManager::calculate_initial_predictions(&exercise, Some(&last_set));
+
+        assert_eq!(predicted.weight, Some(100.0));
         assert_eq!(predicted.reps, 8);
         assert_eq!(predicted.rpe, 7.0);
     }
@@ -506,7 +564,7 @@ mod tests {
             set_type_config: SetTypeConfig::Bodyweight,
         };
 
-        let predicted = WorkoutStateManager::calculate_initial_predictions(&exercise);
+        let predicted = WorkoutStateManager::calculate_initial_predictions(&exercise, None);
 
         assert_eq!(predicted.weight, None);
         assert_eq!(predicted.reps, 10);
@@ -519,7 +577,7 @@ mod tests {
             id: Some(3),
             name: "Bench Press".to_string(),
             set_type_config: SetTypeConfig::Weighted {
-                min_weight: 45.0,
+                min_weight: 0.0,
                 increment: 5.0,
             },
         };

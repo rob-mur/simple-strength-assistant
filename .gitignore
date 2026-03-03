@@ -35,3 +35,6 @@ CHANGELOG.md
 /playwright-report/
 /playwright/.cache/
 .features-gen
+
+# Secrets
+.env
