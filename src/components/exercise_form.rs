@@ -51,7 +51,7 @@ pub fn ExerciseForm(
         {
             *min_weight
         } else {
-            45.0
+            0.0
         }
     });
     let mut increment = use_signal(|| {
@@ -166,7 +166,7 @@ pub fn ExerciseForm(
                                 class: "label",
                                 span {
                                     class: "label-text font-bold text-lg",
-                                    "Starting Weight (kg)"
+                                    "Minimum Weight (kg)"
                                 }
                             }
                             TapeMeasure {

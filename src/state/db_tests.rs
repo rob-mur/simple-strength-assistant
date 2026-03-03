@@ -27,7 +27,7 @@ async fn test_database_initialization_with_existing_data() {
         id: None,
         name: "Test Exercise".to_string(),
         set_type_config: SetTypeConfig::Weighted {
-            min_weight: 45.0,
+            min_weight: 0.0,
             increment: 5.0,
         },
     };
@@ -234,7 +234,7 @@ async fn test_sql_injection_protection() {
         id: None,
         name: malicious_name.to_string(),
         set_type_config: SetTypeConfig::Weighted {
-            min_weight: 45.0,
+            min_weight: 0.0,
             increment: 5.0,
         },
     };
@@ -265,7 +265,7 @@ async fn test_export_import_round_trip() {
         id: None,
         name: "Bench Press".to_string(),
         set_type_config: SetTypeConfig::Weighted {
-            min_weight: 45.0,
+            min_weight: 0.0,
             increment: 5.0,
         },
     };
@@ -320,5 +320,100 @@ async fn test_export_import_round_trip() {
     assert!(
         new_session.is_ok(),
         "Should be able to create session in imported database"
+    );
+}
+
+#[wasm_bindgen_test]
+async fn test_get_last_set_for_exercise() {
+    let mut db = Database::new();
+    db.init(None).await.expect("Database init failed");
+
+    // 1. Create exercise
+    let exercise = ExerciseMetadata {
+        id: None,
+        name: "Bench Press".to_string(),
+        set_type_config: SetTypeConfig::Weighted {
+            min_weight: 0.0,
+            increment: 2.5,
+        },
+    };
+    let exercise_id = db
+        .save_exercise(&exercise)
+        .await
+        .expect("Save exercise failed");
+
+    // 2. Create first session and add a set
+    let session_id1 = db
+        .create_session("Bench Press")
+        .await
+        .expect("Create session 1 failed");
+    let set1 = CompletedSet {
+        set_number: 1,
+        reps: 8,
+        rpe: 7.0,
+        set_type: SetType::Weighted { weight: 100.0 },
+    };
+    db.insert_set(session_id1, &set1)
+        .await
+        .expect("Insert set 1 failed");
+    db.complete_session(session_id1)
+        .await
+        .expect("Complete session 1 failed");
+
+    // 3. Create second session (later) and add a set
+    // Sleep a bit to ensure started_at is different (Date.now())
+    // but in JS environment it might be too fast.
+    // The query also orders by set_number DESC if started_at is same.
+
+    let session_id2 = db
+        .create_session("Bench Press")
+        .await
+        .expect("Create session 2 failed");
+    let set2 = CompletedSet {
+        set_number: 1,
+        reps: 5,
+        rpe: 8.0,
+        set_type: SetType::Weighted { weight: 110.0 },
+    };
+    db.insert_set(session_id2, &set2)
+        .await
+        .expect("Insert set 2 failed");
+
+    // Note: complete_session is intentionally NOT called here to verify that the query
+    // correctly fetches weights even from incomplete (in-progress or abandoned) sessions.
+
+    // 4. Test fetching last set
+    let last_set = db
+        .get_last_set_for_exercise(exercise_id)
+        .await
+        .expect("Get last set failed");
+
+    assert!(last_set.is_some());
+    let last_set = last_set.unwrap();
+    assert_eq!(last_set.set_type, SetType::Weighted { weight: 110.0 });
+    assert_eq!(last_set.reps, 5);
+    assert_eq!(last_set.rpe, 8.0);
+
+    // 5. Test fetching for exercise with no history
+    let new_exercise = ExerciseMetadata {
+        id: None,
+        name: "Squat".to_string(),
+        set_type_config: SetTypeConfig::Weighted {
+            min_weight: 20.0,
+            increment: 2.5,
+        },
+    };
+    let new_id = db
+        .save_exercise(&new_exercise)
+        .await
+        .expect("Save new exercise failed");
+
+    let no_history_result = db
+        .get_last_set_for_exercise(new_id)
+        .await
+        .expect("Get last set for new exercise failed");
+    assert!(
+        no_history_result.is_none(),
+        "Expected None for exercise with no history"
     );
 }

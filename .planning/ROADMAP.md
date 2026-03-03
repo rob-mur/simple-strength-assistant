@@ -3,7 +3,8 @@
 ## Milestones
 
 - ✅ **v1.0 MVP** - Phases 1-3 (shipped 2026-02-26)
-- 🏗️ **v1.1 Exercise Library** - Phases 4-6 (in progress)
+- ✅ **v1.1 Exercise Library** - Phases 4-6 (shipped 2026-03-03)
+- ✅ **v1.2 Minimum Weight** - Phase 7 (shipped 2026-03-03)
 
 ## Phases
 
@@ -38,7 +39,7 @@ Plans:
 </details>
 
 <details>
-<summary>🏗️ v1.1 Exercise Library (Phases 4-6) - IN PROGRESS</summary>
+<summary>✅ v1.1 Exercise Library (Phases 4-6) - SHIPPED 2026-03-03</summary>
 
 ### Phase 4: Tab Navigation Foundation
 **Goal**: Users can navigate between Workout and Library tabs without losing active workout session state
@@ -83,17 +84,36 @@ Plans:
 **Plans**: 4 plans
 
 Plans:
-- [ ] 06-01-PLAN.md — BDD Test Scaffolding for UI Refinement and Flow
-- [ ] 06-02-PLAN.md — Navigation Bar Polish and Safe Area Support
-- [ ] 06-03-PLAN.md — Exercise Management in Library
-- [ ] 06-04-PLAN.md — Streamlined Workout Flow Implementation
+- [x] 06-01-PLAN.md — BDD Test Scaffolding for UI Refinement and Flow
+- [x] 06-02-PLAN.md — Navigation Bar Polish and Safe Area Support
+- [x] 06-03-PLAN.md — Exercise Management in Library
+- [x] 06-04-PLAN.md — Streamlined Workout Flow Implementation
+
+</details>
+
+<details>
+<summary>✅ v1.2 Minimum Weight (Phase 7) - SHIPPED 2026-03-03</summary>
+
+### Phase 7: Minimum Weight Implementation
+**Goal**: Add minimum weight configuration to exercises and replace the 'starting weight' concept in the suggestion engine.
+**Depends on**: Phase 6
+**Requirements**: CONF-01, CONF-02, CONF-03, SUGG-01, SUGG-02
+**Success Criteria** (what must be TRUE):
+  1. User can define a minimum weight (defaulting to 0) for each exercise.
+  2. The application no longer displays or references 'Starting Weight'.
+  3. Session suggestions use the most recent recorded weight or fall back to the minimum weight.
+**Plans**: 2 plans
+
+Plans:
+- [x] 07-01-PLAN.md — Configuration and UI Updates for Minimum Weight
+- [x] 07-02-PLAN.md — Suggestion Engine using Previous Session Weight
 
 </details>
 
 ## Progress
 
 **Execution Order:**
-Phases execute in numeric order: 4 → 5 → 6
+Phases execute in numeric order: 4 → 5 → 6 → 7
 
 | Phase | Milestone | Plans Complete | Status | Completed |
 |-------|-----------|----------------|--------|-----------|
@@ -102,4 +122,5 @@ Phases execute in numeric order: 4 → 5 → 6
 | 3. PWA Deployment & Polish | v1.0 | 2/2 | Complete | 2026-02-26 |
 | 4. Tab Navigation Foundation | v1.1 | 2/2 | Complete | 2026-03-02 |
 | 5. Exercise List & Search | v1.1 | 4/4 | Complete | 2026-03-02 |
-| 6. UI Refinement and Exercise Flow Corrections | v1.1 | 0/4 | In Progress | - |
+| 6. UI Refinement and Exercise Flow Corrections | v1.1 | 4/4 | Complete | 2026-03-03 |
+| 7. Minimum Weight Implementation | v1.2 | 2/2 | Complete | 2026-03-03 |

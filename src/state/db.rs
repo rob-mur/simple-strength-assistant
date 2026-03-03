@@ -356,6 +356,80 @@ impl Database {
         Ok(exercises)
     }
 
+    pub async fn get_last_set_for_exercise(
+        &self,
+        exercise_id: i64,
+    ) -> Result<Option<crate::models::CompletedSet>, DatabaseError> {
+        // TODO: Joining on exercise_name is fragile if an exercise is renamed.
+        // If a user renames "Bench Press" to "Barbell Bench Press", get_last_set_for_exercise
+        // will silently return None for all prior sessions and suggestions will fall back to min_weight: 0.0.
+        // Sessions table should ideally store exercise_id directly for better integrity (requires schema migration).
+        let sql = r#"
+            SELECT cs.set_number, cs.reps, cs.rpe, cs.weight, cs.is_bodyweight
+            FROM completed_sets cs
+            JOIN sessions s ON cs.session_id = s.id
+            JOIN exercises e ON s.exercise_name = e.name
+            WHERE e.id = ?
+            ORDER BY s.started_at DESC, s.id DESC, cs.set_number DESC
+            LIMIT 1
+        "#;
+
+        let params = vec![JsValue::from_f64(exercise_id as f64)];
+        let result = self.execute(sql, &params).await?;
+
+        let array = result
+            .dyn_ref::<js_sys::Array>()
+            .ok_or_else(|| DatabaseError::QueryError("Expected array result".to_string()))?;
+
+        if array.length() == 0 {
+            return Ok(None);
+        }
+
+        let row = array.get(0);
+        let set_number = js_sys::Reflect::get(&row, &JsValue::from_str("set_number"))?
+            .as_f64()
+            .ok_or_else(|| DatabaseError::QueryError("Failed to get set_number".to_string()))?
+            as u32;
+
+        let reps = js_sys::Reflect::get(&row, &JsValue::from_str("reps"))?
+            .as_f64()
+            .ok_or_else(|| DatabaseError::QueryError("Failed to get reps".to_string()))?
+            as u32;
+
+        let rpe = js_sys::Reflect::get(&row, &JsValue::from_str("rpe"))?
+            .as_f64()
+            .ok_or_else(|| DatabaseError::QueryError("Failed to get rpe".to_string()))?
+            as f32;
+
+        let is_bodyweight_val = js_sys::Reflect::get(&row, &JsValue::from_str("is_bodyweight"))?;
+        let is_bodyweight = if let Some(b) = is_bodyweight_val.as_bool() {
+            b
+        } else if let Some(f) = is_bodyweight_val.as_f64() {
+            f == 1.0
+        } else {
+            return Err(DatabaseError::QueryError(
+                "Failed to get is_bodyweight as bool or number".to_string(),
+            ));
+        };
+
+        let set_type = if is_bodyweight {
+            crate::models::SetType::Bodyweight
+        } else {
+            let weight = js_sys::Reflect::get(&row, &JsValue::from_str("weight"))?
+                .as_f64()
+                .ok_or_else(|| DatabaseError::QueryError("Failed to get weight".to_string()))?
+                as f32;
+            crate::models::SetType::Weighted { weight }
+        };
+
+        Ok(Some(crate::models::CompletedSet {
+            set_number,
+            reps,
+            rpe,
+            set_type,
+        }))
+    }
+
     pub async fn export(&self) -> Result<Vec<u8>, DatabaseError> {
         if !self.initialized {
             return Err(DatabaseError::NotInitialized);
