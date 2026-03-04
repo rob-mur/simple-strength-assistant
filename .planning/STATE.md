@@ -61,9 +61,10 @@ None.
 |---|-------------|------|--------|-----------|
 | 19 | please make the numerical displays for weight display up to 2dp where needed as theyre getting truncated atm. | 2026-03-04 | e66e175 | [19-please-make-the-numerical-displays-for-w](./quick/19-please-make-the-numerical-displays-for-w/) |
 | 20 | bug fix: theres an issue currently with the tapemeasure where if after scrollimg a bit, you change the scale, it then jumps around wildly and can get stuck between values/not progress as expected | 2026-03-04 | dd10189 | [20-bug-fix-theres-an-issue-currently-with-t](./quick/20-bug-fix-theres-an-issue-currently-with-t/) |
+| 21 | please fix the commit lints - please also try and adjust the lint.sh script so that it catches in the future when an agent sets an incorrect commit message | 2026-03-04 | 6a210a5 | [21-fix-commit-lints-and-adjust-lintsh](./quick/21-fix-commit-lints-and-adjust-lintsh/) |
 
 ## Session Continuity
 
-Last activity: 2026-03-04 - Completed quick task 20: bug fix: theres an issue currently with the tapemeasure where if after scrollimg a bit, you change the scale, it then jumps around wildly and can get stuck between values/not progress as expected
+Last activity: 2026-03-04 - Completed quick task 21: please fix the commit lints - please also try and adjust the lint.sh script so that it catches in the future when an agent sets an incorrect commit message
 Stopped at: Milestone v1.2 completed
 Next action: Await next milestone planning
