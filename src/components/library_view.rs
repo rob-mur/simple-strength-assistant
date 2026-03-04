@@ -178,7 +178,7 @@ pub fn LibraryView() -> Element {
                                             match exercise.set_type_config {
                                                 SetTypeConfig::Weighted { min_weight, increment } => rsx! {
                                                     span { class: "badge badge-primary badge-sm font-bold", "WEIGHTED" }
-                                                    span { class: "text-xs font-bold text-base-content/50", "START: {min_weight}kg (+{increment}kg)" }
+                                                    span { class: "text-xs font-bold text-base-content/50", "START: {crate::format::fmt_weight(min_weight)}kg (+{crate::format::fmt_weight(increment)}kg)" }
                                                 },
                                                 SetTypeConfig::Bodyweight => rsx! {
                                                     span { class: "badge badge-secondary badge-sm font-bold", "BODYWEIGHT" }
