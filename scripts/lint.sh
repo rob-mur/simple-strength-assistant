@@ -12,6 +12,7 @@ if [ -n "$GITHUB_ACTIONS" ]; then
 else
   # Locally, check from main or upstream if available, fallback to last commit
   UPSTREAM=$(git rev-parse --abbrev-ref --symbolic-full-name @{u} 2>/dev/null || echo "")
+  # Note: in detached HEAD, UPSTREAM is empty and main..HEAD is 0, so we correctly fall through to HEAD~1
   if [ -n "$UPSTREAM" ] && [ "$(git rev-list --count "$UPSTREAM"..HEAD 2>/dev/null || echo 0)" -gt 0 ]; then
     npx commitlint --from "$UPSTREAM" --to HEAD --verbose
   elif [ "$(git rev-list --count main..HEAD 2>/dev/null || echo 0)" -gt 0 ]; then
