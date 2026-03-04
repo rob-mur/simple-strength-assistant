@@ -318,3 +318,82 @@ fn new_value_centered_instantly(world: &mut TapeMeasureWorld) {
         world.value
     );
 }
+
+// Scenario: Scale change while idle resets tape position correctly
+#[given(
+    regex = r"^the TapeMeasure is initialized with value (\d+(?:\.\d+)?), step (\d+(?:\.\d+)?), min (\d+(?:\.\d+)?)$"
+)]
+fn initialized_with_value_step_min(
+    world: &mut TapeMeasureWorld,
+    value: f64,
+    step_val: f64,
+    min_val: f64,
+) {
+    world.init_with_defaults();
+    world.value = value;
+    world.step = step_val;
+    world.min = min_val;
+    world.offset = (world.value - world.min) / world.step * -60.0;
+    world.is_dragging = false;
+    world.velocity = 0.0;
+    world.is_snapping = false;
+}
+
+#[when(regex = r"^the parent changes step to (\d+(?:\.\d+)?) and min to (\d+(?:\.\d+)?)$")]
+fn parent_changes_step_and_min(world: &mut TapeMeasureWorld, step_val: f64, min_val: f64) {
+    // Simulate component prop-to-signal sync behavior
+    if world.step != step_val || world.min != min_val {
+        world.step = step_val;
+        world.min = min_val;
+        world.offset = (world.value - world.min) / world.step * -60.0;
+        world.velocity = 0.0;
+    }
+}
+
+#[then(regex = r"^the tape should reposition to center value (\d+(?:\.\d+)?) at the new scale$")]
+fn tape_should_reposition_at_new_scale(world: &mut TapeMeasureWorld, value: f64) {
+    let expected_offset = (value - world.min) / world.step * -60.0;
+    assert!(
+        (world.offset - expected_offset).abs() < 0.01,
+        "Expected offset to be {}, got {}",
+        expected_offset,
+        world.offset
+    );
+}
+
+#[then("velocity should be 0.0")]
+fn velocity_should_be_zero(world: &mut TapeMeasureWorld) {
+    assert!(
+        world.velocity.abs() < f64::EPSILON,
+        "Expected velocity to be 0.0, got {}",
+        world.velocity
+    );
+}
+
+#[when("the tape measure enters snapping state")]
+fn tape_measure_enters_snapping(world: &mut TapeMeasureWorld) {
+    world.is_snapping = true;
+    world.velocity = 0.0;
+    // Simulate offset being slightly off to force a snap
+    world.offset += 10.0;
+
+    // Run snapping to completion
+    while world.is_snapping {
+        world.tick_physics();
+    }
+}
+
+#[then(regex = r"^the component should snap to a multiple of (\d+(?:\.\d+)?)$")]
+fn component_snaps_to_multiple(world: &mut TapeMeasureWorld, expected_step: f64) {
+    let steps_from_min = (world.offset / -60.0).round();
+    let final_value = world.min + steps_from_min * world.step;
+
+    let remainder = final_value % expected_step;
+    assert!(
+        remainder.abs() < 0.001 || (expected_step - remainder).abs() < 0.001,
+        "Expected final value {} to be a multiple of {}, remainder: {}",
+        final_value,
+        expected_step,
+        remainder
+    );
+}

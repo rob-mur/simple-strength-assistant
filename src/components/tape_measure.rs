@@ -37,16 +37,21 @@ pub fn TapeMeasure(props: TapeMeasureProps) -> Element {
     let mut last_value = use_signal(|| props.value);
     let mut last_step = use_signal(|| props.step);
     let mut last_min = use_signal(|| props.min);
+    let mut last_max = use_signal(|| props.max);
 
     if (props.value != *last_value.read()
+        // Note: float equality on step/min is currently low risk as they are literal constants.
+        // If they ever become computed values, consider an epsilon comparison instead.
         || props.step != *last_step.read()
-        || props.min != *last_min.read())
+        || props.min != *last_min.read()
+        || props.max != *last_max.read())
         && !*is_dragging.peek()
         && !*is_snapping.peek()
     {
         last_value.set(props.value);
         last_step.set(props.step);
         last_min.set(props.min);
+        last_max.set(props.max);
         offset.set((props.value - props.min) / props.step * -PIXELS_PER_STEP);
         // Force velocity to 0.0 to ensure sync triggers immediately
         velocity.set(0.0);
@@ -77,7 +82,7 @@ pub fn TapeMeasure(props: TapeMeasureProps) -> Element {
                 let mut new_o = current_offset_val + new_v;
 
                 // Edge Resistance (Hard Wall)
-                let total_steps = (props.max - props.min) / props.step;
+                let total_steps = (*last_max.peek() - *last_min.peek()) / *last_step.peek();
                 let min_offset = total_steps * -PIXELS_PER_STEP;
                 let max_offset = 0.0;
 
@@ -113,8 +118,8 @@ pub fn TapeMeasure(props: TapeMeasureProps) -> Element {
 
                     // Notify parent of the final value
                     let steps_from_min = (target_offset / -PIXELS_PER_STEP).round();
-                    let final_value = props.min + steps_from_min * props.step;
-                    if (final_value - props.value).abs() > 0.001 {
+                    let final_value = *last_min.peek() + steps_from_min * *last_step.peek();
+                    if (final_value - *last_value.peek()).abs() > 0.001 {
                         web_sys::console::log_1(
                             &format!("TapeMeasure Snapping to new value: {}", final_value).into(),
                         );
