@@ -10,8 +10,15 @@ if [ -n "$GITHUB_ACTIONS" ]; then
   # In CI, check commits in the PR
   npx commitlint --from "$BASE_SHA" --to "$HEAD_SHA" --verbose
 else
-  # Locally, check from main
-  npx commitlint --from main --to HEAD --verbose
+  # Locally, check from main or upstream if available, fallback to last commit
+  UPSTREAM=$(git rev-parse --abbrev-ref --symbolic-full-name @{u} 2>/dev/null || echo "")
+  if [ -n "$UPSTREAM" ] && [ "$(git rev-list --count "$UPSTREAM"..HEAD 2>/dev/null || echo 0)" -gt 0 ]; then
+    npx commitlint --from "$UPSTREAM" --to HEAD --verbose
+  elif [ "$(git rev-list --count main..HEAD 2>/dev/null || echo 0)" -gt 0 ]; then
+    npx commitlint --from main --to HEAD --verbose
+  else
+    npx commitlint --from HEAD~1 --to HEAD --verbose
+  fi
 fi
 echo "✓ Commit messages valid"
 echo ""
