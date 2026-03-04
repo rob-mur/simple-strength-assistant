@@ -35,8 +35,18 @@ pub fn TapeMeasure(props: TapeMeasureProps) -> Element {
 
     // Sync state if props change (prop-to-signal sync pattern)
     let mut last_value = use_signal(|| props.value);
-    if props.value != *last_value.read() && !*is_dragging.peek() && !*is_snapping.peek() {
+    let mut last_step = use_signal(|| props.step);
+    let mut last_min = use_signal(|| props.min);
+
+    if (props.value != *last_value.read()
+        || props.step != *last_step.read()
+        || props.min != *last_min.read())
+        && !*is_dragging.peek()
+        && !*is_snapping.peek()
+    {
         last_value.set(props.value);
+        last_step.set(props.step);
+        last_min.set(props.min);
         offset.set((props.value - props.min) / props.step * -PIXELS_PER_STEP);
         // Force velocity to 0.0 to ensure sync triggers immediately
         velocity.set(0.0);
