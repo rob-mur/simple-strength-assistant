@@ -55,8 +55,14 @@ None for v1.2.
 
 None.
 
+### Quick Tasks Completed
+
+| # | Description | Date | Commit | Directory |
+|---|-------------|------|--------|-----------|
+| 19 | please make the numerical displays for weight display up to 2dp where needed as theyre getting truncated atm. | 2026-03-04 | e66e175 | [19-please-make-the-numerical-displays-for-w](./quick/19-please-make-the-numerical-displays-for-w/) |
+
 ## Session Continuity
 
-Last session: 2026-03-03
+Last activity: 2026-03-04 - Completed quick task 19: please make the numerical displays for weight display up to 2dp where needed as theyre getting truncated atm.
 Stopped at: Milestone v1.2 completed
 Next action: Await next milestone planning
