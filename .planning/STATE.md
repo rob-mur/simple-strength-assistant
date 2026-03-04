@@ -60,9 +60,10 @@ None.
 | # | Description | Date | Commit | Directory |
 |---|-------------|------|--------|-----------|
 | 19 | please make the numerical displays for weight display up to 2dp where needed as theyre getting truncated atm. | 2026-03-04 | e66e175 | [19-please-make-the-numerical-displays-for-w](./quick/19-please-make-the-numerical-displays-for-w/) |
+| 20 | bug fix: theres an issue currently with the tapemeasure where if after scrollimg a bit, you change the scale, it then jumps around wildly and can get stuck between values/not progress as expected | 2026-03-04 | dd10189 | [20-bug-fix-theres-an-issue-currently-with-t](./quick/20-bug-fix-theres-an-issue-currently-with-t/) |
 
 ## Session Continuity
 
-Last activity: 2026-03-04 - Completed quick task 19: please make the numerical displays for weight display up to 2dp where needed as theyre getting truncated atm.
+Last activity: 2026-03-04 - Completed quick task 20: bug fix: theres an issue currently with the tapemeasure where if after scrollimg a bit, you change the scale, it then jumps around wildly and can get stuck between values/not progress as expected
 Stopped at: Milestone v1.2 completed
 Next action: Await next milestone planning
