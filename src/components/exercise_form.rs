@@ -178,7 +178,7 @@ pub fn ExerciseForm(
                             }
                             div {
                                 class: "text-center text-3xl font-black text-primary mt-2",
-                                "{ (min_weight() * 100.0).round() / 100.0 } kg"
+                                "{crate::format::fmt_weight(min_weight())} kg"
                             }
                             StepControls {
                                 value: min_weight() as f64,
