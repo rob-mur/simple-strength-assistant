@@ -701,7 +701,7 @@ pub fn ActiveSession(state: WorkoutState, session: crate::state::WorkoutSession)
                                 }
                                 div {
                                     class: "text-center text-5xl font-black text-primary my-4",
-                                    "{weight_input} kg"
+                                    "{ (weight_input() * 100.0).round() / 100.0 } kg"
                                 }
                                 StepControls {
                                     value: weight_input(),
@@ -802,7 +802,7 @@ pub fn ActiveSession(state: WorkoutState, session: crate::state::WorkoutSession)
                                         tr {
                                             td { class: "font-bold", "{set.set_number}" }
                                             if let SetType::Weighted { weight } = set.set_type {
-                                                td { "{weight} kg" }
+                                                td { "{ (weight * 100.0).round() / 100.0 } kg" }
                                             }
                                             td { "{set.reps}" }
                                             td { "{set.rpe}" }
