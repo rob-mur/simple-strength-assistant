@@ -163,15 +163,19 @@ pub fn ExerciseForm(
                         div {
                             class: "form-control w-full",
                             label {
-                                class: "label",
+                                class: "label flex-col items-start gap-1",
                                 span {
                                     class: "label-text font-bold text-lg",
                                     "Minimum Weight (kg)"
                                 }
+                                span {
+                                    class: "label-text-alt text-base-content/70 whitespace-normal",
+                                    "The smallest possible weight you can do with this exercise (e.g., the weight of an empty barbell or the first pin on a machine)."
+                                }
                             }
                             TapeMeasure {
                                 value: min_weight() as f64,
-                                min: 0.0,
+                                min: (min_weight() % increment()) as f64,
                                 max: 500.0,
                                 step: increment() as f64,
                                 on_change: move |val| min_weight.set(val as f32)
@@ -191,10 +195,14 @@ pub fn ExerciseForm(
                         div {
                             class: "form-control w-full",
                             label {
-                                class: "label",
+                                class: "label flex-col items-start gap-1",
                                 span {
                                     class: "label-text font-bold text-lg",
                                     "Weight Increment (kg)"
+                                }
+                                span {
+                                    class: "label-text-alt text-base-content/70 whitespace-normal",
+                                    "The smallest amount of weight you can add on top of the minimum (e.g., adding two 1.25kg plates equals a 2.5kg increment)."
                                 }
                             }
                             div {
