@@ -2909,6 +2909,9 @@ details.collapse summary::-webkit-details-marker {
 .gap-0 {
   gap: 0px;
 }
+.gap-1 {
+  gap: 0.25rem;
+}
 .gap-12 {
   gap: 3rem;
 }
@@ -2931,6 +2934,9 @@ details.collapse summary::-webkit-details-marker {
 }
 .overflow-x-auto {
   overflow-x: auto;
+}
+.whitespace-normal {
+  white-space: normal;
 }
 .rounded-full {
   border-radius: 9999px;

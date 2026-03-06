@@ -323,11 +323,8 @@ pub fn TapeMeasure(props: TapeMeasureProps) -> Element {
                                     }
                                     if is_major {
                                         {
-                                            let decimals = if props.step.fract() == 0.0 { 0 }
-                                                           else if (props.step * 10.0).fract() == 0.0 { 1 }
-                                                           else { 2 };
                                             let rounded_val = (val * 100.0).round() / 100.0;
-                                            let formatted_val = format!("{:.prec$}", rounded_val, prec = decimals);
+                                            let formatted_val = format!("{}", rounded_val);
                                             rsx! {
                                                 text {
                                                     x: "{x}", y: "40", text_anchor: "middle",

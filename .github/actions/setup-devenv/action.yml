@@ -25,7 +25,7 @@ runs:
     - name: Install devenv CLI
       shell: bash
       run: |
-        nix profile install nixpkgs#devenv
+        nix profile install github:cachix/devenv/v1.11.1
 
 
     - name: setup path
