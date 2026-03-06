@@ -65,9 +65,10 @@ None.
 | 22 | there is still a tape measure bug. lets say i have it on 2.5 and scroll to 10kg. then i up the scale to 5. when i try to bump up one step to 15, it snaps back down to 7.5 | 2026-03-04 | f07018a | [22-there-is-still-a-tape-measure-bug-lets-s](./quick/22-there-is-still-a-tape-measure-bug-lets-s/) |
 | 23 | given I've scrolled in one scale to say 12.5 kilos and then switch to 5kg increments it's possible to add an exercise which is 'in between' two points on the scale. In that situation the correct approach is instead to adjust the scale so that it lines up with 12.5. i.e. 12.5, 17.5 etc as that represents the real-world constraints (some base weight minimum, and then the increment represents the weights that can be added one top). Above fixing this, I think it needs to be more clear to the user what these represent: 1. Minimum weight is the smallest possible weight you can do with the exercise (for example for a barbell excercise the weight of the barbell, for some machines there is some smallest amount) 2. Increment is what is the smallest amount of weight you could add to the minimum | 2026-03-05 | 72afd69 | [23-given-i-ve-scrolled-in-one-scale-to-say-](./quick/23-given-i-ve-scrolled-in-one-scale-to-say-/) |
 | 24 | format weights correctly in tapemeasure: no decimals for whole numbers, max 2 decimal places | 2026-03-06 | d9bdd1c | [24-format-weights-correctly](./quick/24-format-weights-correctly/) |
+| 25 | fix weight suggestion retaining global values across different exercises by resetting UI inputs on session change | 2026-03-06 | 8029614 | [25-fix-weight-suggestion-per-exercise](./quick/25-fix-weight-suggestion-per-exercise/) |
 
 ## Session Continuity
 
-Last activity: 2026-03-06 - Completed quick task 24: Format weights correctly in TapeMeasure
+Last activity: 2026-03-06 - Completed quick task 25: Fix weight suggestion per exercise
 Stopped at: Milestone v1.2 completed
 Next action: Await next milestone planning
