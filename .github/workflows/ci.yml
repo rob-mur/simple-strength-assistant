@@ -36,7 +36,7 @@ jobs:
         uses: ./.github/actions/setup-devenv
 
       - name: Run tests
-        run: devenv shell ci-test
+        run: devenv test
 
   build-and-deploy:
     permissions:
