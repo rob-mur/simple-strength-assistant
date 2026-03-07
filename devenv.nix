@@ -29,18 +29,19 @@
   env = {
     CHROMIUM_EXECUTABLE_PATH = "${pkgs.chromium}/bin/chromium";
     PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD = "1";
-
   };
+  enterShell = ''
+    export PATH="$PATH:/$DEVENV_PROFILE/bin/";
+  '';
 
   scripts = {
     build.exec = "dx bundle --web --release --debug-symbols=false";
     format.exec = "cargo fmt";
     lint.exec = "./scripts/lint.sh";
-    ci-test.exec = "./scripts/ci-test.sh";
   };
 
   processes = {
-    serve.exec = "dx serve --port 8080";
+    serve.exec = "dx serve --port 8081";
     test-serve.exec = "dx serve --port 8080 --features test-mode";
   };
 
@@ -51,10 +52,14 @@
       entry = ''
         format
         lint
-        ci-test
         build
       '';
       stages = ["pre-commit" "pre-push"];
     };
   };
+
+  enterTest = ''
+    cargo test
+    npm run test:e2e
+  '';
 }
