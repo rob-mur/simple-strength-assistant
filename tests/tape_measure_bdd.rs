@@ -155,5 +155,10 @@ impl TapeMeasureWorld {
 
 #[tokio::test]
 async fn run_cucumber_tests() {
-    TapeMeasureWorld::cucumber().run("tests/features").await;
+    TapeMeasureWorld::cucumber()
+        .run("tests/features/tape_measure_core.feature")
+        .await;
+    TapeMeasureWorld::cucumber()
+        .run("tests/features/tape_measure_physics.feature")
+        .await;
 }
