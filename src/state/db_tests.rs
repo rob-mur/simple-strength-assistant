@@ -49,16 +49,77 @@ async fn test_database_initialization_with_existing_data() {
 }
 
 #[wasm_bindgen_test]
-async fn test_create_session() {
+async fn test_no_sessions_table() {
+    // The sessions table must not exist in the new schema
     let mut db = Database::new();
     db.init(None).await.expect("Database init failed");
 
-    let session_id = db
-        .create_session("Bench Press")
-        .await
-        .expect("Create session failed");
+    // Attempt to query sessions table should fail
+    let result = db.execute("SELECT count(*) FROM sessions", &[]).await;
 
-    assert!(session_id > 0, "Session ID should be positive");
+    assert!(
+        result.is_err(),
+        "sessions table should not exist in the new schema"
+    );
+}
+
+#[wasm_bindgen_test]
+async fn test_completed_sets_has_exercise_id_and_recorded_at() {
+    // completed_sets must have exercise_id and recorded_at columns
+    let mut db = Database::new();
+    db.init(None).await.expect("Database init failed");
+
+    let exercise = ExerciseMetadata {
+        id: None,
+        name: "Bench Press".to_string(),
+        set_type_config: SetTypeConfig::Weighted {
+            min_weight: 0.0,
+            increment: 5.0,
+        },
+    };
+    let exercise_id = db
+        .save_exercise(&exercise)
+        .await
+        .expect("Save exercise failed");
+
+    let set = CompletedSet {
+        set_number: 1,
+        reps: 8,
+        rpe: 7.5,
+        set_type: SetType::Weighted { weight: 135.0 },
+    };
+
+    // insert_set now takes exercise_id — if the column doesn't exist this will fail
+    let result = db.insert_set(exercise_id, &set).await;
+    assert!(
+        result.is_ok(),
+        "insert_set with exercise_id should succeed: {:?}",
+        result
+    );
+
+    // Verify recorded_at was written
+    use wasm_bindgen::JsValue;
+    let rows = db
+        .execute(
+            "SELECT exercise_id, recorded_at FROM completed_sets WHERE id = ?",
+            &[JsValue::from_f64(result.unwrap() as f64)],
+        )
+        .await
+        .expect("Select query failed");
+    use wasm_bindgen::JsCast;
+    let array = rows.dyn_ref::<js_sys::Array>().expect("Expected array");
+    let row = array.get(0);
+    let ex_id = js_sys::Reflect::get(&row, &JsValue::from_str("exercise_id"))
+        .unwrap()
+        .as_f64()
+        .expect("exercise_id should be a number") as i64;
+    let rec_at = js_sys::Reflect::get(&row, &JsValue::from_str("recorded_at"))
+        .unwrap()
+        .as_f64()
+        .expect("recorded_at should be a number");
+
+    assert_eq!(ex_id, exercise_id, "exercise_id should match");
+    assert!(rec_at > 0.0, "recorded_at should be a positive timestamp");
 }
 
 #[wasm_bindgen_test]
@@ -66,10 +127,18 @@ async fn test_insert_set_weighted() {
     let mut db = Database::new();
     db.init(None).await.expect("Database init failed");
 
-    let session_id = db
-        .create_session("Bench Press")
+    let exercise = ExerciseMetadata {
+        id: None,
+        name: "Bench Press".to_string(),
+        set_type_config: SetTypeConfig::Weighted {
+            min_weight: 0.0,
+            increment: 5.0,
+        },
+    };
+    let exercise_id = db
+        .save_exercise(&exercise)
         .await
-        .expect("Create session failed");
+        .expect("Save exercise failed");
 
     let set = CompletedSet {
         set_number: 1,
@@ -79,7 +148,7 @@ async fn test_insert_set_weighted() {
     };
 
     let set_id = db
-        .insert_set(session_id, &set)
+        .insert_set(exercise_id, &set)
         .await
         .expect("Insert set failed");
 
@@ -91,10 +160,15 @@ async fn test_insert_set_bodyweight() {
     let mut db = Database::new();
     db.init(None).await.expect("Database init failed");
 
-    let session_id = db
-        .create_session("Pull-ups")
+    let exercise = ExerciseMetadata {
+        id: None,
+        name: "Pull-ups".to_string(),
+        set_type_config: SetTypeConfig::Bodyweight,
+    };
+    let exercise_id = db
+        .save_exercise(&exercise)
         .await
-        .expect("Create session failed");
+        .expect("Save exercise failed");
 
     let set = CompletedSet {
         set_number: 1,
@@ -104,26 +178,11 @@ async fn test_insert_set_bodyweight() {
     };
 
     let set_id = db
-        .insert_set(session_id, &set)
+        .insert_set(exercise_id, &set)
         .await
         .expect("Insert set failed");
 
     assert!(set_id > 0, "Set ID should be positive");
-}
-
-#[wasm_bindgen_test]
-async fn test_complete_session() {
-    let mut db = Database::new();
-    db.init(None).await.expect("Database init failed");
-
-    let session_id = db
-        .create_session("Squats")
-        .await
-        .expect("Create session failed");
-
-    let result = db.complete_session(session_id).await;
-
-    assert!(result.is_ok(), "Complete session should succeed");
 }
 
 #[wasm_bindgen_test]
@@ -217,7 +276,7 @@ async fn test_export_database() {
 async fn test_database_not_initialized_error() {
     let db = Database::new();
 
-    let result = db.create_session("Test").await;
+    let result = db.execute("SELECT 1", &[]).await;
 
     assert!(result.is_err(), "Should return error when not initialized");
 }
@@ -228,7 +287,7 @@ async fn test_sql_injection_protection() {
     db.init(None).await.expect("Database init failed");
 
     // Try exercise name with SQL injection attempt
-    let malicious_name = "Test'; DROP TABLE sessions; --";
+    let malicious_name = "Test'; DROP TABLE completed_sets; --";
 
     let exercise = ExerciseMetadata {
         id: None,
@@ -246,11 +305,10 @@ async fn test_sql_injection_protection() {
         "Should handle special characters safely with parameterized queries"
     );
 
-    // Verify we can still create a session (tables weren't dropped)
-    let session_result = db.create_session("Normal Exercise").await;
-
+    // Verify the exercises table is still accessible
+    let exercises_result = db.get_exercises().await;
     assert!(
-        session_result.is_ok(),
+        exercises_result.is_ok(),
         "Database should still be functional after injection attempt"
     );
 }
@@ -269,14 +327,10 @@ async fn test_export_import_round_trip() {
             increment: 5.0,
         },
     };
-    db1.save_exercise(&exercise)
+    let exercise_id = db1
+        .save_exercise(&exercise)
         .await
         .expect("Save exercise failed");
-
-    let session_id = db1
-        .create_session("Bench Press")
-        .await
-        .expect("Create session failed");
 
     let set = CompletedSet {
         set_number: 1,
@@ -284,13 +338,9 @@ async fn test_export_import_round_trip() {
         rpe: 7.5,
         set_type: SetType::Weighted { weight: 135.0 },
     };
-    db1.insert_set(session_id, &set)
+    db1.insert_set(exercise_id, &set)
         .await
         .expect("Insert set failed");
-
-    db1.complete_session(session_id)
-        .await
-        .expect("Complete session failed");
 
     // Export and re-import
     let exported = db1.export().await.expect("Export failed");
@@ -299,27 +349,81 @@ async fn test_export_import_round_trip() {
     db2.init(Some(exported)).await.expect("Import failed");
 
     // Verify imported data
+    use wasm_bindgen::JsCast;
+    use wasm_bindgen::JsValue;
     let result = db2
         .execute("SELECT count(*) as count FROM completed_sets", &[])
         .await
         .expect("Select query failed");
-    use wasm_bindgen::JsCast;
     let array = result
         .dyn_ref::<js_sys::Array>()
         .expect("Result should be an array");
     let first_row = array.get(0);
-    let count = js_sys::Reflect::get(&first_row, &wasm_bindgen::JsValue::from_str("count"))
+    let count = js_sys::Reflect::get(&first_row, &JsValue::from_str("count"))
         .expect("Failed to get count property")
         .as_f64()
         .expect("Count should be a number") as i64;
     assert_eq!(count, 1, "Expected exactly 1 set in the imported database");
 
-    // Verify we can create a new session in the imported database
-    let new_session = db2.create_session("Bench Press").await;
-
+    // Verify we can still insert into the imported database
+    let exercise2 = ExerciseMetadata {
+        id: None,
+        name: "Squat".to_string(),
+        set_type_config: SetTypeConfig::Weighted {
+            min_weight: 0.0,
+            increment: 5.0,
+        },
+    };
+    let new_ex_id = db2.save_exercise(&exercise2).await;
     assert!(
-        new_session.is_ok(),
-        "Should be able to create session in imported database"
+        new_ex_id.is_ok(),
+        "Should be able to save exercise in imported database"
+    );
+}
+
+#[wasm_bindgen_test]
+async fn test_db_version_reset_on_old_schema() {
+    // Simulate an old database (user_version = 0, has sessions table)
+    // by creating a fresh DB with old schema manually, then exporting it
+    // and verifying that init() on that data produces a clean new schema.
+    let mut old_db = Database::new();
+    old_db.init(None).await.expect("Old DB init failed");
+
+    // Manually create the old sessions table (simulating old schema)
+    old_db
+        .execute(
+            r#"CREATE TABLE IF NOT EXISTS sessions (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                exercise_name TEXT NOT NULL,
+                started_at INTEGER NOT NULL
+            )"#,
+            &[],
+        )
+        .await
+        .expect("Failed to create old sessions table");
+
+    // Export this "old" database
+    let old_data = old_db.export().await.expect("Export of old DB failed");
+
+    // Now init a new Database instance with this old data
+    let mut new_db = Database::new();
+    new_db
+        .init(Some(old_data))
+        .await
+        .expect("init with old data should succeed (with reset)");
+
+    // The sessions table should NOT exist after reset
+    let sessions_result = new_db.execute("SELECT count(*) FROM sessions", &[]).await;
+    assert!(
+        sessions_result.is_err(),
+        "sessions table should not exist after DB version reset"
+    );
+
+    // The exercises table should exist (fresh schema)
+    let exercises_result = new_db.get_exercises().await;
+    assert!(
+        exercises_result.is_ok(),
+        "exercises table should exist after reset"
     );
 }
 
@@ -342,47 +446,26 @@ async fn test_get_last_set_for_exercise() {
         .await
         .expect("Save exercise failed");
 
-    // 2. Create first session and add a set
-    let session_id1 = db
-        .create_session("Bench Press")
-        .await
-        .expect("Create session 1 failed");
-    let set1 = CompletedSet {
-        set_number: 1,
-        reps: 8,
-        rpe: 7.0,
-        set_type: SetType::Weighted { weight: 100.0 },
-    };
-    db.insert_set(session_id1, &set1)
-        .await
-        .expect("Insert set 1 failed");
-    db.complete_session(session_id1)
-        .await
-        .expect("Complete session 1 failed");
+    // 2. Insert first set (earlier recorded_at via direct SQL to control ordering)
+    use wasm_bindgen::JsValue;
+    db.execute(
+        r#"INSERT INTO completed_sets (exercise_id, set_number, reps, rpe, weight, is_bodyweight, recorded_at)
+           VALUES (?, 1, 8, 7.0, 100.0, 0, 1000)"#,
+        &[JsValue::from_f64(exercise_id as f64)],
+    )
+    .await
+    .expect("Insert first set failed");
 
-    // 3. Create second session (later) and add a set
-    // Sleep a bit to ensure started_at is different (Date.now())
-    // but in JS environment it might be too fast.
-    // The query also orders by set_number DESC if started_at is same.
+    // 3. Insert second set with later recorded_at
+    db.execute(
+        r#"INSERT INTO completed_sets (exercise_id, set_number, reps, rpe, weight, is_bodyweight, recorded_at)
+           VALUES (?, 1, 5, 8.0, 110.0, 0, 2000)"#,
+        &[JsValue::from_f64(exercise_id as f64)],
+    )
+    .await
+    .expect("Insert second set failed");
 
-    let session_id2 = db
-        .create_session("Bench Press")
-        .await
-        .expect("Create session 2 failed");
-    let set2 = CompletedSet {
-        set_number: 1,
-        reps: 5,
-        rpe: 8.0,
-        set_type: SetType::Weighted { weight: 110.0 },
-    };
-    db.insert_set(session_id2, &set2)
-        .await
-        .expect("Insert set 2 failed");
-
-    // Note: complete_session is intentionally NOT called here to verify that the query
-    // correctly fetches weights even from incomplete (in-progress or abandoned) sessions.
-
-    // 4. Test fetching last set
+    // 4. Test fetching last set — should return the one with recorded_at=2000 (weight 110)
     let last_set = db
         .get_last_set_for_exercise(exercise_id)
         .await

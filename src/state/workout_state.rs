@@ -20,9 +20,10 @@ pub struct PredictedParameters {
     pub rpe: f32,
 }
 
+/// An in-memory workout session. Sessions are no longer persisted as rows in the
+/// database; the session concept is purely in-memory and derived from completed_sets.
 #[derive(Clone, Debug, PartialEq)]
 pub struct WorkoutSession {
-    pub session_id: Option<i64>,
     pub exercise: ExerciseMetadata,
     pub completed_sets: Vec<CompletedSet>,
     pub predicted: PredictedParameters,
@@ -268,6 +269,7 @@ impl WorkoutStateManager {
         Ok(id)
     }
 
+    /// Starts an in-memory session for the given exercise. No database row is created.
     pub async fn start_session(
         state: &WorkoutState,
         mut exercise: ExerciseMetadata,
@@ -298,17 +300,9 @@ impl WorkoutStateManager {
             log::warn!("Failed to sync exercises after saving: {}", e);
         }
 
-        let session_id =
-            db.create_session(&exercise.name)
-                .await
-                .map_err(|e: crate::state::DatabaseError| {
-                    WorkoutError::CreateSessionError(e.to_string())
-                })?;
-
         let predicted = Self::calculate_initial_predictions(&exercise, last_set.as_ref());
 
         let session = WorkoutSession {
-            session_id: Some(session_id),
             exercise,
             completed_sets: Vec::new(),
             predicted,
@@ -324,9 +318,7 @@ impl WorkoutStateManager {
             .current_session()
             .ok_or(WorkoutError::NoActiveSession)?;
 
-        let session_id = session
-            .session_id
-            .ok_or(WorkoutError::SessionNotPersisted)?;
+        let exercise_id = session.exercise.id.ok_or(WorkoutError::NotInitialized)?;
 
         let db = state.database().ok_or(WorkoutError::NotInitialized)?;
 
@@ -334,7 +326,7 @@ impl WorkoutStateManager {
             .map_err(|e| WorkoutError::InvalidSetData(e.to_string()))?;
 
         let _set_id =
-            db.insert_set(session_id, &set)
+            db.insert_set(exercise_id, &set)
                 .await
                 .map_err(|e: crate::state::DatabaseError| {
                     WorkoutError::InsertSetError(e.to_string())
@@ -369,22 +361,11 @@ impl WorkoutStateManager {
         Ok(())
     }
 
+    /// Completes the current session. Saves the database and clears in-memory session state.
     pub async fn complete_session(state: &WorkoutState) -> Result<(), WorkoutError> {
-        let session = state
+        state
             .current_session()
             .ok_or(WorkoutError::NoActiveSession)?;
-
-        let session_id = session
-            .session_id
-            .ok_or(WorkoutError::SessionNotPersisted)?;
-
-        let db = state.database().ok_or(WorkoutError::NotInitialized)?;
-
-        db.complete_session(session_id)
-            .await
-            .map_err(|e: crate::state::DatabaseError| {
-                WorkoutError::CompleteSessionError(e.to_string())
-            })?;
 
         Self::save_database(state).await?;
 
@@ -584,7 +565,6 @@ mod tests {
         };
 
         let session = WorkoutSession {
-            session_id: Some(1),
             exercise,
             completed_sets: vec![CompletedSet {
                 set_number: 1,
@@ -604,5 +584,28 @@ mod tests {
         assert_eq!(predicted.weight, Some(105.0));
         assert_eq!(predicted.reps, 8);
         assert_eq!(predicted.rpe, 6.5);
+    }
+
+    #[test]
+    fn test_workout_session_has_no_session_id() {
+        // Verify the WorkoutSession struct no longer carries a session_id
+        let session = WorkoutSession {
+            exercise: ExerciseMetadata {
+                id: Some(1),
+                name: "Squat".to_string(),
+                set_type_config: SetTypeConfig::Weighted {
+                    min_weight: 20.0,
+                    increment: 2.5,
+                },
+            },
+            completed_sets: Vec::new(),
+            predicted: PredictedParameters {
+                weight: Some(20.0),
+                reps: 8,
+                rpe: 7.0,
+            },
+        };
+        // If session_id field existed this test would fail to compile
+        assert_eq!(session.exercise.id, Some(1));
     }
 }

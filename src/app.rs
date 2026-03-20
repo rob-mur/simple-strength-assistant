@@ -603,12 +603,13 @@ pub fn ActiveSession(state: WorkoutState, session: crate::state::WorkoutSession)
     let mut weight_input = use_signal(|| session.predicted.weight.map(|w| w as f64).unwrap_or(0.0));
 
     // Sync inputs when session or predicted changes (e.g., after logging a set or starting a new session)
-    let mut last_session_id = use_signal(|| session.session_id);
+    let mut last_exercise_id = use_signal(|| session.exercise.id);
     let mut last_predicted = use_signal(|| session.predicted);
 
-    if *last_session_id.peek() != session.session_id || *last_predicted.peek() != session.predicted
+    if *last_exercise_id.peek() != session.exercise.id
+        || *last_predicted.peek() != session.predicted
     {
-        last_session_id.set(session.session_id);
+        last_exercise_id.set(session.exercise.id);
         last_predicted.set(session.predicted);
         reps_input.set(session.predicted.reps as f64);
         rpe_input.set(session.predicted.rpe as f64);

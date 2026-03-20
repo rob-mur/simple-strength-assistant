@@ -3,6 +3,11 @@ use thiserror::Error;
 use wasm_bindgen::prelude::*;
 use web_sys::js_sys;
 
+/// The current database schema version. Bump this when the schema changes.
+/// On first launch after an upgrade, the app detects a version mismatch and
+/// replaces any existing database with a fresh schema.
+const DB_VERSION: i64 = 2;
+
 #[derive(Error, Debug, Clone)]
 pub enum DatabaseError {
     #[error("Failed to initialize database: {0}")]
@@ -54,10 +59,31 @@ impl Database {
         let result = init_database(file_data).await;
 
         if result.is_truthy() {
-            log::debug!("[DB] initDatabase succeeded, creating tables...");
+            log::debug!("[DB] initDatabase succeeded, checking schema version...");
+
+            // Check user_version to detect stale schema from a previous app version.
+            // If it doesn't match DB_VERSION we discard the loaded data and start fresh.
+            let version = self.read_user_version().await.unwrap_or(0);
+            log::debug!("[DB] Current user_version: {}", version);
+
+            if version != DB_VERSION {
+                log::debug!(
+                    "[DB] Schema version mismatch (got {}, want {}), resetting database",
+                    version,
+                    DB_VERSION
+                );
+                let reset_result = init_database(None).await;
+                if !reset_result.is_truthy() {
+                    return Err(DatabaseError::InitializationError(
+                        "Failed to reset database to new schema".to_string(),
+                    ));
+                }
+            }
+
+            log::debug!("[DB] Creating/verifying tables...");
             self.create_tables().await?;
             self.initialized = true;
-            log::debug!("[DB] Tables created successfully and database initialized");
+            log::debug!("[DB] Tables verified and database initialized");
             Ok(())
         } else {
             let error_msg = "Failed to initialize SQLite database - JS returned false".to_string();
@@ -66,29 +92,32 @@ impl Database {
         }
     }
 
+    async fn read_user_version(&self) -> Result<i64, DatabaseError> {
+        let result = execute_query("PRAGMA user_version", JsValue::NULL).await;
+
+        if let Some(error) = result.dyn_ref::<js_sys::Error>() {
+            return Err(DatabaseError::QueryError(
+                error.message().as_string().unwrap_or_default(),
+            ));
+        }
+
+        let array = result
+            .dyn_ref::<js_sys::Array>()
+            .ok_or_else(|| DatabaseError::QueryError("Expected array result".to_string()))?;
+
+        if array.length() == 0 {
+            return Ok(0);
+        }
+
+        let row = array.get(0);
+        let version = js_sys::Reflect::get(&row, &JsValue::from_str("user_version"))?
+            .as_f64()
+            .unwrap_or(0.0) as i64;
+
+        Ok(version)
+    }
+
     async fn create_tables(&self) -> Result<(), DatabaseError> {
-        let create_sessions = r#"
-            CREATE TABLE IF NOT EXISTS sessions (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                exercise_name TEXT NOT NULL,
-                started_at INTEGER NOT NULL,
-                completed_at INTEGER
-            )
-        "#;
-
-        let create_sets = r#"
-            CREATE TABLE IF NOT EXISTS completed_sets (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                session_id INTEGER NOT NULL,
-                set_number INTEGER NOT NULL,
-                reps INTEGER NOT NULL,
-                rpe REAL NOT NULL,
-                weight REAL,
-                is_bodyweight INTEGER NOT NULL,
-                FOREIGN KEY (session_id) REFERENCES sessions(id) ON DELETE CASCADE
-            )
-        "#;
-
         let create_exercises = r#"
             CREATE TABLE IF NOT EXISTS exercises (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -99,19 +128,36 @@ impl Database {
             )
         "#;
 
-        let create_index = r#"
-            CREATE INDEX IF NOT EXISTS idx_sets_session_id
-            ON completed_sets(session_id)
+        let create_sets = r#"
+            CREATE TABLE IF NOT EXISTS completed_sets (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                exercise_id INTEGER NOT NULL,
+                set_number INTEGER NOT NULL,
+                reps INTEGER NOT NULL,
+                rpe REAL NOT NULL,
+                weight REAL,
+                is_bodyweight INTEGER NOT NULL,
+                recorded_at INTEGER NOT NULL,
+                FOREIGN KEY (exercise_id) REFERENCES exercises(id)
+            )
         "#;
 
-        log::debug!("[DB] Creating sessions table...");
-        self.execute_internal(create_sessions, &[]).await?;
-        log::debug!("[DB] Creating completed_sets table...");
-        self.execute_internal(create_sets, &[]).await?;
+        let create_index = r#"
+            CREATE INDEX IF NOT EXISTS idx_sets_exercise_id
+            ON completed_sets(exercise_id)
+        "#;
+
         log::debug!("[DB] Creating exercises table...");
         self.execute_internal(create_exercises, &[]).await?;
-        log::debug!("[DB] Creating index on session_id...");
+        log::debug!("[DB] Creating completed_sets table...");
+        self.execute_internal(create_sets, &[]).await?;
+        log::debug!("[DB] Creating index on exercise_id...");
         self.execute_internal(create_index, &[]).await?;
+
+        // Stamp the schema version so future launches can detect mismatches.
+        let set_version = format!("PRAGMA user_version = {}", DB_VERSION);
+        log::debug!("[DB] Setting user_version = {}", DB_VERSION);
+        self.execute_internal(&set_version, &[]).await?;
 
         Ok(())
     }
@@ -145,44 +191,11 @@ impl Database {
         Ok(result)
     }
 
-    pub async fn create_session(&self, exercise_name: &str) -> Result<i64, DatabaseError> {
-        let sql = "INSERT INTO sessions (exercise_name, started_at) VALUES (?, ?) RETURNING id";
-        let now = js_sys::Date::now();
-
-        let params = vec![JsValue::from_str(exercise_name), JsValue::from_f64(now)];
-
-        let result = self.execute(sql, &params).await?;
-
-        let array = result
-            .dyn_ref::<js_sys::Array>()
-            .ok_or_else(|| DatabaseError::QueryError("Expected array result".to_string()))?;
-
-        if array.length() == 0 {
-            return Err(DatabaseError::QueryError("No rows returned".to_string()));
-        }
-
-        let first_row = array.get(0);
-        let id = js_sys::Reflect::get(&first_row, &JsValue::from_str("id"))?
-            .as_f64()
-            .ok_or_else(|| DatabaseError::QueryError("Failed to get session id".to_string()))?
-            as i64;
-
-        Ok(id)
-    }
-
-    pub async fn complete_session(&self, session_id: i64) -> Result<(), DatabaseError> {
-        let sql = "UPDATE sessions SET completed_at = ? WHERE id = ?";
-        let now = js_sys::Date::now();
-
-        let params = vec![JsValue::from_f64(now), JsValue::from_f64(session_id as f64)];
-
-        self.execute(sql, &params).await?;
-        Ok(())
-    }
-
+    /// Inserts a completed set directly linked to an exercise.
+    /// Records the current timestamp as `recorded_at`.
     pub async fn insert_set(
         &self,
-        session_id: i64,
+        exercise_id: i64,
         set: &CompletedSet,
     ) -> Result<i64, DatabaseError> {
         let (weight, is_bodyweight) = match set.set_type {
@@ -190,14 +203,16 @@ impl Database {
             crate::models::SetType::Bodyweight => (None, true),
         };
 
+        let now = js_sys::Date::now();
+
         let sql = r#"
-            INSERT INTO completed_sets (session_id, set_number, reps, rpe, weight, is_bodyweight)
-            VALUES (?, ?, ?, ?, ?, ?)
+            INSERT INTO completed_sets (exercise_id, set_number, reps, rpe, weight, is_bodyweight, recorded_at)
+            VALUES (?, ?, ?, ?, ?, ?, ?)
             RETURNING id
         "#;
 
         let params = vec![
-            JsValue::from_f64(session_id as f64),
+            JsValue::from_f64(exercise_id as f64),
             JsValue::from_f64(set.set_number as f64),
             JsValue::from_f64(set.reps as f64),
             JsValue::from_f64(set.rpe as f64),
@@ -205,6 +220,7 @@ impl Database {
                 .map(|w| JsValue::from_f64(w as f64))
                 .unwrap_or(JsValue::NULL),
             JsValue::from_bool(is_bodyweight),
+            JsValue::from_f64(now),
         ];
 
         let result = self.execute(sql, &params).await?;
@@ -356,21 +372,17 @@ impl Database {
         Ok(exercises)
     }
 
+    /// Returns the most recently recorded set for the given exercise, ordered by
+    /// `recorded_at DESC` then `id DESC`. Uses the exercise_id FK directly.
     pub async fn get_last_set_for_exercise(
         &self,
         exercise_id: i64,
     ) -> Result<Option<crate::models::CompletedSet>, DatabaseError> {
-        // TODO: Joining on exercise_name is fragile if an exercise is renamed.
-        // If a user renames "Bench Press" to "Barbell Bench Press", get_last_set_for_exercise
-        // will silently return None for all prior sessions and suggestions will fall back to min_weight: 0.0.
-        // Sessions table should ideally store exercise_id directly for better integrity (requires schema migration).
         let sql = r#"
-            SELECT cs.set_number, cs.reps, cs.rpe, cs.weight, cs.is_bodyweight
-            FROM completed_sets cs
-            JOIN sessions s ON cs.session_id = s.id
-            JOIN exercises e ON s.exercise_name = e.name
-            WHERE e.id = ?
-            ORDER BY s.started_at DESC, s.id DESC, cs.set_number DESC
+            SELECT set_number, reps, rpe, weight, is_bodyweight
+            FROM completed_sets
+            WHERE exercise_id = ?
+            ORDER BY recorded_at DESC, id DESC
             LIMIT 1
         "#;
 

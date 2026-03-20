@@ -58,7 +58,6 @@ async fn step_select_exercise(_world: &mut WorkoutWorld, _name: String) {
 async fn step_click_start(world: &mut WorkoutWorld) {
     // Simulate starting a session
     world.current_session = Some(WorkoutSession {
-        session_id: Some(1),
         exercise: ExerciseMetadata {
             id: Some(1),
             name: "Bench Press".to_string(),
