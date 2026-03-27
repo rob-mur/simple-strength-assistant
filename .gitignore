@@ -20,7 +20,7 @@ devenv.local.yaml
 .pre-commit-config.yaml
 
 # ai
-.claude/
+.claude/settings.local.json
 .gemini/
 .specify/
 .opencode
@@ -38,3 +38,6 @@ CHANGELOG.md
 
 # Secrets
 .env
+
+# Git worktrees for ralph loop
+worktrees/

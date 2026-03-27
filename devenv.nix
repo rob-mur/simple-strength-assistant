@@ -1,5 +1,8 @@
-{pkgs, ...}: {
+{pkgs, ...}: let
+  backlog-md = pkgs.callPackage ./nix/backlog-md.nix {};
+in {
   devcontainer.enable = true;
+  devcontainer.settings.updateContentCommand = "direnv allow ; devenv shell";
   packages = with pkgs; [
     git
     gh
@@ -10,6 +13,8 @@
     claude-code
     gemini-cli-bin
     chromium
+    bats
+    backlog-md
   ];
 
   languages.rust = {
@@ -26,6 +31,7 @@
     };
   };
 
+  dotenv.enable = true;
   env = {
     CHROMIUM_EXECUTABLE_PATH = "${pkgs.chromium}/bin/chromium";
     PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD = "1";
@@ -38,6 +44,7 @@
     build.exec = "dx bundle --web --release --debug-symbols=false";
     format.exec = "cargo fmt";
     lint.exec = "./scripts/lint.sh";
+    ralph.exec = "./scripts/ralph.sh \"$@\"";
   };
 
   processes = {
@@ -59,7 +66,9 @@
   };
 
   enterTest = ''
+    set -e
     cargo test
-    npm run test:e2e
+    bats scripts/ralph.bats
+    timeout 120 npm run test:e2e
   '';
 }
