@@ -66,6 +66,9 @@ in {
   };
 
   enterTest = ''
-    sleep 60
+    set -e
+    cargo test
+    bats scripts/ralph.bats
+    npm run test:e2e
   '';
 }

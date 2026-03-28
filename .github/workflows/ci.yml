@@ -36,7 +36,7 @@ jobs:
         uses: ./.github/actions/setup-devenv
 
       - name: Run tests
-        run: devenv test
+        run: devenv shell -- bash -c "set -eo pipefail; cargo test; bats scripts/ralph.bats; npm run test:e2e"
 
   build-and-deploy:
     permissions:
