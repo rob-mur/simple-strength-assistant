@@ -16,6 +16,8 @@ setup() {
   export REPO_DIR="$TMPDIR_ROOT/repo"
   mkdir -p "$REPO_DIR"
   git -C "$REPO_DIR" init -q
+  git -C "$REPO_DIR" config user.email "test@test.com"
+  git -C "$REPO_DIR" config user.name "Test"
   git -C "$REPO_DIR" commit --allow-empty -q -m "init"
 }
 
