@@ -48,8 +48,7 @@ in {
   };
 
   processes = {
-    serve.exec = "dx serve --port 8081";
-    test-serve.exec = "dx serve --port 8080 --features test-mode";
+    test-serve.exec = "dx serve --port 3000 --features test-mode";
   };
 
   git-hooks.hooks = {
