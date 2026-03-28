@@ -69,6 +69,6 @@ in {
     set -e
     cargo test
     bats scripts/ralph.bats
-    timeout 120 npm run test:e2e
+    npm run test:e2e
   '';
 }

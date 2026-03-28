@@ -18,6 +18,12 @@ export default defineConfig({
     baseURL: 'http://localhost:8080',
     trace: 'on-first-retry',
   },
+  webServer: {
+    command: 'dx serve --port 8080 --features test-mode',
+    url: 'http://localhost:8080',
+    reuseExistingServer: !process.env.CI,
+    timeout: 180 * 1000,
+  },
   projects: [
     {
       name: 'chromium',
