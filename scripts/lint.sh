@@ -5,23 +5,28 @@ echo "Running linting checks..."
 echo ""
 
 # Commit message validation
-echo "→ Validating commit messages..."
-if [ -n "$GITHUB_ACTIONS" ]; then
-  # In CI, check commits in the PR
-  npx commitlint --from "$BASE_SHA" --to "$HEAD_SHA" --verbose
+# Skip when running in devenv test (GITHUB_ACTIONS set but no BASE_SHA/HEAD_SHA provided)
+if [ -n "$GITHUB_ACTIONS" ] && [ -z "$BASE_SHA" ]; then
+  echo "↷ Skipping commit lint (devenv test context)"
 else
-  # Locally, check from main or upstream if available, fallback to last commit
-  UPSTREAM=$(git rev-parse --abbrev-ref --symbolic-full-name @{u} 2>/dev/null || echo "")
-  # Note: in detached HEAD, UPSTREAM is empty and main..HEAD is 0, so we correctly fall through to HEAD~1
-  if [ -n "$UPSTREAM" ] && [ "$(git rev-list --count "$UPSTREAM"..HEAD 2>/dev/null || echo 0)" -gt 0 ]; then
-    npx commitlint --from "$UPSTREAM" --to HEAD --verbose
-  elif [ "$(git rev-list --count main..HEAD 2>/dev/null || echo 0)" -gt 0 ]; then
-    npx commitlint --from main --to HEAD --verbose
+  echo "→ Validating commit messages..."
+  if [ -n "$GITHUB_ACTIONS" ]; then
+    # In CI lint job, check commits in the PR
+    npx commitlint --from "$BASE_SHA" --to "$HEAD_SHA" --verbose
   else
-    npx commitlint --from HEAD~1 --to HEAD --verbose
+    # Locally, check from main or upstream if available, fallback to last commit
+    UPSTREAM=$(git rev-parse --abbrev-ref --symbolic-full-name @{u} 2>/dev/null || echo "")
+    # Note: in detached HEAD, UPSTREAM is empty and main..HEAD is 0, so we correctly fall through to HEAD~1
+    if [ -n "$UPSTREAM" ] && [ "$(git rev-list --count "$UPSTREAM"..HEAD 2>/dev/null || echo 0)" -gt 0 ]; then
+      npx commitlint --from "$UPSTREAM" --to HEAD --verbose
+    elif [ "$(git rev-list --count main..HEAD 2>/dev/null || echo 0)" -gt 0 ]; then
+      npx commitlint --from main --to HEAD --verbose
+    else
+      npx commitlint --from HEAD~1 --to HEAD --verbose
+    fi
   fi
+  echo "✓ Commit messages valid"
 fi
-echo "✓ Commit messages valid"
 echo ""
 
 # CSS build check

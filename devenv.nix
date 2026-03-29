@@ -57,6 +57,12 @@ in
     rustfmt.enable = true;
     nixfmt.enable = true;
     prettier.enable = true;
+    commitlint = {
+      enable = true;
+      name = "Validate commit message";
+      entry = "npx commitlint --edit";
+      stages = [ "commit-msg" ];
+    };
     ci-checks = {
       enable = true;
       name = "Code quality checks (format, clippy, test, build)";
