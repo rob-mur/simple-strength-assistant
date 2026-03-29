@@ -7,18 +7,33 @@ setup() {
   export TMPDIR_ROOT
   TMPDIR_ROOT="$(mktemp -d)"
 
+  # Capture real git before PATH is overridden
+  export REAL_GIT
+  REAL_GIT="$(command -v git)"
+
   # Stub bin directory — all external commands are mocked here
   export STUB_BIN="$TMPDIR_ROOT/bin"
   mkdir -p "$STUB_BIN"
   export PATH="$STUB_BIN:$PATH"
 
+  # Default gh stub: no-op (tests that care about gh behaviour override this)
+  make_stub gh 'exit 0'
+
+  # Default git stub: pass through everything except push (no remote in tests)
+  cat > "$STUB_BIN/git" <<EOF
+#!/usr/bin/env bash
+if [[ "\$1" == "push" ]]; then exit 0; fi
+exec "$REAL_GIT" "\$@"
+EOF
+  chmod +x "$STUB_BIN/git"
+
   # Make a real git repo so worktree commands have something to work with
   export REPO_DIR="$TMPDIR_ROOT/repo"
   mkdir -p "$REPO_DIR"
-  git -C "$REPO_DIR" init -q
-  git -C "$REPO_DIR" config user.email "test@test.com"
-  git -C "$REPO_DIR" config user.name "Test"
-  git -C "$REPO_DIR" commit --allow-empty -q -m "init"
+  "$REAL_GIT" -C "$REPO_DIR" init -q
+  "$REAL_GIT" -C "$REPO_DIR" config user.email "test@test.com"
+  "$REAL_GIT" -C "$REPO_DIR" config user.name "Test"
+  "$REAL_GIT" -C "$REPO_DIR" commit --allow-empty -q -m "init"
 }
 
 teardown() {
@@ -306,6 +321,140 @@ EOF
   cd "$REPO_DIR"
   run bash "$SCRIPT" 24
   [ "$status" -ne 0 ]
+}
+
+# ---------------------------------------------------------------------------
+# Cycle 11: multi-subtask loop — all subtasks processed sequentially
+# ---------------------------------------------------------------------------
+
+@test "processes all To Do subtasks sequentially marking each Done" {
+  cat > "$STUB_BIN/backlog" <<'EOF'
+#!/usr/bin/env bash
+if [[ "$*" == *"task list"* ]]; then
+  printf "To Do:\n  TASK-30.1 - first task\n  TASK-30.2 - second task\n"
+fi
+echo "$@" >> "$TMPDIR_ROOT/backlog.calls"
+EOF
+  chmod +x "$STUB_BIN/backlog"
+  make_stub devcontainer 'exit 0'
+
+  cd "$REPO_DIR"
+  run bash "$SCRIPT" 30
+  [ "$status" -eq 0 ]
+  grep -q "task edit TASK-30.1.*--status.*Done" "$TMPDIR_ROOT/backlog.calls"
+  grep -q "task edit TASK-30.2.*--status.*Done" "$TMPDIR_ROOT/backlog.calls"
+}
+
+# ---------------------------------------------------------------------------
+# Cycle 12: each subtask marked In Progress before work starts
+# ---------------------------------------------------------------------------
+
+@test "marks each subtask In Progress before invoking claude" {
+  cat > "$STUB_BIN/backlog" <<'EOF'
+#!/usr/bin/env bash
+if [[ "$*" == *"task list"* ]]; then
+  printf "To Do:\n  TASK-31.1 - first task\n  TASK-31.2 - second task\n"
+fi
+echo "$@" >> "$TMPDIR_ROOT/backlog.calls"
+EOF
+  chmod +x "$STUB_BIN/backlog"
+  cat > "$STUB_BIN/devcontainer" <<'EOF'
+#!/usr/bin/env bash
+if [[ "$*" == *"claude"* ]]; then
+  echo "claude-called" >> "$TMPDIR_ROOT/devcontainer.calls"
+fi
+exit 0
+EOF
+  chmod +x "$STUB_BIN/devcontainer"
+
+  cd "$REPO_DIR"
+  run bash "$SCRIPT" 31
+  [ "$status" -eq 0 ]
+  # In Progress must appear for both subtasks
+  grep -q "task edit TASK-31.1.*--status.*In Progress" "$TMPDIR_ROOT/backlog.calls"
+  grep -q "task edit TASK-31.2.*--status.*In Progress" "$TMPDIR_ROOT/backlog.calls"
+  # In Progress call for TASK-31.1 must come before any claude call
+  IN_PROGRESS_LINE=$(grep -n "task edit TASK-31.1.*--status.*In Progress" "$TMPDIR_ROOT/backlog.calls" | head -1 | cut -d: -f1)
+  DONE_LINE=$(grep -n "task edit TASK-31.1.*--status.*Done" "$TMPDIR_ROOT/backlog.calls" | head -1 | cut -d: -f1)
+  [ "$IN_PROGRESS_LINE" -lt "$DONE_LINE" ]
+}
+
+# ---------------------------------------------------------------------------
+# Cycle 13: loop stops when first subtask becomes Blocked
+# ---------------------------------------------------------------------------
+
+@test "does not process second subtask when first becomes Blocked" {
+  cat > "$STUB_BIN/backlog" <<'EOF'
+#!/usr/bin/env bash
+if [[ "$*" == *"task list"* ]]; then
+  printf "To Do:\n  TASK-32.1 - first task\n  TASK-32.2 - second task\n"
+fi
+echo "$@" >> "$TMPDIR_ROOT/backlog.calls"
+EOF
+  chmod +x "$STUB_BIN/backlog"
+  # Always fail devenv test so first subtask gets Blocked after 3 retries
+  make_stub devcontainer '[[ "$*" == *"devenv test"* ]] && exit 1; exit 0'
+
+  cd "$REPO_DIR"
+  run bash "$SCRIPT" 32
+  [ "$status" -ne 0 ]
+  grep -q "task edit TASK-32.1.*--status.*Blocked" "$TMPDIR_ROOT/backlog.calls"
+  # Second subtask must never be touched
+  run grep "TASK-32.2" "$TMPDIR_ROOT/backlog.calls"
+  [ "$status" -ne 0 ]
+}
+
+# ---------------------------------------------------------------------------
+# Cycle 14: git push on full success
+# ---------------------------------------------------------------------------
+
+@test "pushes feature branch to origin after all subtasks succeed" {
+  cat > "$STUB_BIN/backlog" <<'EOF'
+#!/usr/bin/env bash
+if [[ "$*" == *"task list"* ]]; then printf "To Do:\n  TASK-33.1 - only task\n"; fi
+echo "$@" >> "$TMPDIR_ROOT/backlog.calls"
+EOF
+  chmod +x "$STUB_BIN/backlog"
+  make_stub devcontainer 'exit 0'
+  cat > "$STUB_BIN/git" <<'EOF'
+#!/usr/bin/env bash
+echo "$@" >> "$TMPDIR_ROOT/git.calls"
+exit 0
+EOF
+  chmod +x "$STUB_BIN/git"
+  make_stub gh 'exit 0'
+
+  cd "$REPO_DIR"
+  run bash "$SCRIPT" 33
+  [ "$status" -eq 0 ]
+  grep -q "push origin task-33" "$TMPDIR_ROOT/git.calls"
+}
+
+# ---------------------------------------------------------------------------
+# Cycle 15: gh pr create on full success
+# ---------------------------------------------------------------------------
+
+@test "opens a PR targeting main with parent task ID in title after all subtasks succeed" {
+  cat > "$STUB_BIN/backlog" <<'EOF'
+#!/usr/bin/env bash
+if [[ "$*" == *"task list"* ]]; then printf "To Do:\n  TASK-34.1 - only task\n"; fi
+echo "$@" >> "$TMPDIR_ROOT/backlog.calls"
+EOF
+  chmod +x "$STUB_BIN/backlog"
+  make_stub devcontainer 'exit 0'
+  cat > "$STUB_BIN/gh" <<'EOF'
+#!/usr/bin/env bash
+echo "$@" >> "$TMPDIR_ROOT/gh.calls"
+exit 0
+EOF
+  chmod +x "$STUB_BIN/gh"
+
+  cd "$REPO_DIR"
+  run bash "$SCRIPT" 34
+  [ "$status" -eq 0 ]
+  grep -q "pr create" "$TMPDIR_ROOT/gh.calls"
+  grep -q "\-\-base main" "$TMPDIR_ROOT/gh.calls"
+  grep -q "34" "$TMPDIR_ROOT/gh.calls"
 }
 
 @test "proceeds when a To Do subtask is found" {
