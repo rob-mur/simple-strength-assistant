@@ -40,10 +40,53 @@ cleanup() {
 }
 trap cleanup EXIT
 
-devcontainer exec --workspace-folder "$WORKTREE" \
-  -e CLAUDE_CODE_OAUTH_TOKEN="${CLAUDE_CODE_OAUTH_TOKEN:-}" \
-  -- devenv shell -- claude --print --dangerously-skip-permissions -p "$PROMPT"
+MAX_RETRIES=3
+ATTEMPT=0
+ERROR_CONTEXT=""
 
-devcontainer exec --workspace-folder "$WORKTREE" -- devenv shell -- devenv test
+while [ $ATTEMPT -lt $MAX_RETRIES ]; do
+  ATTEMPT=$((ATTEMPT + 1))
 
-backlog task edit "$SUBTASK_ID" --status "Done"
+  if [ -n "$ERROR_CONTEXT" ]; then
+    # Only the most recent failure is included; earlier errors are dropped to keep prompt size bounded.
+    # Cap at 8 KB to avoid hitting API context limits on verbose build/test output.
+    CONTEXT_SIZE=$(printf '%s' "$ERROR_CONTEXT" | wc -c)
+    if [ "$CONTEXT_SIZE" -gt 8000 ]; then
+      TRUNCATED_CONTEXT="[Output truncated — showing last 8000 of ${CONTEXT_SIZE} bytes]
+$(printf '%s' "$ERROR_CONTEXT" | tail -c 8000)"
+    else
+      TRUNCATED_CONTEXT="$ERROR_CONTEXT"
+    fi
+    # ATTEMPT has already been incremented for this iteration; the failure being fed back
+    # is from the previous attempt, so reference ATTEMPT-1.
+    FULL_PROMPT="${PROMPT}
+
+---
+
+Attempt $((ATTEMPT - 1)) of ${MAX_RETRIES} failed with the following output:
+${TRUNCATED_CONTEXT}"
+  else
+    FULL_PROMPT="$PROMPT"
+  fi
+
+  if CLAUDE_OUT=$(devcontainer exec --workspace-folder "$WORKTREE" \
+      -e CLAUDE_CODE_OAUTH_TOKEN="${CLAUDE_CODE_OAUTH_TOKEN:-}" \
+      -- devenv shell -- claude --print --dangerously-skip-permissions -p "$FULL_PROMPT" 2>&1); then
+
+    if TEST_OUT=$(devcontainer exec --workspace-folder "$WORKTREE" -- devenv shell -- devenv test 2>&1); then
+      backlog task edit "$SUBTASK_ID" --status "Done"
+      exit 0
+    else
+      ERROR_CONTEXT="--- Claude output ---
+${CLAUDE_OUT}
+--- Test output ---
+${TEST_OUT}"
+    fi
+  else
+    ERROR_CONTEXT="--- Claude output ---
+${CLAUDE_OUT}"
+  fi
+done
+
+backlog task edit "$SUBTASK_ID" --status "Blocked"
+exit 1
