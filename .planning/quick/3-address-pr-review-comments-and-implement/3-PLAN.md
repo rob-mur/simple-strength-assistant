@@ -53,10 +53,11 @@ Address all PR review comments: fix critical bugs (onmounted downcast, ghost cli
 Purpose: Ensure production-ready code quality and comprehensive E2E test coverage beyond BDD physics simulations.
 
 Output:
+
 - Bug-free tactile components with proper DOM handling
 - Playwright test suite with E2E coverage
 - Clean repository (no .bak files)
-</objective>
+  </objective>
 
 <execution_context>
 @./.claude/get-shit-done/workflows/execute-plan.md
@@ -70,6 +71,7 @@ Output:
 ## Key Interfaces
 
 From src/components/tape_measure.rs:
+
 ```rust
 #[derive(Props, PartialEq, Clone)]
 pub struct TapeMeasureProps {
@@ -82,6 +84,7 @@ pub struct TapeMeasureProps {
 ```
 
 From src/components/step_controls.rs:
+
 ```rust
 #[derive(Props, PartialEq, Clone)]
 pub struct StepControlsProps {
@@ -94,6 +97,7 @@ pub struct StepControlsProps {
 ```
 
 From src/components/rpe_slider.rs:
+
 ```rust
 #[derive(Props, PartialEq, Clone)]
 pub struct RPESliderProps {
@@ -101,6 +105,7 @@ pub struct RPESliderProps {
     pub on_change: EventHandler<f64>,
 }
 ```
+
 </context>
 
 <tasks>
@@ -168,11 +173,13 @@ pub struct RPESliderProps {
      - `.gemini/commands/gsd/new-project.md.bak`
 
 **Performance (Deferred):**
+
 - Issue #8 (use_future RAF-based loop) is a valid optimization but requires architectural changes
 - Document in code comment: "TODO: Consider RAF-based animation loop instead of 16ms timer for battery efficiency"
 - Address in future refactor (not blocking for this PR)
   </action>
   <verify>
+
 ```bash
 # Compile check
 cargo check
@@ -186,6 +193,7 @@ cargo test --test tape_measure_bdd
 ! ls .gemini/commands/gsd/new-project.md.bak 2>/dev/null && \
 echo "All .bak files removed successfully" || echo "ERROR: .bak files still exist"
 ```
+
   </verify>
   <done>
 - All critical bugs fixed (onmounted, ghost clicks, NaN panic)
@@ -217,33 +225,34 @@ echo "All .bak files removed successfully" || echo "ERROR: .bak files still exis
    - Add test:headed script: `"test:e2e:headed": "playwright test --headed"`
 
 2. **Create playwright.config.ts:**
+
    ```typescript
-   import { defineConfig, devices } from '@playwright/test';
+   import { defineConfig, devices } from "@playwright/test";
 
    export default defineConfig({
-     testDir: './tests/e2e',
+     testDir: "./tests/e2e",
      fullyParallel: true,
      forbidOnly: !!process.env.CI,
      retries: process.env.CI ? 2 : 0,
      workers: process.env.CI ? 1 : undefined,
-     reporter: 'html',
+     reporter: "html",
      use: {
-       baseURL: 'http://localhost:8080',
-       trace: 'on-first-retry',
+       baseURL: "http://localhost:8080",
+       trace: "on-first-retry",
      },
      projects: [
        {
-         name: 'chromium',
-         use: { ...devices['Desktop Chrome'] },
+         name: "chromium",
+         use: { ...devices["Desktop Chrome"] },
        },
        {
-         name: 'Mobile Safari',
-         use: { ...devices['iPhone 13'] },
+         name: "Mobile Safari",
+         use: { ...devices["iPhone 13"] },
        },
      ],
      webServer: {
-       command: 'dx serve --port 8080',
-       url: 'http://localhost:8080',
+       command: "dx serve --port 8080",
+       url: "http://localhost:8080",
        reuseExistingServer: !process.env.CI,
      },
    });
@@ -258,24 +267,31 @@ echo "All .bak files removed successfully" || echo "ERROR: .bak files still exis
    - Visual snapping animation (requestAnimationFrame timing)
 
    Example test structure:
+
    ```typescript
-   test('swipe drag updates value', async ({ page }) => {
-     await page.goto('/active-session'); // Adjust to actual route
+   test("swipe drag updates value", async ({ page }) => {
+     await page.goto("/active-session"); // Adjust to actual route
      const tape = page.locator('[class*="tape-measure-container"]').first();
 
      // Get initial value from SVG text
-     const initialValue = await tape.locator('text[text-anchor="middle"]').first().textContent();
+     const initialValue = await tape
+       .locator('text[text-anchor="middle"]')
+       .first()
+       .textContent();
 
      // Perform swipe gesture
-     await tape.dispatchEvent('pointerdown', { clientX: 150, clientY: 40 });
-     await tape.dispatchEvent('pointermove', { clientX: 100, clientY: 40 });
-     await tape.dispatchEvent('pointerup', { clientX: 100, clientY: 40 });
+     await tape.dispatchEvent("pointerdown", { clientX: 150, clientY: 40 });
+     await tape.dispatchEvent("pointermove", { clientX: 100, clientY: 40 });
+     await tape.dispatchEvent("pointerup", { clientX: 100, clientY: 40 });
 
      // Wait for snap animation
      await page.waitForTimeout(500);
 
      // Verify value changed
-     const finalValue = await tape.locator('text[text-anchor="middle"]').first().textContent();
+     const finalValue = await tape
+       .locator('text[text-anchor="middle"]')
+       .first()
+       .textContent();
      expect(finalValue).not.toBe(initialValue);
    });
    ```
@@ -301,12 +317,14 @@ echo "All .bak files removed successfully" || echo "ERROR: .bak files still exis
    ```
 
 **Coverage Requirements:**
+
 - Each component gets its own spec file
 - Each spec tests at least 3 scenarios (happy path, edge case, visual verification)
 - Tests run against real Dioxus dev server (dx serve)
 - Both desktop and mobile viewport configs
   </action>
   <verify>
+
 ```bash
 # Install dependencies
 npm install
@@ -330,6 +348,7 @@ if [ ! -z "$SERVER_PID" ]; then
   kill $SERVER_PID
 fi
 ```
+
   </verify>
   <done>
 - Playwright installed and configured
@@ -346,12 +365,14 @@ fi
 **Overall Phase Verification:**
 
 1. **Code Quality:**
+
    ```bash
    cargo clippy -- -D warnings
    cargo fmt -- --check
    ```
 
 2. **All Tests Pass:**
+
    ```bash
    # BDD tests
    cargo test
@@ -361,6 +382,7 @@ fi
    ```
 
 3. **Build Success:**
+
    ```bash
    dx build --release
    ```
@@ -370,15 +392,16 @@ fi
    - Test TapeMeasure swipe on mobile device
    - Verify no ghost clicks when releasing drag
    - Verify StepControls buttons work with extreme values (NaN boundary)
-</verification>
+     </verification>
 
 <success_criteria>
+
 1. All 7 PR review issues resolved (bugs fixed, code quality improved, .bak files removed)
 2. Playwright E2E test suite implemented with ≥9 test scenarios across 3 components
 3. All tests (BDD + E2E) pass
 4. Code compiles with no warnings
 5. Visual verification confirms ghost click fix on real device
-</success_criteria>
+   </success_criteria>
 
 <output>
 After completion, create `.planning/quick/3-address-pr-review-comments-and-implement/3-SUMMARY.md`

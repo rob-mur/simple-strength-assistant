@@ -43,10 +43,12 @@ Fix 7 failing E2E tests caused by incorrect test logic and assertions, bringing 
 ### Task 1: Fixed RPE Slider Test Assertions
 
 **Issues identified:**
+
 1. Color class test expected `range-success` at RPE 6, but component uses `range-accent` (only values < 6.0 get `range-success`)
 2. Bounds test tried to fill invalid values ("0", "15") which Playwright rejects as "Malformed value" on HTML range inputs
 
 **Fixes applied:**
+
 - Updated color class assertions to match actual component logic:
   - RPE 6.0: `range-accent` (not `range-success`)
   - RPE >= 7.5: `range-warning`
@@ -59,6 +61,7 @@ Fix 7 failing E2E tests caused by incorrect test logic and assertions, bringing 
 ### Task 2: Fixed StepControls and TapeMeasure Interaction Tests
 
 **Issues identified:**
+
 1. SVG viewBox attribute: test used `view_box` but SVG uses camelCase `viewBox`
 2. Increment button test: 400ms wait insufficient for DOM update after state change
 3. Swipe test: targeting weight TapeMeasure with initial value at boundary, swipe didn't create visible change
@@ -66,6 +69,7 @@ Fix 7 failing E2E tests caused by incorrect test logic and assertions, bringing 
 5. Center line visibility: element exists in DOM but has `visibility:hidden` style
 
 **Fixes applied:**
+
 - Changed `getAttribute('view_box')` to `getAttribute('viewBox')` (correct SVG attribute name)
 - Increased wait time and added `waitForFunction` to wait for actual DOM updates instead of fixed timeouts
 - **Critical fix:** Changed swipe test to target reps TapeMeasure (nth(1)) instead of weight TapeMeasure (first())
@@ -79,14 +83,17 @@ Fix 7 failing E2E tests caused by incorrect test logic and assertions, bringing 
 ### Task 3: Full Test Suite Verification and Final Fixes
 
 **Additional issues found in full suite run:**
+
 - SVG path element also has visibility:hidden like center line
 - Click on tick test still unreliable with waitForFunction timeout
 
 **Final fixes:**
+
 - Changed path visibility check to `toHaveCount(1)` like center line
 - Simplified click on tick test: removed waitForFunction, added init wait, relaxed assertion
 
 **Final verification:**
+
 ```
 Cargo tests: 34 passed
 BDD tests: 9 scenarios, 38 steps passed
@@ -100,6 +107,7 @@ E2E tests: 18 passed ✓
 **Auto-fixed Issues (Rule 1 - Bugs):**
 
 **1. SVG path visibility assertion incorrect**
+
 - **Found during:** Task 3 full suite run
 - **Issue:** Test expected path element to be visible, but component styles it with visibility:hidden
 - **Fix:** Changed assertion from `toBeVisible()` to `toHaveCount(1)` - verifies element exists in DOM
@@ -107,6 +115,7 @@ E2E tests: 18 passed ✓
 - **Commit:** 3fc301c
 
 **2. Click on tick test targeting wrong TapeMeasure**
+
 - **Found during:** Task 3 full suite run
 - **Issue:** Targeting first TapeMeasure (weight) which may not change value depending on boundary conditions
 - **Fix:** Switched to reps TapeMeasure (nth(1)) with simpler range, added initialization wait, simplified assertion
@@ -114,6 +123,7 @@ E2E tests: 18 passed ✓
 - **Commit:** 3fc301c
 
 **3. Swipe test unreliable due to component selection**
+
 - **Found during:** Task 2 execution
 - **Issue:** First TapeMeasure (weight) has initial value (45kg = min_weight) at boundary, swipe ineffective
 - **Root cause:** Test was targeting min_weight TapeMeasure which starts at predicted weight, not optimal for testing swipe gestures
@@ -125,20 +135,24 @@ E2E tests: 18 passed ✓
 ## Technical Insights
 
 **1. Component Value Flow Understanding Critical for Tests**
+
 - Tests failed because they didn't understand the data flow: StepControls clicks → signal updates → TapeMeasure props → DOM updates
 - Initial attempts to increase timeouts didn't help because the wrong component was being targeted
 - Key learning: Identify which component instance is most suitable for testing specific interactions
 
 **2. SVG Attribute Naming in Dioxus**
+
 - Dioxus RSX: `view_box: "0 0 24 24"` renders to HTML attribute `viewBox` (camelCase)
 - Tests must use the rendered HTML attribute names, not the RSX property names
 
 **3. Playwright Pointer Events vs Component Physics**
+
 - TapeMeasure requires velocity calculation based on pointer move timing
 - Playwright's `mouse.move()` with steps creates events quickly, generating sufficient velocity
 - Component has momentum → friction → snap phases, requiring 1200ms+ wait for final state
 
 **4. Testing Strategy for Controlled Components**
+
 - Controlled components (value from props, onChange to parent) need careful test design
 - Choose component instances with:
   - Predictable initial values
@@ -158,6 +172,7 @@ E2E tests: 18 passed ✓
 **After (Quick Task 11):** 18/18 E2E tests passing (100%)
 
 **Full CI Pipeline:**
+
 - Cargo unit tests: 34/34 ✓
 - BDD integration tests: 9 scenarios, 38 steps ✓
 - Playwright E2E tests: 18/18 ✓
@@ -179,9 +194,11 @@ E2E tests: 18 passed ✓
 Verifying all claims in this summary...
 
 ### Created Files
+
 (No files created)
 
 ### Modified Files
+
 ```bash
 [ -f "/home/rob/repos/simple-strength-assistant/tests/e2e/rpe_slider.spec.ts" ] && echo "FOUND: tests/e2e/rpe_slider.spec.ts" || echo "MISSING: tests/e2e/rpe_slider.spec.ts"
 [ -f "/home/rob/repos/simple-strength-assistant/tests/e2e/step_controls.spec.ts" ] && echo "FOUND: tests/e2e/step_controls.spec.ts" || echo "MISSING: tests/e2e/step_controls.spec.ts"
@@ -189,6 +206,7 @@ Verifying all claims in this summary...
 ```
 
 ### Commits
+
 ```bash
 git log --oneline --all | grep -q "15e4bc5" && echo "FOUND: 15e4bc5" || echo "MISSING: 15e4bc5"
 git log --oneline --all | grep -q "6546191" && echo "FOUND: 6546191" || echo "MISSING: 6546191"
@@ -198,6 +216,7 @@ git log --oneline --all | grep -q "3fc301c" && echo "FOUND: 3fc301c" || echo "MI
 ## Self-Check: PASSED
 
 ### Modified Files
+
 ```
 FOUND: tests/e2e/rpe_slider.spec.ts
 FOUND: tests/e2e/step_controls.spec.ts
@@ -205,6 +224,7 @@ FOUND: tests/e2e/tapemeasure.spec.ts
 ```
 
 ### Commits
+
 ```
 FOUND: 15e4bc5 (RPE slider fixes)
 FOUND: 6546191 (StepControls and TapeMeasure fixes)

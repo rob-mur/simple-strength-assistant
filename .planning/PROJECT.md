@@ -52,6 +52,7 @@ Users must be able to reliably persist their workout data to a file they control
 **Status:** Exercise Library tab and management capabilities are fully functional and verified.
 
 **What works:**
+
 - Dedicated Exercise Library tab with list and search.
 - Editing exercise details and archiving exercises.
 - Full database lifecycle: selection, creation, persistence, and loading.
@@ -66,20 +67,22 @@ Users must be able to reliably persist their workout data to a file they control
 **Goal:** Allow users to specify a minimum weight for exercises, ensuring weight suggestions are actionable, and replace the unused 'starting weight' concept.
 
 **Target features:**
+
 - New Input Field for Minimum Weight on exercise forms
 - Remove references and UI for 'Starting Weight'
 - Determine suggestions using previous weight or fallback to Minimum Weight
 
 ## Key Decisions
 
-| Decision | Rationale | Outcome |
-|----------|-----------|---------|
-| File System Access API | User controls data location, enables backup/sharing | ✓ Good - fixed and verified |
-| SQLite via sql.js WASM | Full SQL queries, mature ecosystem, portable format | ✓ Good - works well |
-| Dioxus framework | Rust safety + React-like patterns + WASM target | ✓ Good - signal reactivity working |
-| Inline initialization | Eliminated fragile error message string matching | ✓ Good - simplified flow |
-| User gesture button | Browser security requirement for file picker | ✓ Good - required for API |
-| Minimum weight over starting weight | Makes suggestions actionable directly (e.g. barbell weight) | — Pending |
+| Decision                            | Rationale                                                   | Outcome                            |
+| ----------------------------------- | ----------------------------------------------------------- | ---------------------------------- |
+| File System Access API              | User controls data location, enables backup/sharing         | ✓ Good - fixed and verified        |
+| SQLite via sql.js WASM              | Full SQL queries, mature ecosystem, portable format         | ✓ Good - works well                |
+| Dioxus framework                    | Rust safety + React-like patterns + WASM target             | ✓ Good - signal reactivity working |
+| Inline initialization               | Eliminated fragile error message string matching            | ✓ Good - simplified flow           |
+| User gesture button                 | Browser security requirement for file picker                | ✓ Good - required for API          |
+| Minimum weight over starting weight | Makes suggestions actionable directly (e.g. barbell weight) | — Pending                          |
 
 ---
-*Last updated: 2026-03-03 after v1.2 milestone start*
+
+_Last updated: 2026-03-03 after v1.2 milestone start_

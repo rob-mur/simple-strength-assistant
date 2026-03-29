@@ -3,6 +3,7 @@
 **Description:** Add playwright tests to ci-test script and configure necessary background services using devenv processes.
 
 **Changes made:**
+
 1. Modified `devenv.nix` to define a background process for serving the application (`dx serve --port 8080`).
 2. Updated `playwright.config.ts` to remove the built-in `webServer` block so Playwright relies on the devenv background process.
 3. Completely rewrote `scripts/ci-test.sh` to:

@@ -25,7 +25,6 @@ The PRD should be submitted as a backlog.md task if the `backlog` CLI is availab
 backlog task create "<title>" --description "<full PRD content>" --priority high --label prd
 ```
 
-
 <prd-template>
 
 ## Problem Statement

@@ -30,10 +30,12 @@ Phase 6 UAT revealed that step buttons update the displayed value but fail to sc
 ## Current Implementation Issues
 
 From `.planning/phases/06-jump-controls/06-UAT.md`:
+
 - Test 6 FAILED: "tapping does update the displayed number but it doesmt update the tape measure"
 - Diagnosis: "The `use_effect` in `TapeMeasure` responsible for external sync has a condition `*velocity.peek() == 0.0`. If a previous interaction left a tiny residual velocity (below `VELOCITY_THRESHOLD`), the sync never triggers."
 
 From code review:
+
 - Lines 33-38: Sync only fires when `!is_dragging && !is_snapping`, but doesn't reset velocity
 - Lines 50, 79: Velocity checks use direct comparison which is fragile with floating-point math
 - Lines 132, 145, 186, 199: Unsafe `.unwrap()` calls on event downcasts
@@ -55,31 +57,30 @@ From code review:
 - Ensure sync happens BEFORE animation loop reads state
 
 **Fix floating-point drift in velocity checks (lines 50, 75, 79, 189):**
+
 - Replace `current_velocity_val.abs() > VELOCITY_THRESHOLD` with `current_velocity_val.abs() >= VELOCITY_THRESHOLD + f64::EPSILON` to handle float precision
 - Replace `new_v.abs() <= VELOCITY_THRESHOLD` with `new_v.abs() < VELOCITY_THRESHOLD` for clearer logic
 - Replace `*velocity.peek() == 0.0` with `velocity.peek().abs() < f64::EPSILON`
 - Use consistent epsilon-based comparisons for all floating-point checks
 
 **Add idle animation guard (lines 45-48):**
+
 - Skip animation loop iteration if ALL conditions true: not dragging, velocity is effectively zero (< EPSILON), and not snapping
 - Add early `continue` at top of loop when component is idle
 - This prevents unnecessary CPU usage when component is static
 
 **WHY these specific fixes:**
+
 - Sync bug: Previous check allowed residual velocity to block sync. Now we force velocity to 0.0 during sync, guaranteeing offset update triggers.
 - Float drift: Direct float equality/comparison is unreliable. Using EPSILON ensures comparisons work despite floating-point representation errors.
 - Idle guard: Without it, loop runs 60 times/second even when nothing is moving, wasting battery on mobile devices.
   </action>
   <verify>
-    <automated>cargo check</automated>
+  <automated>cargo check</automated>
   </verify>
-  <done>
-    - External prop changes immediately update TapeMeasure position
-    - Velocity comparisons use epsilon-based checks
-    - Animation loop skips iterations when component is idle
-    - No compiler warnings about float comparison
+  <done> - External prop changes immediately update TapeMeasure position - Velocity comparisons use epsilon-based checks - Animation loop skips iterations when component is idle - No compiler warnings about float comparison
   </done>
-</task>
+  </task>
 
 <task type="auto">
   <name>Replace unsafe unwraps with safe error handling</name>
@@ -91,21 +92,18 @@ From code review:
 - Add debug log for unexpected event types: `web_sys::console::log_1(&"Unexpected event type in TapeMeasure handler".into());` (only in else branch)
 
 **WHY safe handling instead of unwrap:**
+
 - `.unwrap()` will panic the entire WASM module if event type ever changes (browser update, Dioxus update, etc.)
 - Early return is safe: if we get a non-PointerEvent, it means the event binding is wrong or browser sent unexpected event - ignoring it is safer than crashing
 - Debug log helps identify issues during development without breaking production
 
 **DO NOT** change pointer capture calls - those already use `let _ = el.set_pointer_capture()` pattern which safely ignores errors.
-  </action>
-  <verify>
-    <automated>cargo check && cargo clippy -- -D warnings</automated>
-  </verify>
-  <done>
-    - No `.unwrap()` calls on event downcasts
-    - All pointer event handlers use safe `if let Some()` pattern
-    - Clippy warnings cleared
-    - Code cannot panic from unexpected event types
-  </done>
+</action>
+<verify>
+<automated>cargo check && cargo clippy -- -D warnings</automated>
+</verify>
+<done> - No `.unwrap()` calls on event downcasts - All pointer event handlers use safe `if let Some()` pattern - Clippy warnings cleared - Code cannot panic from unexpected event types
+</done>
 </task>
 
 <task type="auto">
@@ -123,6 +121,7 @@ Scenario: External value changes update tape position
 ```
 
 **Add to `tape_measure_physics.feature` (new scenario):**
+
 ```gherkin
 Scenario: External updates during idle state
   Given the TapeMeasure is idle (not dragging, no momentum)
@@ -133,24 +132,23 @@ Scenario: External updates during idle state
 ```
 
 **Update existing scenarios if needed:**
+
 - Review scenarios for any references to prop changes
 - Ensure no conflicts with new sync behavior
 - Add "idle animation guard" scenario if performance scenarios exist
 
 **WHY update BDD docs:**
+
 - Current feature files don't document external sync from prop changes
 - Phase 04 focused on user dragging/physics, not programmatic updates
 - These scenarios prevent regression of the sync bug we're fixing
   </action>
   <verify>
-    <automated>grep -q "External value changes update tape position" tests/features/tape_measure_core.feature && grep -q "External updates during idle state" tests/features/tape_measure_physics.feature</automated>
+  <automated>grep -q "External value changes update tape position" tests/features/tape_measure_core.feature && grep -q "External updates during idle state" tests/features/tape_measure_physics.feature</automated>
   </verify>
-  <done>
-    - BDD feature files include scenarios for external value sync
-    - Scenarios document idle state behavior
-    - Feature files accurately reflect TapeMeasure sync capabilities
+  <done> - BDD feature files include scenarios for external value sync - Scenarios document idle state behavior - Feature files accurately reflect TapeMeasure sync capabilities
   </done>
-</task>
+  </task>
 
 </tasks>
 
@@ -164,13 +162,15 @@ Scenario: External updates during idle state
 6. Open browser DevTools Performance tab, verify no continuous animation when idle
 
 **Expected behavior:**
+
 - Step buttons instantly update both displayed number AND tape position
 - No delay or failed sync after button press
 - No console errors from event handling
 - CPU usage drops to ~0% when TapeMeasure is idle (not moving)
-</verification>
+  </verification>
 
 <success_criteria>
+
 - [ ] Step buttons update TapeMeasure position immediately (UAT Test 6 regression)
 - [ ] No `.unwrap()` calls on event downcasts (safe error handling)
 - [ ] Velocity comparisons use epsilon-based checks (no float drift issues)
@@ -178,7 +178,7 @@ Scenario: External updates during idle state
 - [ ] BDD feature files document external sync behavior
 - [ ] `cargo check` and `cargo clippy` pass with no warnings
 - [ ] Manual testing confirms buttons sync with tape measure
-</success_criteria>
+      </success_criteria>
 
 <output>
 After completion, update `.planning/STATE.md` to reflect quick fix completed and component ready for final review.

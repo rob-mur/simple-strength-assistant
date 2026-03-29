@@ -14,6 +14,7 @@ Enable navigation between Workout and Library tabs without losing active workout
 ## Implementation Decisions
 
 ### Testing Strategy
+
 - BDD-first approach: Generate feature files first, then implement to make them pass
 - Use separate feature files: one for tab navigation UI, another for session state preservation logic
 - Continue using cucumber-rust as test runner (consistent with existing tape measure tests)
@@ -27,6 +28,7 @@ Enable navigation between Workout and Library tabs without losing active workout
 - Mocked tests cover component-level details and edge cases
 
 ### Claude's Discretion
+
 - Tab UI presentation (bottom bar vs top bar, visual styling, active indication)
 - Tab switching behavior (animations, gestures, haptic feedback)
 - Specific state preservation implementation details
@@ -52,5 +54,5 @@ None - discussion stayed within phase scope
 
 ---
 
-*Phase: 04-tab-navigation-foundation*
-*Context gathered: 2026-03-02*
+_Phase: 04-tab-navigation-foundation_
+_Context gathered: 2026-03-02_

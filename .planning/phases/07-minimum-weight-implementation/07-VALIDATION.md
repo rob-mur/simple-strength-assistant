@@ -15,13 +15,13 @@ created: 2026-03-03
 
 ## Test Infrastructure
 
-| Property | Value |
-|----------|-------|
-| **Framework** | cargo test / playwright / cucumber |
-| **Config file** | none — Wave 0 installs |
-| **Quick run command** | `cargo test` |
-| **Full suite command** | `./scripts/ci-test.sh` |
-| **Estimated runtime** | ~60 seconds |
+| Property               | Value                              |
+| ---------------------- | ---------------------------------- |
+| **Framework**          | cargo test / playwright / cucumber |
+| **Config file**        | none — Wave 0 installs             |
+| **Quick run command**  | `cargo test`                       |
+| **Full suite command** | `./scripts/ci-test.sh`             |
+| **Estimated runtime**  | ~60 seconds                        |
 
 ---
 
@@ -36,15 +36,15 @@ created: 2026-03-03
 
 ## Per-Task Verification Map
 
-| Task ID | Plan | Wave | Requirement | Test Type | Automated Command | File Exists | Status |
-|---------|------|------|-------------|-----------|-------------------|-------------|--------|
-| 7-01-01 | 01 | 1 | CONF-01 | unit | `cargo test` | ✅ W0 | ✅ green |
-| 7-01-02 | 01 | 1 | CONF-02 | unit | `cargo test` | ✅ W0 | ✅ green |
-| 7-01-03 | 01 | 1 | CONF-03 | e2e | `./scripts/ci-test.sh` | ✅ W0 | ✅ green |
-| 7-02-01 | 02 | 2 | SUGG-01 | unit | `cargo test` | ✅ W0 | ✅ green |
-| 7-02-02 | 02 | 2 | SUGG-02 | e2e | `./scripts/ci-test.sh` | ✅ W0 | ✅ green |
+| Task ID | Plan | Wave | Requirement | Test Type | Automated Command      | File Exists | Status   |
+| ------- | ---- | ---- | ----------- | --------- | ---------------------- | ----------- | -------- |
+| 7-01-01 | 01   | 1    | CONF-01     | unit      | `cargo test`           | ✅ W0       | ✅ green |
+| 7-01-02 | 01   | 1    | CONF-02     | unit      | `cargo test`           | ✅ W0       | ✅ green |
+| 7-01-03 | 01   | 1    | CONF-03     | e2e       | `./scripts/ci-test.sh` | ✅ W0       | ✅ green |
+| 7-02-01 | 02   | 2    | SUGG-01     | unit      | `cargo test`           | ✅ W0       | ✅ green |
+| 7-02-02 | 02   | 2    | SUGG-02     | e2e       | `./scripts/ci-test.sh` | ✅ W0       | ✅ green |
 
-*Status: ⬜ pending · ✅ green · ❌ red · ⚠️ flaky*
+_Status: ⬜ pending · ✅ green · ❌ red · ⚠️ flaky_
 
 ---
 
@@ -53,17 +53,17 @@ created: 2026-03-03
 - [x] `tests/steps/workout_steps.rs` — update stubs for SUGG-01
 - [x] `tests/steps/library_steps.rs` — update stubs for CONF-03
 
-*If none: "Existing infrastructure covers all phase requirements."*
+_If none: "Existing infrastructure covers all phase requirements."_
 
 ---
 
 ## Manual-Only Verifications
 
-| Behavior | Requirement | Why Manual | Test Instructions |
-|----------|-------------|------------|-------------------|
-| File saving validation | CONF-01 | DB interactions in WASM | Verify database commits correctly via web UI |
+| Behavior               | Requirement | Why Manual              | Test Instructions                            |
+| ---------------------- | ----------- | ----------------------- | -------------------------------------------- |
+| File saving validation | CONF-01     | DB interactions in WASM | Verify database commits correctly via web UI |
 
-*If none: "All phase behaviors have automated verification."*
+_If none: "All phase behaviors have automated verification."_
 
 ---
 

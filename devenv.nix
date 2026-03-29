@@ -42,7 +42,7 @@ in {
 
   scripts = {
     build.exec = "dx bundle --web --release --debug-symbols=false";
-    format.exec = "cargo fmt";
+    format.exec = "cargo fmt && prettier --write .";
     lint.exec = "./scripts/lint.sh";
     ralph.exec = "./scripts/ralph.sh \"$@\"";
   };

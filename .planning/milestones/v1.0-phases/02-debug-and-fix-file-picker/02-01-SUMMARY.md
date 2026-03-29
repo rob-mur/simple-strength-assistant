@@ -9,7 +9,8 @@ dependency_graph:
   affects: [database-initialization, ui-flow]
 tech_stack:
   added: []
-  patterns: [user-gesture-activation, inline-initialization, stack-trace-capture]
+  patterns:
+    [user-gesture-activation, inline-initialization, stack-trace-capture]
 key_files:
   created: []
   modified:
@@ -19,7 +20,8 @@ key_files:
 decisions:
   - title: "Inline initialization after file selection"
     rationale: "Eliminated fragile error message string matching by continuing database initialization inline after successful file selection, instead of recalling setup_database"
-    alternatives: ["String matching on error messages", "State machine with more states"]
+    alternatives:
+      ["String matching on error messages", "State machine with more states"]
     selected: "Inline initialization"
   - title: "Added public setter methods to WorkoutState"
     rationale: "Required to allow UI button handler to store database and file manager after initialization"
@@ -42,12 +44,14 @@ metrics:
 Fixed file picker not appearing by ensuring showSaveFilePicker() is called from a user gesture (button click) instead of automatically during initialization. The File System Access API requires "transient user activation" (must be called within ~5 seconds of user interaction).
 
 ### Task 1: Stop auto-prompting for file in setup_database
+
 - Modified `WorkoutStateManager::setup_database()` to transition to SelectingFile state and return early when no cached handle exists
 - Removed automatic call to `prompt_for_file()` which was causing SecurityError due to lack of user gesture
 - Added console logs explaining user gesture requirement
 - **Commit:** `944d06f`
 
 ### Task 2: Add file selection button with inline initialization
+
 - Added "Select Database Location" button to SelectingFile UI state
 - Button onclick handler calls `prompt_for_file()` with user gesture context
 - Continues initialization inline after file selection (reads file, initializes database, sets state to Ready)
@@ -56,6 +60,7 @@ Fixed file picker not appearing by ensuring showSaveFilePicker() is called from 
 - **Commit:** `55394f0`
 
 ### Task 3: Add SecurityError and enhanced error logging
+
 - Added `SecurityError` variant to `FileSystemError` enum for user gesture violations
 - Enhanced error detection in `prompt_for_file()` to distinguish SecurityError, PermissionDenied, UserCancelled, and generic JsError
 - Added stack trace capture for all WASM-JS boundary errors (ERR-04 scope: file picker only)
@@ -65,6 +70,7 @@ Fixed file picker not appearing by ensuring showSaveFilePicker() is called from 
 ## Key Implementation Details
 
 ### User Gesture Flow
+
 1. App initialization calls `setup_database()`
 2. No cached handle → set state to SelectingFile, return early
 3. UI shows card with button: "Select Database Location"
@@ -77,6 +83,7 @@ Fixed file picker not appearing by ensuring showSaveFilePicker() is called from 
    - Sets state to Ready
 
 ### Error Detection Logic
+
 ```rust
 if error_lower.contains("securityerror") || error_lower.contains("user gesture") {
     web_sys::console::error_1(&"[FileSystem] CAUSE: File picker requires user gesture");
@@ -103,6 +110,7 @@ if error_lower.contains("securityerror") || error_lower.contains("user gesture")
 ## Testing Notes
 
 To verify the fix:
+
 1. Start development server: `dx serve --port 8080 --open false`
 2. Open browser to http://localhost:8080
 3. Open DevTools console (F12)
@@ -138,11 +146,13 @@ To verify the fix:
 ## Self-Check: PASSED
 
 All modified files exist:
+
 - [x] src/state/workout_state.rs
 - [x] src/app.rs
 - [x] src/state/file_system.rs
 
 All commits exist:
+
 - [x] 944d06f (Task 1)
 - [x] 55394f0 (Task 2)
 - [x] 59589d6 (Task 3)

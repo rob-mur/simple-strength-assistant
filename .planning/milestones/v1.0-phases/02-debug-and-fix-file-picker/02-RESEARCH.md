@@ -28,25 +28,28 @@ The implementation pattern uses: Rust calls JS functions via js_sys::Reflect →
 ## Standard Stack
 
 ### Core
-| Library | Version | Purpose | Why Standard |
-|---------|---------|---------|--------------|
-| wasm-bindgen | 0.2.106 | Rust-JS interop | Only mature solution for Rust WASM ↔ JS communication, handles Promise conversions, type marshalling |
-| wasm-bindgen-futures | 0.4 | Promise handling | Essential for async JS APIs (showSaveFilePicker returns Promise), integrates with Rust async/await |
-| js-sys | 0.3 | JS standard library | Provides Reflect API, Function, Object, Array types for dynamic JS calls when web-sys lacks bindings |
-| web-sys | 0.3 | Web APIs | Type-safe bindings to browser APIs, requires explicit features and web_sys_unstable_apis flag for File System Access |
+
+| Library              | Version | Purpose             | Why Standard                                                                                                         |
+| -------------------- | ------- | ------------------- | -------------------------------------------------------------------------------------------------------------------- |
+| wasm-bindgen         | 0.2.106 | Rust-JS interop     | Only mature solution for Rust WASM ↔ JS communication, handles Promise conversions, type marshalling                |
+| wasm-bindgen-futures | 0.4     | Promise handling    | Essential for async JS APIs (showSaveFilePicker returns Promise), integrates with Rust async/await                   |
+| js-sys               | 0.3     | JS standard library | Provides Reflect API, Function, Object, Array types for dynamic JS calls when web-sys lacks bindings                 |
+| web-sys              | 0.3     | Web APIs            | Type-safe bindings to browser APIs, requires explicit features and web_sys_unstable_apis flag for File System Access |
 
 ### Supporting
-| Library | Version | Purpose | When to Use |
-|---------|---------|---------|-------------|
-| console_error_panic_hook | Latest | Panic logging | Development only - routes Rust panics to browser console instead of cryptic WASM errors |
-| tracing-wasm | Via dioxus::logger | Log routing | Already used - bridges log::* calls to console.log/warn/error with proper formatting |
+
+| Library                  | Version            | Purpose       | When to Use                                                                             |
+| ------------------------ | ------------------ | ------------- | --------------------------------------------------------------------------------------- |
+| console_error_panic_hook | Latest             | Panic logging | Development only - routes Rust panics to browser console instead of cryptic WASM errors |
+| tracing-wasm             | Via dioxus::logger | Log routing   | Already used - bridges log::\* calls to console.log/warn/error with proper formatting   |
 
 ### Alternatives Considered
-| Instead of | Could Use | Tradeoff |
-|------------|-----------|----------|
-| js_sys::Reflect | web-sys with unstable flag | web-sys requires RUSTFLAGS=--cfg=web_sys_unstable_apis, adds build complexity but provides type safety |
-| Manual IndexedDB calls | gloo-storage only | gloo-storage can't persist FileSystemFileHandle (not serializable to JSON), need IndexedDB structured clone |
-| File System Access API | Download links (fallback) | Already implemented - use_fallback mode with LocalStorage, but loses persistent file access |
+
+| Instead of             | Could Use                  | Tradeoff                                                                                                    |
+| ---------------------- | -------------------------- | ----------------------------------------------------------------------------------------------------------- |
+| js_sys::Reflect        | web-sys with unstable flag | web-sys requires RUSTFLAGS=--cfg=web_sys_unstable_apis, adds build complexity but provides type safety      |
+| Manual IndexedDB calls | gloo-storage only          | gloo-storage can't persist FileSystemFileHandle (not serializable to JSON), need IndexedDB structured clone |
+| File System Access API | Download links (fallback)  | Already implemented - use_fallback mode with LocalStorage, but loses persistent file access                 |
 
 **Installation:**
 Already present in Cargo.toml. No additional dependencies needed.
@@ -54,7 +57,9 @@ Already present in Cargo.toml. No additional dependencies needed.
 ## Architecture Patterns
 
 ### Recommended Project Structure
+
 Current structure is appropriate:
+
 ```
 src/
 ├── state/
@@ -72,6 +77,7 @@ src/
 **When to use:** Every call to showSaveFilePicker() must originate from an event handler.
 
 **Example:**
+
 ```rust
 // CORRECT: Called from onclick handler
 rsx! {
@@ -104,6 +110,7 @@ use_effect(move || {
 **When to use:** After retrieving a handle from IndexedDB during app initialization.
 
 **Example:**
+
 ```rust
 pub async fn check_cached_handle(&mut self) -> Result<bool, FileSystemError> {
     let handle = retrieve_file_handle().await;
@@ -162,11 +169,12 @@ pub async fn check_cached_handle(&mut self) -> Result<bool, FileSystemError> {
 
 ### Pattern 3: Debugging WASM-JS Boundary Errors
 
-**What:** Browser DevTools console is the primary debugging tool for WASM apps. All JS errors, Rust log::* calls, and JsValue errors appear here.
+**What:** Browser DevTools console is the primary debugging tool for WASM apps. All JS errors, Rust log::\* calls, and JsValue errors appear here.
 
 **When to use:** Throughout debugging - console is your source of truth.
 
 **Example:**
+
 ```rust
 // Good error handling pattern (already in codebase)
 let promise = picker_fn.call1(&window, &options).map_err(|e| {
@@ -189,6 +197,7 @@ let promise = picker_fn.call1(&window, &options).map_err(|e| {
 ```
 
 **Browser DevTools tips:**
+
 - F12 → Console tab shows all logs
 - Filter by "FileSystem" or "DB" prefixes to track initialization
 - Check Network tab → Filter by "wasm" to verify WASM module loaded
@@ -205,12 +214,12 @@ let promise = picker_fn.call1(&window, &options).map_err(|e| {
 
 ## Don't Hand-Roll
 
-| Problem | Don't Build | Use Instead | Why |
-|---------|-------------|-------------|-----|
-| FileSystemFileHandle persistence | Manual serialization | IndexedDB structured clone (already implemented) | FileSystemFileHandle uses structured clone algorithm - IndexedDB handles it natively |
-| Permission prompts | Custom permission UI | Browser native queryPermission/requestPermission | Browser handles permission state, remembers user choices, can't be bypassed |
-| Fallback file storage | Custom file format | sql.js export + LocalStorage (already implemented) | sql.js provides standard SQLite format, LocalStorage is universal fallback |
-| Error message localization | Manual translations | Browser error messages | File System Access API errors come pre-localized from browser |
+| Problem                          | Don't Build          | Use Instead                                        | Why                                                                                  |
+| -------------------------------- | -------------------- | -------------------------------------------------- | ------------------------------------------------------------------------------------ |
+| FileSystemFileHandle persistence | Manual serialization | IndexedDB structured clone (already implemented)   | FileSystemFileHandle uses structured clone algorithm - IndexedDB handles it natively |
+| Permission prompts               | Custom permission UI | Browser native queryPermission/requestPermission   | Browser handles permission state, remembers user choices, can't be bypassed          |
+| Fallback file storage            | Custom file format   | sql.js export + LocalStorage (already implemented) | sql.js provides standard SQLite format, LocalStorage is universal fallback           |
+| Error message localization       | Manual translations  | Browser error messages                             | File System Access API errors come pre-localized from browser                        |
 
 **Key insight:** File System Access API is a security-sensitive API - browser handles permission UI, state persistence, and user choice memory. Don't try to work around it, work with it.
 
@@ -221,16 +230,19 @@ let promise = picker_fn.call1(&window, &options).map_err(|e| {
 **What goes wrong:** `showSaveFilePicker()` throws `SecurityError: Must be handling a user gesture to show a file picker.`
 
 **Why it happens:**
+
 - Called from use_effect/onMount without user interaction
 - Called after async operation that took > 4900ms (transient activation expired)
 - Called from setTimeout/interval (loses activation)
 
 **How to avoid:**
+
 - Only call from onclick/ontouch/onkeydown handlers
 - If async processing needed, call picker FIRST, get handle, THEN process
 - For initialization flow: Show UI with "Select Database" button instead of auto-prompting
 
 **Warning signs:**
+
 - Console error contains "SecurityError" and "user gesture"
 - File picker never appears, no permission prompt
 - Works when manually triggering but not on page load
@@ -242,21 +254,25 @@ let promise = picker_fn.call1(&window, &options).map_err(|e| {
 **What goes wrong:** Cached handle exists in IndexedDB, but operations fail with `NotAllowedError: User denied permission` even though user previously granted access.
 
 **Why it happens:**
+
 - Permission state degraded to "prompt" (browser restarted, time elapsed, site data cleared)
 - queryPermission() not called before using handle
 - requestPermission() requires user gesture but called without one
 
 **How to avoid:**
+
 - Always call queryPermission() after retrieving from IndexedDB
 - If state is "prompt", need user gesture to call requestPermission()
 - Show UI: "Database access requires permission" with button to re-prompt
 
 **Warning signs:**
+
 - File picker doesn't show, but handle exists
 - Console error: "NotAllowedError"
 - read_file() or write_file() fails immediately
 
 **Detection in code:**
+
 ```rust
 // Current code checks handle exists but not permission state
 if !handle.is_null() && !handle.is_undefined() {
@@ -274,16 +290,19 @@ if !handle.is_null() && !handle.is_undefined() {
 **Why it happens:** Firefox deliberately doesn't support File System Access API due to security philosophy differences. The is_file_system_api_supported() check should catch this, but error handling might not be user-friendly.
 
 **How to avoid:**
+
 - Already have fallback: `use_fallback` mode with LocalStorage
 - Ensure is_file_system_api_supported() properly detects Firefox
 - Show clear message: "Firefox doesn't support persistent file access, using browser storage"
 
 **Warning signs:**
+
 - TypeError: window.showSaveFilePicker is not a function
 - User reports work in Chrome but not Firefox
 - is_file_system_api_supported() returns false
 
 **Browser support:**
+
 - ✅ Chrome 86+
 - ✅ Edge 86+
 - ✅ Safari 15.4+
@@ -298,11 +317,13 @@ if !handle.is_null() && !handle.is_undefined() {
 **Why it happens:** File System Access API is not in web-sys stable API surface. Requires `RUSTFLAGS=--cfg=web_sys_unstable_apis`.
 
 **How to avoid:**
+
 - Current approach (js_sys::Reflect) doesn't need flag - works with JsValue
 - If migrating to typed web-sys: Create .cargo/config.toml with [build] rustflags = ["--cfg=web_sys_unstable_apis"]
 - Or stick with current js_sys::Reflect approach (more verbose but no build config)
 
 **Warning signs:**
+
 - cannot find type `FileSystemFileHandle` in crate `web_sys`
 - web-sys feature enabled in Cargo.toml but type doesn't exist
 - Works for other developers but not on your machine (different rustflags)
@@ -361,58 +382,59 @@ InitializationState::SelectingFile => {
 ```javascript
 // In file-handle-storage.js - Enhanced retrieveFileHandle with permission checking
 export async function retrieveFileHandle() {
-    try {
-        const db = await openDB();
-        const transaction = db.transaction(STORE_NAME, 'readonly');
-        const store = transaction.objectStore(STORE_NAME);
+  try {
+    const db = await openDB();
+    const transaction = db.transaction(STORE_NAME, "readonly");
+    const store = transaction.objectStore(STORE_NAME);
 
-        const handle = await new Promise((resolve, reject) => {
-            const request = store.get(HANDLE_KEY);
-            request.onsuccess = () => resolve(request.result);
-            request.onerror = () => reject(request.error);
-        });
+    const handle = await new Promise((resolve, reject) => {
+      const request = store.get(HANDLE_KEY);
+      request.onsuccess = () => resolve(request.result);
+      request.onerror = () => reject(request.error);
+    });
 
-        db.close();
+    db.close();
 
-        if (!handle) {
-            console.log('[FileHandleStorage] No handle in IndexedDB');
-            return null;
-        }
-
-        // CRITICAL: Check permission state
-        const options = { mode: 'readwrite' };
-        const permission = await handle.queryPermission(options);
-        console.log('[FileHandleStorage] Permission state:', permission);
-
-        if (permission === 'granted') {
-            return handle;
-        }
-
-        if (permission === 'prompt') {
-            // Chrome 122+ may auto-grant if user checked "Remember this choice"
-            console.log('[FileHandleStorage] Requesting permission...');
-            const requestedPermission = await handle.requestPermission(options);
-
-            if (requestedPermission === 'granted') {
-                return handle;
-            }
-
-            console.warn('[FileHandleStorage] Permission denied by user');
-            await clearFileHandle();
-            return null;
-        }
-
-        // permission === 'denied'
-        console.warn('[FileHandleStorage] Permission permanently denied, clearing handle');
-        await clearFileHandle();
-        return null;
-
-    } catch (error) {
-        console.error('[FileHandleStorage] Error retrieving handle:', error);
-        // Handle may be invalid (file deleted, drive disconnected, etc.)
-        await clearFileHandle();
-        return null;
+    if (!handle) {
+      console.log("[FileHandleStorage] No handle in IndexedDB");
+      return null;
     }
+
+    // CRITICAL: Check permission state
+    const options = { mode: "readwrite" };
+    const permission = await handle.queryPermission(options);
+    console.log("[FileHandleStorage] Permission state:", permission);
+
+    if (permission === "granted") {
+      return handle;
+    }
+
+    if (permission === "prompt") {
+      // Chrome 122+ may auto-grant if user checked "Remember this choice"
+      console.log("[FileHandleStorage] Requesting permission...");
+      const requestedPermission = await handle.requestPermission(options);
+
+      if (requestedPermission === "granted") {
+        return handle;
+      }
+
+      console.warn("[FileHandleStorage] Permission denied by user");
+      await clearFileHandle();
+      return null;
+    }
+
+    // permission === 'denied'
+    console.warn(
+      "[FileHandleStorage] Permission permanently denied, clearing handle",
+    );
+    await clearFileHandle();
+    return null;
+  } catch (error) {
+    console.error("[FileHandleStorage] Error retrieving handle:", error);
+    // Handle may be invalid (file deleted, drive disconnected, etc.)
+    await clearFileHandle();
+    return null;
+  }
 }
 ```
 
@@ -583,14 +605,15 @@ impl WorkoutStateManager {
 
 ## State of the Art
 
-| Old Approach | Current Approach | When Changed | Impact |
-|--------------|------------------|--------------|--------|
-| Download links with `<a download>` | File System Access API with persistent handles | Chrome 86 (Oct 2020) | Users can edit files in place without re-downloading/uploading |
-| Permission prompts every session | Persistent permissions (Chrome 122+) | Chrome 122 (Jan 2024) | Users can grant "remember this choice" to avoid repeated prompts |
-| web-sys requires experimental flag | Still requires `web_sys_unstable_apis` | Ongoing (2026) | File System Access API not in stable web-sys, use js_sys::Reflect as workaround |
-| Manual permission checking | Auto-retry with requestPermission() | Current best practice | Browsers can auto-grant if user previously chose persistent permission |
+| Old Approach                       | Current Approach                               | When Changed          | Impact                                                                          |
+| ---------------------------------- | ---------------------------------------------- | --------------------- | ------------------------------------------------------------------------------- |
+| Download links with `<a download>` | File System Access API with persistent handles | Chrome 86 (Oct 2020)  | Users can edit files in place without re-downloading/uploading                  |
+| Permission prompts every session   | Persistent permissions (Chrome 122+)           | Chrome 122 (Jan 2024) | Users can grant "remember this choice" to avoid repeated prompts                |
+| web-sys requires experimental flag | Still requires `web_sys_unstable_apis`         | Ongoing (2026)        | File System Access API not in stable web-sys, use js_sys::Reflect as workaround |
+| Manual permission checking         | Auto-retry with requestPermission()            | Current best practice | Browsers can auto-grant if user previously chose persistent permission          |
 
 **Deprecated/outdated:**
+
 - **FileSystem API (deprecated)**: Old Chrome-specific API with `window.requestFileSystem()` - replaced by File System Access API in 2020
 - **File and Directory Entries API**: Drag-and-drop focused API - File System Access supersedes it
 - **Assuming web-sys types available**: They're not without flag, current js_sys::Reflect approach is correct
@@ -620,6 +643,7 @@ impl WorkoutStateManager {
 ## Sources
 
 ### Primary (HIGH confidence)
+
 - [File System Access API Specification (WICG)](https://wicg.github.io/file-system-access/) - Official spec defining user gesture requirements, permission model
 - [MDN Window.showSaveFilePicker()](https://developer.mozilla.org/en-US/docs/Web/API/Window/showSaveFilePicker) - API documentation and browser compatibility
 - [MDN FileSystemHandle.queryPermission()](https://developer.mozilla.org/en-US/docs/Web/API/FileSystemHandle/queryPermission) - Permission checking API
@@ -629,18 +653,21 @@ impl WorkoutStateManager {
 - [Debugging WebAssembly 2020](https://developer.chrome.com/blog/wasm-debugging-2020) - Browser DevTools for WASM
 
 ### Secondary (MEDIUM confidence)
+
 - [Can I Use - showSaveFilePicker](https://caniuse.com/mdn-api_window_showsavefilepicker) - Browser compatibility data (verified with MDN)
 - [Medium: User Activation and Browser Protections](https://medium.com/@julianlannoo/unraveling-user-activation-and-browser-protections-5c229f61ec37) - Transient activation explanation
 - [Transloadit: Persistent File Handling](https://transloadit.com/devtips/persistent-file-handling-with-the-file-system-access-api/) - Practical implementation guide
 - [xjavascript.com: File System Access API Guide](https://www.xjavascript.com/blog/file-system-access-api-typescript/) - TypeScript examples applicable to JS integration
 
 ### Tertiary (LOW confidence - anecdotal)
+
 - [GitHub Issue: showSaveFilePicker not supported in Firefox](https://github.com/DavidNHill/JSMinesweeper/issues/11) - Community confirmation of Firefox lack of support
 - [GitHub Discussion: wasm-bindgen FileSystemDirectoryHandle](https://github.com/wasm-bindgen/wasm-bindgen/discussions/4054) - Example of js_sys::Reflect pattern
 
 ## Metadata
 
 **Confidence breakdown:**
+
 - Standard stack: HIGH - wasm-bindgen/js-sys are established, File System Access API is stable in Chrome/Edge/Safari
 - Architecture: HIGH - Current implementation pattern (js_sys::Reflect) is correct approach, verified by working code structure
 - Pitfalls: HIGH - All four pitfalls are documented issues with File System Access API, verified by official sources and error message patterns

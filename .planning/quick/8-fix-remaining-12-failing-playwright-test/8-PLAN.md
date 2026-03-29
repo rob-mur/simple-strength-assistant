@@ -55,6 +55,7 @@ Fix the remaining 12 failing Playwright E2E tests by addressing element visibili
 ## Test Infrastructure Context
 
 Quick task 7 established working E2E test infrastructure:
+
 - devenv chromium configured and working (6/18 tests passing)
 - E2E test mode implemented (auto-initialization, auto-session creation)
 - Webkit removed (eliminated 18 NixOS-incompatible tests)
@@ -65,7 +66,9 @@ Quick task 7 established working E2E test infrastructure:
 **12 failing tests** across 3 component suites:
 
 ### RPE Slider (6 failures)
+
 All tests fail at: `await expect(slider).toBeVisible()`
+
 - Element found: `<input type="range" ...>` exists in DOM
 - Issue: Element has "unexpected value 'hidden'" according to Playwright
 - Root cause: DaisyUI range styling may hide native input visually while keeping functionality
@@ -73,7 +76,9 @@ All tests fail at: `await expect(slider).toBeVisible()`
 - Component renders in: ActiveSession view only (not in StartSessionView)
 
 ### TapeMeasure (5 failures)
+
 All tests fail at: `await expect(tape).toBeVisible()`
+
 - Selector: `.tape-measure-container`
 - Issue: "element(s) not found"
 - Root cause: Component only renders in ActiveSession, tests may run before session created
@@ -81,7 +86,9 @@ All tests fail at: `await expect(tape).toBeVisible()`
 - Component renders in: ActiveSession view for Weight and Reps inputs
 
 ### StepControls (1 failure)
+
 Test: "multiple step sizes are available"
+
 - Selector: `button.btn-circle.text-success` and `button.btn-circle.text-error`
 - Issue: Similar to above - component not found/visible
 - Component location: `src/components/step_controls.rs`
@@ -90,6 +97,7 @@ Test: "multiple step sizes are available"
 ## E2E Test Mode (from task 7)
 
 The app detects Playwright via user agent and auto-initializes:
+
 - Skips file selection dialog
 - Creates in-memory database
 - **Should** create a test workout session automatically
@@ -115,6 +123,7 @@ Location: `src/state/workout_state.rs` (E2E test mode implementation)
 ## Key Insight
 
 Tests navigate to `/` and wait for `networkidle`, but:
+
 1. May not be waiting for WASM hydration to complete
 2. May not be waiting for test session to be created
 3. May not be waiting for ActiveSession view to render
@@ -126,7 +135,7 @@ Tests navigate to `/` and wait for `networkidle`, but:
 2. **Fix RPESlider visibility**: Use force option or wait for parent container instead of hidden input
 3. **Ensure session exists**: Add explicit check that session header is visible before testing components
 4. **Improve selector reliability**: Use more specific selectors that work with actual DOM structure
-</context>
+   </context>
 
 <tasks>
 
@@ -158,32 +167,37 @@ Update RPESlider tests to handle DaisyUI's range styling which visually hides th
    - `await page.waitForTimeout(500)` to allow WASM hydration
 
 **Why this works:**
+
 - DaisyUI's range component visually hides the native `<input>` using CSS (likely `opacity: 0` or `height: 0`)
 - The input still exists in DOM and is functional, but Playwright's `toBeVisible()` fails
 - Checking parent container or using `force: true` bypasses the visibility check while maintaining test validity
 - Waiting for session badge ensures ActiveSession view has fully rendered before interacting
 
 **Pattern to follow:**
+
 ```typescript
 // Before each test
-await page.goto('/');
-await page.waitForLoadState('networkidle');
-await page.waitForSelector('.badge.badge-primary.badge-lg', { state: 'visible', timeout: 10000 });
+await page.goto("/");
+await page.waitForLoadState("networkidle");
+await page.waitForSelector(".badge.badge-primary.badge-lg", {
+  state: "visible",
+  timeout: 10000,
+});
 await page.waitForTimeout(500); // WASM hydration
 
 // In tests
 const slider = page.locator('.rpe-slider-container input[type="range"]');
-const container = page.locator('.rpe-slider-container');
+const container = page.locator(".rpe-slider-container");
 await expect(container).toBeVisible(); // Check container, not hidden input
-await slider.fill('8', { force: true }); // Interact with force
+await slider.fill("8", { force: true }); // Interact with force
 ```
 
 Apply this pattern to all 6 RPESlider tests.
-  </action>
-  <verify>
-    <automated>devenv shell -c "npm run test:e2e -- tests/e2e/rpe_slider.spec.ts" 2>&1 | grep -E "6 passed|passed"</automated>
-  </verify>
-  <done>All 6 RPESlider tests pass - tests can interact with range input despite DaisyUI styling</done>
+</action>
+<verify>
+<automated>devenv shell -c "npm run test:e2e -- tests/e2e/rpe_slider.spec.ts" 2>&1 | grep -E "6 passed|passed"</automated>
+</verify>
+<done>All 6 RPESlider tests pass - tests can interact with range input despite DaisyUI styling</done>
 </task>
 
 <task type="auto">
@@ -195,21 +209,22 @@ Update TapeMeasure tests to properly wait for ActiveSession view and component r
 **Changes to make:**
 
 1. **Update beforeEach** to ensure ActiveSession with TapeMeasure is rendered:
+
    ```typescript
    test.beforeEach(async ({ page }) => {
-     await page.goto('/');
-     await page.waitForLoadState('networkidle');
+     await page.goto("/");
+     await page.waitForLoadState("networkidle");
 
      // Wait for ActiveSession to render (indicated by Set badge)
-     await page.waitForSelector('.badge.badge-primary.badge-lg', {
-       state: 'visible',
-       timeout: 10000
+     await page.waitForSelector(".badge.badge-primary.badge-lg", {
+       state: "visible",
+       timeout: 10000,
      });
 
      // Wait for TapeMeasure components to render (there are 2: Weight and Reps)
-     await page.waitForSelector('.tape-measure-container', {
-       state: 'visible',
-       timeout: 5000
+     await page.waitForSelector(".tape-measure-container", {
+       state: "visible",
+       timeout: 5000,
      });
 
      // Allow WASM hydration
@@ -232,17 +247,18 @@ Update TapeMeasure tests to properly wait for ActiveSession view and component r
    - Reps likely starts at 1
 
 **Why this works:**
+
 - E2E test mode (from task 7) creates a test session, but async timing means it may not be ready when tests run
 - Waiting for `.badge` ensures session exists
 - Waiting for `.tape-measure-container` ensures components have rendered
 - 500ms additional wait allows WASM event handlers to attach
 
 Apply these changes to all 5 TapeMeasure tests.
-  </action>
-  <verify>
-    <automated>devenv shell -c "npm run test:e2e -- tests/e2e/tapemeasure.spec.ts" 2>&1 | grep -E "5 passed|passed"</automated>
-  </verify>
-  <done>All 5 TapeMeasure tests pass - tests can locate and interact with SVG tape measure components</done>
+</action>
+<verify>
+<automated>devenv shell -c "npm run test:e2e -- tests/e2e/tapemeasure.spec.ts" 2>&1 | grep -E "5 passed|passed"</automated>
+</verify>
+<done>All 5 TapeMeasure tests pass - tests can locate and interact with SVG tape measure components</done>
 </task>
 
 <task type="auto">
@@ -254,21 +270,22 @@ Update StepControls tests to use same ActiveSession waiting strategy, then verif
 **Changes to make:**
 
 1. **Update beforeEach** (same pattern as TapeMeasure):
+
    ```typescript
    test.beforeEach(async ({ page }) => {
-     await page.goto('/');
-     await page.waitForLoadState('networkidle');
+     await page.goto("/");
+     await page.waitForLoadState("networkidle");
 
      // Wait for ActiveSession
-     await page.waitForSelector('.badge.badge-primary.badge-lg', {
-       state: 'visible',
-       timeout: 10000
+     await page.waitForSelector(".badge.badge-primary.badge-lg", {
+       state: "visible",
+       timeout: 10000,
      });
 
      // Wait for StepControls buttons to render
-     await page.waitForSelector('button.btn-circle', {
-       state: 'visible',
-       timeout: 5000
+     await page.waitForSelector("button.btn-circle", {
+       state: "visible",
+       timeout: 5000,
      });
 
      await page.waitForTimeout(500);
@@ -279,16 +296,17 @@ Update StepControls tests to use same ActiveSession waiting strategy, then verif
    - Current issue: Can't find increment/decrement buttons
    - Likely problem: Timing - buttons render after test starts
    - Solution: beforeEach wait handles this, but also add defensive check:
+
    ```typescript
-   test('multiple step sizes are available', async ({ page }) => {
+   test("multiple step sizes are available", async ({ page }) => {
      // Ensure buttons are present
-     await page.waitForSelector('button.btn-circle.text-success', {
-       state: 'visible',
-       timeout: 3000
+     await page.waitForSelector("button.btn-circle.text-success", {
+       state: "visible",
+       timeout: 3000,
      });
 
-     const incrementButtons = page.locator('button.btn-circle.text-success');
-     const decrementButtons = page.locator('button.btn-circle.text-error');
+     const incrementButtons = page.locator("button.btn-circle.text-success");
+     const decrementButtons = page.locator("button.btn-circle.text-error");
 
      const incrementCount = await incrementButtons.count();
      const decrementCount = await decrementButtons.count();
@@ -311,15 +329,16 @@ Update StepControls tests to use same ActiveSession waiting strategy, then verif
    - If any failures remain, check test output for specific error messages
 
 **Success criteria:**
+
 - All 6 StepControls tests pass
 - Full suite: 18/18 tests pass
 - CI pipeline can run E2E tests successfully
   </action>
   <verify>
-    <automated>devenv shell ci-test 2>&1 | grep -E "18 passed" || (devenv shell -c "npm run test:e2e" 2>&1 | tail -50)</automated>
+  <automated>devenv shell ci-test 2>&1 | grep -E "18 passed" || (devenv shell -c "npm run test:e2e" 2>&1 | tail -50)</automated>
   </verify>
   <done>All 18 Playwright E2E tests pass consistently - CI pipeline E2E testing fully functional</done>
-</task>
+  </task>
 
 </tasks>
 
@@ -327,16 +346,20 @@ Update StepControls tests to use same ActiveSession waiting strategy, then verif
 After all tasks complete:
 
 1. **Run full CI test suite:**
+
    ```bash
    devenv shell ci-test
    ```
+
    Expected output: "18 passed" for Playwright tests
 
 2. **Verify no flakiness:**
    Run tests 3 times to ensure consistency:
+
    ```bash
    for i in {1..3}; do devenv shell -c "npm run test:e2e" 2>&1 | grep "passed"; done
    ```
+
    All runs should show "18 passed"
 
 3. **Check specific test output:**
@@ -347,16 +370,17 @@ After all tasks complete:
 
 4. **Verify CI compatibility:**
    Tests should work in both local devenv and CI environment (both use same chromium path)
-</verification>
+   </verification>
 
 <success_criteria>
+
 - All 18 Playwright E2E tests pass using devenv chromium
 - No "element not found" errors for TapeMeasure or StepControls
 - No "unexpected value 'hidden'" errors for RPESlider
 - Tests are stable and non-flaky (pass consistently on multiple runs)
 - CI pipeline can successfully run all E2E tests
 - Test output clearly shows "18 passed" with no failures
-</success_criteria>
+  </success_criteria>
 
 <output>
 After completion, create `.planning/quick/8-fix-remaining-12-failing-playwright-test/8-SUMMARY.md`

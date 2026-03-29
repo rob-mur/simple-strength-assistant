@@ -62,17 +62,19 @@ The InMemoryStorage Rust implementation is correct - the issue is on the JavaScr
 ## Current Test Failure Pattern
 
 All 18 tests timeout at the same point:
+
 ```
 Error: page.fill: Test timeout of 30000ms exceeded.
 await page.fill('input[placeholder="Exercise Name"]', 'Test Bench Press');
 ```
 
 This happens because:
+
 - Tests click "Create New Database"
 - BeforeEach tries to create fresh session
 - But app loads with existing "Bench Press" session from previous test
 - Input field never appears (ActiveSession view is showing instead of SessionPicker)
-</context>
+  </context>
 
 <tasks>
 
@@ -83,43 +85,44 @@ This happens because:
 Modify the `initDatabase` function to close and clear any existing database before creating a new one.
 
 Add cleanup at the start of initDatabase (line 18):
+
 ```javascript
 export async function initDatabase(fileData) {
-    try {
-        await ensureSQLLoaded();
+  try {
+    await ensureSQLLoaded();
 
-        // CRITICAL: Close existing database to ensure test isolation
-        // Without this, tests share state and see data from previous tests
-        if (db) {
-            try {
-                db.close();
-            } catch (e) {
-                console.warn('Failed to close existing database:', e);
-            }
-            db = null;
-        }
-
-        if (fileData && fileData.length > 0) {
-            const uint8Array = new Uint8Array(fileData);
-            db = new SQL.Database(uint8Array);
-        } else {
-            db = new SQL.Database();
-        }
-
-        return true;
-    } catch (error) {
-        console.error('Failed to initialize database:', error);
-        return false;
+    // CRITICAL: Close existing database to ensure test isolation
+    // Without this, tests share state and see data from previous tests
+    if (db) {
+      try {
+        db.close();
+      } catch (e) {
+        console.warn("Failed to close existing database:", e);
+      }
+      db = null;
     }
+
+    if (fileData && fileData.length > 0) {
+      const uint8Array = new Uint8Array(fileData);
+      db = new SQL.Database(uint8Array);
+    } else {
+      db = new SQL.Database();
+    }
+
+    return true;
+  } catch (error) {
+    console.error("Failed to initialize database:", error);
+    return false;
+  }
 }
 ```
 
 This ensures each call to initDatabase creates a completely fresh database instance with no residual data.
-  </action>
-  <verify>
-    <automated>./scripts/ci-test.sh 2>&1 | grep -E "(passed|failed)" | tail -5</automated>
-  </verify>
-  <done>initDatabase properly closes old database before creating new one, preventing test contamination</done>
+</action>
+<verify>
+<automated>./scripts/ci-test.sh 2>&1 | grep -E "(passed|failed)" | tail -5</automated>
+</verify>
+<done>initDatabase properly closes old database before creating new one, preventing test contamination</done>
 </task>
 
 <task type="auto">
@@ -140,40 +143,43 @@ Update the beforeEach pattern in all three files:
 test.beforeEach(async ({ page, context }) => {
   // Force fresh context by clearing storage
   await context.clearCookies();
-  await page.goto('/');
+  await page.goto("/");
   await page.evaluate(() => localStorage.clear());
-  await page.waitForLoadState('networkidle');
+  await page.waitForLoadState("networkidle");
 
   // Real user flow: Click "Create New Database" and wait for DB init
-  await page.click('text=Create New Database');
-  await page.waitForLoadState('networkidle');
+  await page.click("text=Create New Database");
+  await page.waitForLoadState("networkidle");
   await page.waitForTimeout(200); // Ensure DB initialization completes
 
   // If there's already an active session, finish it first
-  const finishButton = page.locator('text=Finish Workout Session');
+  const finishButton = page.locator("text=Finish Workout Session");
   if (await finishButton.isVisible({ timeout: 3000 }).catch(() => false)) {
     await finishButton.click();
-    await page.waitForLoadState('networkidle');
+    await page.waitForLoadState("networkidle");
   }
 
   // Start a workout session
-  await page.click('text=Start Session');
-  await page.waitForLoadState('networkidle');
+  await page.click("text=Start Session");
+  await page.waitForLoadState("networkidle");
 
   // Fill in exercise name
-  await page.fill('input[placeholder="Exercise Name"]', 'Test Bench Press');
+  await page.fill('input[placeholder="Exercise Name"]', "Test Bench Press");
 
   // Select "Weighted" exercise type
-  await page.click('text=Weighted');
+  await page.click("text=Weighted");
 
   // Submit the form
   await page.click('button:has-text("Start Workout")');
 
   // Wait for ActiveSession to render with component
-  await page.waitForSelector('.tape-measure-container, .rpe-slider-container, .step-controls-container', {
-    state: 'visible',
-    timeout: 10000
-  });
+  await page.waitForSelector(
+    ".tape-measure-container, .rpe-slider-container, .step-controls-container",
+    {
+      state: "visible",
+      timeout: 10000,
+    },
+  );
 
   // Allow WASM hydration and event handlers to attach
   await page.waitForTimeout(500);
@@ -181,16 +187,17 @@ test.beforeEach(async ({ page, context }) => {
 ```
 
 Note: The selector patterns differ slightly per file:
+
 - tapemeasure.spec.ts: `.tape-measure-container`
 - rpe_slider.spec.ts: `.rpe-slider-container` (or similar)
 - step_controls.spec.ts: `.step-controls-container` (or similar)
 
 Check each file for the exact selector used in the existing code.
-  </action>
-  <verify>
-    <automated>./scripts/ci-test.sh 2>&1 | tail -30</automated>
-  </verify>
-  <done>All 18 E2E tests pass consistently with improved timing and test isolation</done>
+</action>
+<verify>
+<automated>./scripts/ci-test.sh 2>&1 | tail -30</automated>
+</verify>
+<done>All 18 E2E tests pass consistently with improved timing and test isolation</done>
 </task>
 
 </tasks>
@@ -202,23 +209,26 @@ Run full CI test suite to verify all tests pass:
 ```
 
 Expected output:
+
 - Cargo tests: 34/34 passing
 - BDD tests: 9 scenarios/38 steps passing
 - E2E tests: 18/18 passing
 
 If any E2E tests still fail, check:
+
 1. Browser console for database initialization errors
 2. Test output for specific timeout/selector issues
 3. Whether test-serve process is using test-mode feature
-</verification>
+   </verification>
 
 <success_criteria>
+
 - [ ] public/db-module.js closes existing database before creating new one
 - [ ] All three E2E test files have optimized beforeEach timing
 - [ ] ./scripts/ci-test.sh shows 18/18 E2E tests passing
 - [ ] No test contamination (each test sees fresh database state)
 - [ ] Tests can run in parallel without interference
-</success_criteria>
+      </success_criteria>
 
 <output>
 After completion, create `.planning/quick/9-task-9/9-SUMMARY.md` documenting:

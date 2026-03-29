@@ -27,7 +27,6 @@ runs:
       run: |
         nix profile install github:cachix/devenv/v2.0.5
 
-
     - name: setup path
       shell: bash
       run: devenv shell printenv PATH >> $GITHUB_PATH

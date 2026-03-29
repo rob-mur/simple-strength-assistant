@@ -58,12 +58,14 @@ metrics:
 ### Task 1: Add Chromium to devenv.nix packages and set Playwright environment ✓
 
 **Changes:**
+
 1. Added `chromium` to devenv.nix packages list
 2. Configured environment variable: `CHROMIUM_EXECUTABLE_PATH = "${pkgs.chromium}/bin/chromium"`
 3. Set `PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD = "1"` to prevent browser download attempts
 4. Updated playwright.config.ts to use `process.env.CHROMIUM_EXECUTABLE_PATH` as executablePath when available
 
 **Verification:** PASS
+
 - chromium package present in devenv.nix
 - Environment variable configured
 - Playwright config supports custom executable path
@@ -74,17 +76,20 @@ metrics:
 
 **Refinement Applied:**
 After initial configuration issues, user clarified the correct approach:
+
 1. Use `CHROMIUM_EXECUTABLE_PATH` (cleaner naming) instead of `PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH`
 2. Configure Playwright's `launchOptions.executablePath` directly from this environment variable
 3. Let Playwright skip its own browser installation logic entirely
 
 **Implementation:**
+
 1. Updated devenv.nix: `CHROMIUM_EXECUTABLE_PATH = "${pkgs.chromium}/bin/chromium"`
 2. Updated playwright.config.ts: Both projects (chromium and Mobile Safari) use the env var for executablePath
 3. Reloaded devenv shell to pick up new environment variables
 4. Tested Playwright execution
 
 **Results:**
+
 ```
 Running 36 tests using 8 workers
   30 failed
@@ -92,6 +97,7 @@ Running 36 tests using 8 workers
 ```
 
 **Success Criteria Met:**
+
 - Playwright launches successfully with devenv chromium
 - No browser download errors
 - No library path errors
@@ -99,6 +105,7 @@ Running 36 tests using 8 workers
 - ci-test.sh runs to completion with Playwright tests
 
 **Key Success Indicators:**
+
 - Browser starts: "Running 36 tests using 8 workers"
 - Tests execute across both projects (chromium and Mobile Safari)
 - No "Executable doesn't exist" errors
@@ -111,6 +118,7 @@ Running 36 tests using 8 workers
 ### Auto-fixed Issues
 
 **1. [Rule 2 - Missing Critical Functionality] Added Playwright config executable path support**
+
 - **Found during:** Task 1
 - **Issue:** playwright.config.ts had no mechanism to use custom browser executable
 - **Fix:** Added conditional launchOptions.executablePath configuration based on environment variable
@@ -119,6 +127,7 @@ Running 36 tests using 8 workers
 - **Commit:** 195c3d7
 
 **2. [Rule 1 - Bug] Incorrect environment variable naming**
+
 - **Found during:** Task 2 verification
 - **Issue:** Used PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH instead of simpler CHROMIUM_EXECUTABLE_PATH
 - **Fix:** Renamed environment variable to CHROMIUM_EXECUTABLE_PATH and updated playwright.config.ts references
@@ -129,6 +138,7 @@ Running 36 tests using 8 workers
 ## Current State
 
 **What Works:**
+
 - Chromium package integrated into devenv
 - Environment variables properly configured
 - Playwright successfully uses devenv-provided chromium
@@ -137,24 +147,28 @@ Running 36 tests using 8 workers
 - No browser installation or dependency errors
 
 **What Needs Attention:**
+
 - 30 E2E tests failing due to test logic issues (components not rendering as expected)
 - Test failures are NOT related to chromium/browser configuration
 - Failures appear to be CSS selector mismatches or component state issues
 - These are test correctness issues, not infrastructure issues
 
 **Files Modified:**
+
 - `/home/rob/repos/simple-strength-assistant/devenv.nix` - Added chromium package and CHROMIUM_EXECUTABLE_PATH
 - `/home/rob/repos/simple-strength-assistant/playwright.config.ts` - Added executable path configuration for both projects
 
 ## Verification Results
 
 ### Environment Variables (devenv shell)
+
 ```
 CHROMIUM_EXECUTABLE_PATH=/nix/store/n6sw26zmrqy48rip0akg2kf2lwhrq059-chromium-143.0.7499.169/bin/chromium
 PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD=1
 ```
 
 ### Playwright Execution
+
 ```
 Running 36 tests using 8 workers
   30 failed
@@ -162,6 +176,7 @@ Running 36 tests using 8 workers
 ```
 
 ### CI Test Script
+
 - Cargo tests: PASS (34 tests)
 - Playwright tests: EXECUTE (6 pass, 30 fail on test logic)
 - Script completion: SUCCESS
@@ -169,6 +184,7 @@ Running 36 tests using 8 workers
 ## Success Criteria
 
 All criteria met:
+
 - [x] devenv.nix includes chromium package
 - [x] Environment variable CHROMIUM_EXECUTABLE_PATH is set
 - [x] PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD prevents download attempts
@@ -178,6 +194,7 @@ All criteria met:
 ## Next Steps
 
 **Immediate:**
+
 1. Investigate E2E test failures (30 tests) - likely CSS selector or component rendering issues
 2. Fix test logic to match actual component structure
 3. Update STATE.md to reflect E2E test capability now available in NixOS
@@ -190,22 +207,28 @@ Create a follow-up quick task to fix the 30 failing E2E tests. The infrastructur
 Verifying documented commits and files...
 
 **Commit 195c3d7:**
+
 ```bash
 git log --oneline --all | grep 195c3d7
 ```
+
 Result: FOUND - feat(quick-6): add Chromium to devenv for Playwright browser support
 
 **Commit 213fcf4:**
+
 ```bash
 git log --oneline --all | grep 213fcf4
 ```
+
 Result: FOUND - fix(quick-6): use CHROMIUM_EXECUTABLE_PATH for devenv chromium integration
 
 **Modified Files:**
+
 ```bash
 ls -la /home/rob/repos/simple-strength-assistant/devenv.nix
 ls -la /home/rob/repos/simple-strength-assistant/playwright.config.ts
 ```
+
 Result: Both files exist and contain expected modifications
 
 ## Self-Check: PASSED

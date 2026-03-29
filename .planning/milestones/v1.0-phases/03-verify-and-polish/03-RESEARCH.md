@@ -14,36 +14,40 @@ What remains is comprehensive end-to-end verification to ensure: (1) File handle
 
 ## Phase Requirements
 
-| ID | Description | Research Support |
-|----|-------------|-----------------|
-| DB-03 | Selected file handle persists across browser sessions | IndexedDB structured clone for FileSystemFileHandle persistence (already implemented in file-handle-storage.js), queryPermission/requestPermission workflow in retrieveFileHandle (Phase 2), manual testing required to verify cross-refresh behavior |
-| DB-05 | Database initialization completes successfully after file selection | sql.js initialization with file data (db-module.js), Database::init with table creation (db.rs), inline initialization after file selection (app.rs lines 106-119), error handling throughout chain, manual testing of success path |
-| DB-06 | LocalStorage fallback works when API unavailable | is_file_system_api_supported() check (file_system.rs line 87), use_fallback_storage() implementation (line 253), read_from_fallback/write_to_fallback (lines 323-379), LocalStorage via gloo-storage, Firefox/Safari private mode testing required |
-| ERR-03 | File format validation errors are surfaced to user | SQLite magic number validation in read_file() returns FileSystemError::InvalidFormat (file_system.rs line 317), needs user-friendly error message mapping in UI error state (app.rs lines 149-202), currently returns technical error string |
+| ID     | Description                                                         | Research Support                                                                                                                                                                                                                                      |
+| ------ | ------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| DB-03  | Selected file handle persists across browser sessions               | IndexedDB structured clone for FileSystemFileHandle persistence (already implemented in file-handle-storage.js), queryPermission/requestPermission workflow in retrieveFileHandle (Phase 2), manual testing required to verify cross-refresh behavior |
+| DB-05  | Database initialization completes successfully after file selection | sql.js initialization with file data (db-module.js), Database::init with table creation (db.rs), inline initialization after file selection (app.rs lines 106-119), error handling throughout chain, manual testing of success path                   |
+| DB-06  | LocalStorage fallback works when API unavailable                    | is_file_system_api_supported() check (file_system.rs line 87), use_fallback_storage() implementation (line 253), read_from_fallback/write_to_fallback (lines 323-379), LocalStorage via gloo-storage, Firefox/Safari private mode testing required    |
+| ERR-03 | File format validation errors are surfaced to user                  | SQLite magic number validation in read_file() returns FileSystemError::InvalidFormat (file_system.rs line 317), needs user-friendly error message mapping in UI error state (app.rs lines 149-202), currently returns technical error string          |
 
 ## Standard Stack
 
 ### Core
-| Library | Version | Purpose | Why Standard |
-|---------|---------|---------|--------------|
-| wasm-bindgen-test | 0.3 | WASM test runner | Only mature solution for running Rust WASM tests in browser environment, integrates with cargo test |
-| gloo-storage | 0.3 | LocalStorage wrapper | Already in use, provides type-safe LocalStorage/SessionStorage access with Serde integration |
-| IndexedDB API | Native | Persistent storage | Browser native structured storage, required for FileSystemFileHandle persistence (can't be JSON serialized) |
+
+| Library           | Version | Purpose              | Why Standard                                                                                                |
+| ----------------- | ------- | -------------------- | ----------------------------------------------------------------------------------------------------------- |
+| wasm-bindgen-test | 0.3     | WASM test runner     | Only mature solution for running Rust WASM tests in browser environment, integrates with cargo test         |
+| gloo-storage      | 0.3     | LocalStorage wrapper | Already in use, provides type-safe LocalStorage/SessionStorage access with Serde integration                |
+| IndexedDB API     | Native  | Persistent storage   | Browser native structured storage, required for FileSystemFileHandle persistence (can't be JSON serialized) |
 
 ### Supporting
-| Library | Version | Purpose | When to Use |
-|---------|---------|---------|-------------|
-| web-sys::console | 0.3 | Browser console logging | Already used extensively - log testing checkpoints for manual verification |
-| LocalStorage | Native (via gloo) | Fallback storage | Already implemented - verify it activates in unsupported browsers (Firefox, Safari private mode) |
+
+| Library          | Version           | Purpose                 | When to Use                                                                                      |
+| ---------------- | ----------------- | ----------------------- | ------------------------------------------------------------------------------------------------ |
+| web-sys::console | 0.3               | Browser console logging | Already used extensively - log testing checkpoints for manual verification                       |
+| LocalStorage     | Native (via gloo) | Fallback storage        | Already implemented - verify it activates in unsupported browsers (Firefox, Safari private mode) |
 
 ### Testing Strategy
-| Test Type | Implementation | Coverage |
-|-----------|----------------|----------|
-| Unit tests | wasm-bindgen-test (already exists) | Database operations (db_tests.rs), FileSystem fallback (file_system_tests.rs) - 35 existing tests |
-| Integration tests | Manual browser testing | End-to-end initialization flow, permission persistence, cross-session scenarios |
-| Browser compatibility | Manual testing matrix | Chrome (File System API), Firefox (LocalStorage fallback), Safari (File System API), Edge (File System API) |
+
+| Test Type             | Implementation                     | Coverage                                                                                                    |
+| --------------------- | ---------------------------------- | ----------------------------------------------------------------------------------------------------------- |
+| Unit tests            | wasm-bindgen-test (already exists) | Database operations (db_tests.rs), FileSystem fallback (file_system_tests.rs) - 35 existing tests           |
+| Integration tests     | Manual browser testing             | End-to-end initialization flow, permission persistence, cross-session scenarios                             |
+| Browser compatibility | Manual testing matrix              | Chrome (File System API), Firefox (LocalStorage fallback), Safari (File System API), Edge (File System API) |
 
 **Note:** Existing test files demonstrate wasm-bindgen-test patterns. Phase 3 testing is primarily **manual browser testing** because:
+
 1. Browser refresh scenarios can't be automated with wasm-bindgen-test (loses test context)
 2. IndexedDB/LocalStorage state persistence requires cross-session verification
 3. Permission dialog interactions require manual user action
@@ -52,6 +56,7 @@ What remains is comprehensive end-to-end verification to ensure: (1) File handle
 ## Architecture Patterns
 
 ### Current Test Structure
+
 ```
 src/state/
 ├── db_tests.rs              # 14 wasm-bindgen tests for Database (lines 1-278)
@@ -64,14 +69,17 @@ src/state/
 **What:** Systematic manual verification of end-to-end flows that involve browser-level state, permissions, and cross-session behavior.
 
 **When to use:** Testing features that involve:
+
 - Browser refresh/reload (lose WASM instance state)
 - IndexedDB persistence (cross-session)
 - Permission dialogs (require user interaction)
 - Browser-specific APIs (File System Access vs fallback)
 
 **Example Test Checklist:**
+
 ```markdown
 ## Test 1: First-time File Selection
+
 1. Open app in fresh browser profile (no cached data)
 2. Verify: Shows "Select Database Location" button
 3. Click button
@@ -81,12 +89,14 @@ src/state/
 7. Verify: UI transitions to Ready state (shows "Start New Workout Session")
 
 ## Test 2: Browser Refresh with Cached Handle
+
 1. After Test 1 completion, press F5 (refresh)
 2. Verify: Console logs "[FileHandleStorage] Permission state: granted"
 3. Verify: No button shown, auto-initializes to Ready state
 4. Verify: Can start workout session without re-selecting file
 
 ## Test 3: Permission Expired (Restart Browser)
+
 1. After Test 1, close browser completely
 2. Reopen browser, navigate to app
 3. Verify: Console logs "[FileHandleStorage] Permission state: prompt"
@@ -95,6 +105,7 @@ src/state/
 6. Verify: Returns to Ready state with same file
 
 ## Test 4: Invalid File Format
+
 1. Start fresh session
 2. Click "Select Database Location"
 3. Select non-SQLite file (e.g., .txt, .json)
@@ -103,6 +114,7 @@ src/state/
 6. Verify: Can click "Retry" to try again
 
 ## Test 5: LocalStorage Fallback (Firefox)
+
 1. Open app in Firefox (no File System Access API)
 2. Verify: Console logs "[FileSystem] Using fallback storage"
 3. Verify: No file picker, auto-initializes to Ready state
@@ -122,6 +134,7 @@ src/state/
 **Enhancement needed:** Context-aware error messages with recovery instructions.
 
 **Example Enhancement:**
+
 ```rust
 // In app.rs - Error state UI enhancement
 InitializationState::Error => {
@@ -172,6 +185,7 @@ InitializationState::Error => {
 **Enhancement needed:** Inform users about storage location and limitations.
 
 **Example Enhancement:**
+
 ```rust
 // After successful initialization in Ready state
 if let Some(file_manager) = workout_state.file_manager() {
@@ -198,12 +212,12 @@ if let Some(file_manager) = workout_state.file_manager() {
 
 ## Don't Hand-Roll
 
-| Problem | Don't Build | Use Instead | Why |
-|---------|-------------|-------------|-----|
-| Browser test automation | Custom Selenium/Playwright setup | Manual testing checklist | Cross-session scenarios, permission dialogs, and IndexedDB persistence aren't reliably automatable for WASM apps; manual testing is more effective |
-| Error message templating | Complex error message engine | Pattern matching on error strings | Only 4-5 error types to handle, simple match expression is clearer than abstraction |
-| Storage backend abstraction | Generic storage trait with multiple backends | Current direct implementation | Only two storage modes (File System API vs LocalStorage), abstraction adds complexity without benefit |
-| Database format validation | Custom file format parser | SQLite magic number check (16 bytes) | Already implemented, catches 99% of invalid files instantly, sql.js handles deeper validation |
+| Problem                     | Don't Build                                  | Use Instead                          | Why                                                                                                                                                |
+| --------------------------- | -------------------------------------------- | ------------------------------------ | -------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Browser test automation     | Custom Selenium/Playwright setup             | Manual testing checklist             | Cross-session scenarios, permission dialogs, and IndexedDB persistence aren't reliably automatable for WASM apps; manual testing is more effective |
+| Error message templating    | Complex error message engine                 | Pattern matching on error strings    | Only 4-5 error types to handle, simple match expression is clearer than abstraction                                                                |
+| Storage backend abstraction | Generic storage trait with multiple backends | Current direct implementation        | Only two storage modes (File System API vs LocalStorage), abstraction adds complexity without benefit                                              |
+| Database format validation  | Custom file format parser                    | SQLite magic number check (16 bytes) | Already implemented, catches 99% of invalid files instantly, sql.js handles deeper validation                                                      |
 
 **Key insight:** Phase 3 is about verification and polish, not building new abstractions. Focus on testing thoroughness and UX refinement rather than architectural changes.
 
@@ -214,24 +228,28 @@ if let Some(file_manager) = workout_state.file_manager() {
 **What goes wrong:** File handle appears to persist, but browser clears IndexedDB in certain scenarios (private mode, quota exceeded, user clearing site data).
 
 **Why it happens:**
+
 - IndexedDB has storage quotas (varies by browser)
 - Private/incognito mode may not persist across browser restarts
 - User can clear site data via browser settings
 - Browser may evict data if storage pressure is high
 
 **How to avoid:**
+
 - Test in private/incognito mode explicitly
 - Handle retrieveFileHandle() returning null gracefully
 - Always check permission state even when handle exists
 - Show clear UI when handle is lost: "Database connection lost, please re-select file"
 
 **Warning signs:**
+
 - Works in normal mode, fails in private mode
 - Works initially, fails after browser restart
 - Console shows "No handle in IndexedDB" on second session
 - Permission check returns null despite previous selection
 
 **Detection in code:**
+
 ```rust
 // In workout_state.rs setup_database
 let has_cached = file_manager.check_cached_handle().await
@@ -254,12 +272,14 @@ if !has_cached {
 **What goes wrong:** App works perfectly when everything succeeds, but crashes or shows cryptic errors when user cancels dialogs, selects wrong files, or loses permissions.
 
 **Why it happens:**
+
 - Happy path is easy to test (click button, select file, done)
 - Error paths require deliberate effort to trigger
 - Developers test with correct files, users test with anything
 - Permission errors only occur in cross-session scenarios
 
 **How to avoid:**
+
 - Explicitly test each error scenario in checklist
 - Test with intentionally wrong files (.txt, .json, empty file)
 - Test cancellation at every dialog
@@ -267,12 +287,14 @@ if !has_cached {
 - Test with file on disconnected drive (if applicable)
 
 **Warning signs:**
+
 - Panic on file selection cancellation
 - "Unknown error" displayed for common issues
 - Console errors but UI doesn't update
 - Retry button doesn't actually retry
 
 **Test coverage checklist:**
+
 ```markdown
 ❌ User clicks "Select Database Location" then cancels → Should stay in SelectingFile state
 ❌ User selects .txt file → Should show "not a valid SQLite database" error
@@ -287,12 +309,14 @@ if !has_cached {
 **What goes wrong:** App works perfectly in Chrome/Edge, completely fails or behaves differently in Firefox because fallback storage path is untested.
 
 **Why it happens:**
+
 - Developers primarily test in Chrome (most common browser for web dev)
 - Firefox doesn't support File System Access API → different code path
 - LocalStorage has different characteristics than file handles
 - No file picker in Firefox → different initialization flow
 
 **How to avoid:**
+
 - Test in Firefox explicitly (download Firefox if needed)
 - Verify console shows "[FileSystem] Using fallback storage"
 - Confirm data persists across refresh in Firefox
@@ -300,14 +324,17 @@ if !has_cached {
 - Verify no file picker UI appears in Firefox (should auto-initialize)
 
 **Warning signs:**
+
 - TypeError: window.showSaveFilePicker is not a function
 - Firefox shows loading spinner forever
 - Data doesn't persist in Firefox but works in Chrome
 - Different UI flow in Firefox vs Chrome
 
 **Firefox-specific testing:**
+
 ```markdown
 ## Firefox Test Suite
+
 1. Open app in Firefox
 2. Verify: No file picker button (fallback auto-activates)
 3. Verify: Console logs "[FileSystem] Using fallback storage"
@@ -323,24 +350,28 @@ if !has_cached {
 **What goes wrong:** User selects non-SQLite file, gets cryptic sql.js error instead of clear message about file format.
 
 **Why it happens:**
+
 - read_file() validates SQLite magic number → returns InvalidFormat error
 - Error bubbles up to UI as technical string
 - No user-friendly error message mapping
 - User doesn't understand what "SQLite format 3" means
 
 **How to avoid:**
+
 - Check for FileSystemError::InvalidFormat specifically
 - Show clear message: "Please select a .sqlite or .db file"
 - Offer to create new file instead of selecting existing
 - Don't expose technical details (magic numbers, format specs)
 
 **Warning signs:**
+
 - User reports "selected file but got error"
 - Error message mentions "SQLite format 3" (too technical)
 - No guidance on how to fix the issue
 - User repeatedly selects wrong file type
 
 **Current validation (file_system.rs lines 313-318):**
+
 ```rust
 // Validate SQLite format if file is not empty
 if !buffer.is_empty()
@@ -352,6 +383,7 @@ if !buffer.is_empty()
 ```
 
 **Needs user-friendly handling in app.rs:**
+
 ```rust
 Err(e) if e.to_string().contains("not a valid SQLite database") => {
     WorkoutStateManager::handle_error(&workout_state,
@@ -370,6 +402,7 @@ Err(e) if e.to_string().contains("not a valid SQLite database") => {
 # Phase 3: End-to-End Verification Test Suite
 
 ## Prerequisites
+
 - Chrome/Edge (latest)
 - Firefox (latest)
 - Clean browser profile (or use incognito)
@@ -379,8 +412,10 @@ Err(e) if e.to_string().contains("not a valid SQLite database") => {
 ### DB-03: Handle Persistence Across Refresh
 
 #### Test 3.1: Normal Refresh with Granted Permission
+
 **Setup:** Fresh browser, no cached data
 **Steps:**
+
 1. Navigate to app
 2. Click "Select Database Location"
 3. Create/select "test-db.sqlite"
@@ -389,6 +424,7 @@ Err(e) if e.to_string().contains("not a valid SQLite database") => {
 6. Press F5 (refresh page)
 
 **Expected:**
+
 - Console logs: "[FileHandleStorage] Permission state: granted"
 - No file selection button shown
 - Auto-initializes to Ready state
@@ -401,14 +437,17 @@ Err(e) if e.to_string().contains("not a valid SQLite database") => {
 ---
 
 #### Test 3.2: Browser Restart with Permission Prompt
+
 **Setup:** After Test 3.1
 **Steps:**
+
 1. Close browser completely (quit application)
 2. Reopen browser
 3. Navigate to app
 4. Observe initialization behavior
 
 **Expected:**
+
 - Console logs: "[FileHandleStorage] Permission state: prompt"
 - Either:
   - (a) Auto-grants permission (Chrome 122+ with persistent permission) → Ready state
@@ -421,13 +460,16 @@ Err(e) if e.to_string().contains("not a valid SQLite database") => {
 ---
 
 #### Test 3.3: Permission Denied Scenario
+
 **Setup:** Fresh browser profile
 **Steps:**
+
 1. Navigate to app
 2. Click "Select Database Location"
 3. Select file, but DENY permission when browser prompts
 
 **Expected:**
+
 - Console logs: "[FileHandleStorage] User denied permission request"
 - IndexedDB cleared (no stale handle stored)
 - UI shows error: "File access permission was denied"
@@ -442,14 +484,17 @@ Err(e) if e.to_string().contains("not a valid SQLite database") => {
 ### DB-05: Successful Database Initialization
 
 #### Test 5.1: First-Time Initialization (New File)
+
 **Setup:** Fresh browser
 **Steps:**
+
 1. Click "Select Database Location"
 2. Create NEW file "workout-new.sqlite"
 3. Grant permission
 4. Wait for initialization
 
 **Expected:**
+
 - Console logs: "[UI] File is empty, creating new database"
 - Console logs: "[DB] initDatabase succeeded, creating tables..."
 - Console logs: "[DB] Tables created successfully"
@@ -463,14 +508,17 @@ Err(e) if e.to_string().contains("not a valid SQLite database") => {
 ---
 
 #### Test 5.2: Initialization with Existing File
+
 **Setup:** Use existing valid SQLite file with workout data
 **Steps:**
+
 1. Click "Select Database Location"
 2. Select EXISTING file "existing-workout.sqlite" (created separately with sql.js)
 3. Grant permission
 4. Wait for initialization
 
 **Expected:**
+
 - Console logs: "[UI] Read X bytes from file"
 - Console logs: "[DB] Database loaded from file data"
 - Console logs: "[DB] Tables created successfully" (verifies schema)
@@ -485,13 +533,16 @@ Err(e) if e.to_string().contains("not a valid SQLite database") => {
 ### DB-06: LocalStorage Fallback
 
 #### Test 6.1: Firefox Fallback Activation
+
 **Setup:** Firefox browser (or Chrome with API disabled)
 **Steps:**
+
 1. Open app in Firefox
 2. Observe console output
 3. Observe UI state
 
 **Expected:**
+
 - Console logs: "[FileSystem] Using fallback storage (IndexedDB/LocalStorage)"
 - Console logs: "[FileSystem] Fallback storage doesn't need handle caching"
 - NO file selection button shown
@@ -504,8 +555,10 @@ Err(e) if e.to_string().contains("not a valid SQLite database") => {
 ---
 
 #### Test 6.2: Fallback Data Persistence
+
 **Setup:** After Test 6.1 in Firefox
 **Steps:**
+
 1. Start workout session
 2. Log 2-3 sets
 3. Complete session
@@ -513,6 +566,7 @@ Err(e) if e.to_string().contains("not a valid SQLite database") => {
 5. Check if data persists
 
 **Expected:**
+
 - After refresh, app initializes to Ready state
 - Can start new workout session
 - Previous session data persisted (verify in DevTools → Storage → Local Storage)
@@ -524,8 +578,10 @@ Err(e) if e.to_string().contains("not a valid SQLite database") => {
 ---
 
 #### Test 6.3: Private Mode Fallback
+
 **Setup:** Chrome Incognito mode
 **Steps:**
+
 1. Open app in Incognito
 2. Verify fallback or File System API behavior
 3. Log workout data
@@ -533,6 +589,7 @@ Err(e) if e.to_string().contains("not a valid SQLite database") => {
 5. Reopen incognito, navigate to app
 
 **Expected:**
+
 - Data does NOT persist (incognito cleared)
 - App starts fresh with no cached handle
 - Shows file selection button (File System API mode) OR auto-initializes (fallback mode)
@@ -545,13 +602,16 @@ Err(e) if e.to_string().contains("not a valid SQLite database") => {
 ### ERR-03: File Format Validation
 
 #### Test ERR-3.1: Invalid File Type (.txt)
+
 **Setup:** Create test.txt with random content
 **Steps:**
+
 1. Click "Select Database Location"
 2. Select "test.txt" (not a SQLite file)
 3. Observe error handling
 
 **Expected:**
+
 - Console logs: "[FileSystem] WASM error" or validation failure
 - UI shows error: "Invalid File Format: Please select a .sqlite or .db file"
 - Error card visible with friendly message
@@ -564,13 +624,16 @@ Err(e) if e.to_string().contains("not a valid SQLite database") => {
 ---
 
 #### Test ERR-3.2: Empty File
+
 **Setup:** Create empty.sqlite (0 bytes)
 **Steps:**
+
 1. Click "Select Database Location"
 2. Select empty file
 3. Observe initialization
 
 **Expected:**
+
 - Console logs: "[UI] File is empty, creating new database"
 - Treated as new database (not error)
 - Initializes successfully
@@ -582,13 +645,16 @@ Err(e) if e.to_string().contains("not a valid SQLite database") => {
 ---
 
 #### Test ERR-3.3: Corrupted SQLite File
+
 **Setup:** Create file with SQLite magic number but corrupted data
 **Steps:**
+
 1. Create file starting with "SQLite format 3\0" but invalid schema
 2. Select this file
 3. Observe error handling
 
 **Expected:**
+
 - Passes magic number check (doesn't trigger InvalidFormat)
 - sql.js init or table creation fails
 - UI shows error: "Database initialization failed"
@@ -600,23 +666,26 @@ Err(e) if e.to_string().contains("not a valid SQLite database") => {
 ---
 
 ## Test Summary
+
 - Total tests: 10
-- Passed: ___
-- Failed: ___
-- Blocked: ___
+- Passed: \_\_\_
+- Failed: \_\_\_
+- Blocked: \_\_\_
 
 ## Issues Found
+
 1.
 2.
 3.
 
 ## Browser Compatibility Matrix
-| Browser | Version | File System API | Fallback | Status |
-|---------|---------|----------------|----------|--------|
-| Chrome  | ___     | [ ] Works      | N/A      | [ ] Pass |
-| Edge    | ___     | [ ] Works      | N/A      | [ ] Pass |
-| Firefox | ___     | N/A            | [ ] Works| [ ] Pass |
-| Safari  | ___     | [ ] Works      | [ ] Works| [ ] Pass |
+
+| Browser | Version | File System API | Fallback  | Status   |
+| ------- | ------- | --------------- | --------- | -------- |
+| Chrome  | \_\_\_  | [ ] Works       | N/A       | [ ] Pass |
+| Edge    | \_\_\_  | [ ] Works       | N/A       | [ ] Pass |
+| Firefox | \_\_\_  | N/A             | [ ] Works | [ ] Pass |
+| Safari  | \_\_\_  | [ ] Works       | [ ] Works | [ ] Pass |
 ```
 
 **Source:** Test protocol synthesized from Phase 2 UAT structure (02-UAT.md) and pending Phase 3 requirements.
@@ -819,14 +888,15 @@ impl FileSystemManager {
 
 ## State of the Art
 
-| Old Approach | Current Approach | When Changed | Impact |
-|--------------|------------------|--------------|--------|
-| Manual file upload/download per session | File System Access API with persistent handles | Chrome 86 (Oct 2020) | Users edit in place without re-uploading, Phase 2 implemented this |
-| Alert() for all errors | Context-aware error messages with recovery actions | Modern web UX standard (2024+) | Better user experience, reduced support burden |
-| Silently fall back to alternative storage | Explicitly communicate storage mode to users | Progressive enhancement best practice | Users understand data portability limitations |
-| No cross-browser testing | Test matrix covering Chrome/Firefox/Safari/Edge | CI/CD standard (ongoing) | Catch browser-specific issues before users report them |
+| Old Approach                              | Current Approach                                   | When Changed                          | Impact                                                             |
+| ----------------------------------------- | -------------------------------------------------- | ------------------------------------- | ------------------------------------------------------------------ |
+| Manual file upload/download per session   | File System Access API with persistent handles     | Chrome 86 (Oct 2020)                  | Users edit in place without re-uploading, Phase 2 implemented this |
+| Alert() for all errors                    | Context-aware error messages with recovery actions | Modern web UX standard (2024+)        | Better user experience, reduced support burden                     |
+| Silently fall back to alternative storage | Explicitly communicate storage mode to users       | Progressive enhancement best practice | Users understand data portability limitations                      |
+| No cross-browser testing                  | Test matrix covering Chrome/Firefox/Safari/Edge    | CI/CD standard (ongoing)              | Catch browser-specific issues before users report them             |
 
 **Deprecated/outdated:**
+
 - **No error handling philosophy**: Old apps crashed on unexpected input - modern apps gracefully handle errors with user guidance
 - **Developer-centric error messages**: Stack traces and technical jargon shown to users - should show plain language with recovery steps
 - **Assuming happy path**: Testing only success cases - should explicitly test error scenarios, cancellations, and edge cases
@@ -858,27 +928,31 @@ impl FileSystemManager {
 > Note: workflow.nyquist_validation is not set in config.json (defaults to false), but this section documents testing approach for reference.
 
 ### Test Framework
-| Property | Value |
-|----------|-------|
-| Framework | wasm-bindgen-test 0.3 + manual browser testing |
-| Config file | Cargo.toml [dev-dependencies] |
-| Quick run command | `wasm-pack test --headless --chrome` (for unit tests only) |
-| Full suite command | Manual test protocol (see Code Examples section) |
+
+| Property           | Value                                                      |
+| ------------------ | ---------------------------------------------------------- |
+| Framework          | wasm-bindgen-test 0.3 + manual browser testing             |
+| Config file        | Cargo.toml [dev-dependencies]                              |
+| Quick run command  | `wasm-pack test --headless --chrome` (for unit tests only) |
+| Full suite command | Manual test protocol (see Code Examples section)           |
 
 ### Phase Requirements → Test Map
-| Req ID | Behavior | Test Type | Automated Command | File Exists? |
-|--------|----------|-----------|-------------------|-------------|
-| DB-03 | File handle persists across browser refresh | manual | N/A - requires browser restart | ❌ Manual Test 3.1, 3.2 |
-| DB-05 | Database initialization succeeds after file selection | manual + unit | `wasm-pack test --headless --chrome` | ✅ db_tests.rs (test_database_initialization) + Manual Test 5.1, 5.2 |
-| DB-06 | LocalStorage fallback works when API unavailable | unit + manual | `wasm-pack test --headless --chrome` | ✅ file_system_tests.rs (test_fallback_storage_write_read) + Manual Test 6.1, 6.2 |
-| ERR-03 | File format validation errors surfaced to user | unit + manual | `wasm-pack test --headless --chrome` | ✅ file_system_tests.rs (test_sqlite_format_validation) + Manual Test ERR-3.1, ERR-3.2 |
+
+| Req ID | Behavior                                              | Test Type     | Automated Command                    | File Exists?                                                                           |
+| ------ | ----------------------------------------------------- | ------------- | ------------------------------------ | -------------------------------------------------------------------------------------- |
+| DB-03  | File handle persists across browser refresh           | manual        | N/A - requires browser restart       | ❌ Manual Test 3.1, 3.2                                                                |
+| DB-05  | Database initialization succeeds after file selection | manual + unit | `wasm-pack test --headless --chrome` | ✅ db_tests.rs (test_database_initialization) + Manual Test 5.1, 5.2                   |
+| DB-06  | LocalStorage fallback works when API unavailable      | unit + manual | `wasm-pack test --headless --chrome` | ✅ file_system_tests.rs (test_fallback_storage_write_read) + Manual Test 6.1, 6.2      |
+| ERR-03 | File format validation errors surfaced to user        | unit + manual | `wasm-pack test --headless --chrome` | ✅ file_system_tests.rs (test_sqlite_format_validation) + Manual Test ERR-3.1, ERR-3.2 |
 
 ### Sampling Rate
+
 - **Per task commit:** `cargo build --target wasm32-unknown-unknown` (verify compilation)
 - **Per wave merge:** `wasm-pack test --headless --chrome` (run existing unit tests)
 - **Phase gate:** Full manual test protocol (10 tests) before marking phase complete
 
 ### Wave 0 Gaps
+
 - ✅ Existing test infrastructure adequate (wasm-bindgen-test configured, 27 existing tests)
 - ✅ No new test framework needed
 - ❌ Manual test protocol document (provided in Code Examples section)
@@ -890,6 +964,7 @@ impl FileSystemManager {
 ## Sources
 
 ### Primary (HIGH confidence)
+
 - [Phase 2 Research](../.planning/phases/02-debug-and-fix-file-picker/02-RESEARCH.md) - File System Access API details, permission model, user gesture requirements
 - [Phase 2 UAT Results](../.planning/phases/02-debug-and-fix-file-picker/02-UAT.md) - Testing protocol that successfully verified Phase 2 implementation
 - [wasm-bindgen-test Documentation](https://rustwasm.github.io/wasm-bindgen/wasm-bindgen-test/index.html) - Official test runner for WASM
@@ -899,18 +974,21 @@ impl FileSystemManager {
 - [File System Access: queryPermission](https://developer.mozilla.org/en-US/docs/Web/API/FileSystemHandle/queryPermission) - Permission state checking (Phase 2 implemented)
 
 ### Secondary (MEDIUM confidence)
+
 - [Chrome Storage Quotas](https://web.dev/articles/storage-for-the-web#how_much) - LocalStorage and IndexedDB limits
 - [Nielsen Norman Group: Error Message Guidelines](https://www.nngroup.com/articles/error-message-guidelines/) - UX best practices for error messaging
 - [Material Design: Error States](https://m2.material.io/design/communication/states.html#error) - Error UI patterns
 - [Progressive Enhancement with Storage APIs](https://developer.mozilla.org/en-US/docs/Web/Progressive_web_apps/Tutorials/js13kGames/Offline_Service_workers#the_progressive_in_progressive_web_apps) - Fallback storage patterns
 
 ### Tertiary (LOW confidence)
+
 - [WebAssembly Testing Strategies](https://developer.mozilla.org/en-US/docs/WebAssembly/Rust_to_Wasm/Testing) - General WASM testing approaches (most recommend manual testing for browser-specific features)
 - Community discussions on WASM + browser API testing complexity (general consensus: manual testing required for cross-session scenarios)
 
 ## Metadata
 
 **Confidence breakdown:**
+
 - Standard stack: HIGH - wasm-bindgen-test is the established solution, manual testing is appropriate for browser-specific behavior
 - Testing protocol: HIGH - Adapted from successful Phase 2 UAT protocol, covers all pending requirements
 - Error handling: HIGH - Standard UX patterns for error messaging, straightforward to implement

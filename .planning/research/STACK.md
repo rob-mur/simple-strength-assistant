@@ -15,6 +15,7 @@ The Exercise Library milestone requires **ZERO new dependencies**. All required 
 - **State Management:** Dioxus 0.7.2 Signals already handle reactive lists
 
 The only additions needed are:
+
 1. New database queries for list/update/archive operations
 2. New Dioxus components using existing patterns
 3. One new column in existing `exercises` table
@@ -23,22 +24,22 @@ The only additions needed are:
 
 ### Existing Stack (Validated v1.0)
 
-| Technology | Version | Already Handles | Notes |
-|------------|---------|-----------------|-------|
-| **Dioxus** | 0.7.2 | Reactive lists, forms, search filtering | Native `for` loops in `rsx!` macro, `use_signal` for state |
-| **SQLite (sql.js)** | 1.13.0 | Full CRUD, ALTER TABLE, LIKE queries | Latest version with SQLite 3.49 core |
-| **DaisyUI** | 4.12.14 | Cards, inputs, buttons, badges, tables | Already used in ActiveSession, StartSessionView |
-| **Tailwind CSS** | 3.4.17 | Styling, responsive layout | Zero-setup with Dioxus 0.7 |
+| Technology          | Version | Already Handles                         | Notes                                                      |
+| ------------------- | ------- | --------------------------------------- | ---------------------------------------------------------- |
+| **Dioxus**          | 0.7.2   | Reactive lists, forms, search filtering | Native `for` loops in `rsx!` macro, `use_signal` for state |
+| **SQLite (sql.js)** | 1.13.0  | Full CRUD, ALTER TABLE, LIKE queries    | Latest version with SQLite 3.49 core                       |
+| **DaisyUI**         | 4.12.14 | Cards, inputs, buttons, badges, tables  | Already used in ActiveSession, StartSessionView            |
+| **Tailwind CSS**    | 3.4.17  | Styling, responsive layout              | Zero-setup with Dioxus 0.7                                 |
 
 ### What Each Feature Needs (From Existing Stack)
 
-| Feature | Implementation | Existing Capability |
-|---------|----------------|---------------------|
-| **Exercise List View** | Query all exercises, map to DaisyUI cards | `db.execute()` + `for` loop in `rsx!` |
-| **Search** | Filter exercises array on name field | `use_signal` + `.filter()` + client-side string matching |
-| **Edit Exercise** | Update form with validation (like StartSessionView) | Existing form patterns, `save_exercise()` already exists |
-| **Archive** | Add `archived_at` column, filter WHERE archived_at IS NULL | ALTER TABLE (one-time), standard SQL query |
-| **Metadata Display** | Query sessions/sets tables, aggregate counts | SQL JOIN + GROUP BY (already using similar patterns) |
+| Feature                | Implementation                                             | Existing Capability                                      |
+| ---------------------- | ---------------------------------------------------------- | -------------------------------------------------------- |
+| **Exercise List View** | Query all exercises, map to DaisyUI cards                  | `db.execute()` + `for` loop in `rsx!`                    |
+| **Search**             | Filter exercises array on name field                       | `use_signal` + `.filter()` + client-side string matching |
+| **Edit Exercise**      | Update form with validation (like StartSessionView)        | Existing form patterns, `save_exercise()` already exists |
+| **Archive**            | Add `archived_at` column, filter WHERE archived_at IS NULL | ALTER TABLE (one-time), standard SQL query               |
+| **Metadata Display**   | Query sessions/sets tables, aggregate counts               | SQL JOIN + GROUP BY (already using similar patterns)     |
 
 ## Database Changes Required
 
@@ -53,6 +54,7 @@ CREATE INDEX IF NOT EXISTS idx_exercises_archived ON exercises(archived_at);
 ```
 
 **Why no migration library needed:**
+
 - SQLite `ALTER TABLE ADD COLUMN` is idempotent with `IF NOT EXISTS` pattern
 - Single-direction migration (no rollback needed for MVP)
 - Existing `create_tables()` function already runs on every init
@@ -136,6 +138,7 @@ rsx! {
 ```
 
 **Why no search library needed:**
+
 - Small dataset (users have 5-50 exercises, not thousands)
 - Client-side `.filter()` is instant for this scale
 - Case-insensitive search with `.to_lowercase()` is sufficient
@@ -144,6 +147,7 @@ rsx! {
 ### DaisyUI Components Already Used
 
 From existing codebase:
+
 - **Cards:** `.card`, `.card-body`, `.card-title` (see StartSessionView)
 - **Inputs:** `.input`, `.input-bordered` (exercise name input)
 - **Buttons:** `.btn`, `.btn-primary`, `.btn-ghost` (session controls)
@@ -152,6 +156,7 @@ From existing codebase:
 - **Alerts:** `.alert`, `.alert-info` (storage mode banner)
 
 **Pattern for Exercise Library:**
+
 - Exercise list: Cards in grid layout
 - Search bar: Input with icon
 - Edit modal: Card with form (reuse StartSessionView patterns)
@@ -159,30 +164,31 @@ From existing codebase:
 
 ## What NOT to Add
 
-| Library/Tool | Why NOT Needed | What to Use Instead |
-|--------------|----------------|---------------------|
-| **Full-text search library** | Dataset too small (< 100 exercises), simple substring match sufficient | Client-side `.filter()` with `.contains()` |
-| **Virtual scrolling library** | Users have 5-50 exercises, not 10,000+ | Native rendering (all items fit in viewport) |
-| **Form library** | Dioxus signals + HTML inputs already working | Existing form patterns from StartSessionView |
-| **State management library** | Dioxus Signals already handle reactive state | `use_signal`, `use_context_provider` |
-| **SQL query builder** | Only 5 new queries, all simple SELECT/UPDATE | Raw SQL strings (existing pattern) |
-| **Database migration tool** | Single column addition, no complex migrations | `ALTER TABLE` in `create_tables()` |
-| **Virtualized list component** | Small, static dataset | Native `for` loop in `rsx!` |
-| **Debounce library** | Search is instant on small dataset | Direct `oninput` handler |
+| Library/Tool                   | Why NOT Needed                                                         | What to Use Instead                          |
+| ------------------------------ | ---------------------------------------------------------------------- | -------------------------------------------- |
+| **Full-text search library**   | Dataset too small (< 100 exercises), simple substring match sufficient | Client-side `.filter()` with `.contains()`   |
+| **Virtual scrolling library**  | Users have 5-50 exercises, not 10,000+                                 | Native rendering (all items fit in viewport) |
+| **Form library**               | Dioxus signals + HTML inputs already working                           | Existing form patterns from StartSessionView |
+| **State management library**   | Dioxus Signals already handle reactive state                           | `use_signal`, `use_context_provider`         |
+| **SQL query builder**          | Only 5 new queries, all simple SELECT/UPDATE                           | Raw SQL strings (existing pattern)           |
+| **Database migration tool**    | Single column addition, no complex migrations                          | `ALTER TABLE` in `create_tables()`           |
+| **Virtualized list component** | Small, static dataset                                                  | Native `for` loop in `rsx!`                  |
+| **Debounce library**           | Search is instant on small dataset                                     | Direct `oninput` handler                     |
 
 ## Version Compatibility
 
-| Package | Current | Compatible With | Notes |
-|---------|---------|-----------------|-------|
-| dioxus 0.7.2 | ✓ | All existing dependencies | Locked version working well |
-| sql.js 1.13.0 | ✓ | SQLite 3.49 features | Supports all needed SQL operations |
-| DaisyUI 4.12.14 | ✓ | Tailwind 3.4.17 | Already validated in v1.0 |
+| Package         | Current | Compatible With           | Notes                              |
+| --------------- | ------- | ------------------------- | ---------------------------------- |
+| dioxus 0.7.2    | ✓       | All existing dependencies | Locked version working well        |
+| sql.js 1.13.0   | ✓       | SQLite 3.49 features      | Supports all needed SQL operations |
+| DaisyUI 4.12.14 | ✓       | Tailwind 3.4.17           | Already validated in v1.0          |
 
 **No version bumps needed.** Exercise Library uses existing capabilities only.
 
 ## Implementation Checklist
 
 **Rust (src/):**
+
 - [ ] Add `archived_at` column to exercises table in `create_tables()`
 - [ ] Add 5 new query methods to `Database` struct (list, search, stats, archive, unarchive)
 - [ ] Add `ExerciseListItem` struct for display data (name, stats, config)
@@ -209,6 +215,7 @@ From existing codebase:
 - [SQLite WASM Documentation](https://sqlite.org/wasm) — Official WASM APIs (already using via sql.js)
 
 ---
-*Stack research for: Exercise Library (v1.1)*
-*Researched: 2026-03-01*
-*Confidence: HIGH - All capabilities verified in existing v1.0 codebase*
+
+_Stack research for: Exercise Library (v1.1)_
+_Researched: 2026-03-01_
+_Confidence: HIGH - All capabilities verified in existing v1.0 codebase_

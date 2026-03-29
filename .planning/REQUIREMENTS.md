@@ -45,32 +45,34 @@ Deferred to future release. Tracked but not in current roadmap.
 
 Explicitly excluded. Documented to prevent scope creep.
 
-| Feature | Reason |
-|---------|--------|
-| Pre-populated exercise database | User builds personal library through workouts; avoids naming conflicts and bloat |
-| Exercise categorization by muscle group | Adds complexity without validation; users already know exercise names |
-| Delete exercises | Archive instead to preserve workout history and prevent orphaned data |
-| Exercise video/image tutorials | Massive storage overhead, scope creep; user can Google form cues |
-| Workout prescription from library | Belongs in future prescription milestone, not library browsing |
-| Workout prescription based on history | Complex feature reserved for a future milestone (only recent/min weight for now) |
+| Feature                                 | Reason                                                                           |
+| --------------------------------------- | -------------------------------------------------------------------------------- |
+| Pre-populated exercise database         | User builds personal library through workouts; avoids naming conflicts and bloat |
+| Exercise categorization by muscle group | Adds complexity without validation; users already know exercise names            |
+| Delete exercises                        | Archive instead to preserve workout history and prevent orphaned data            |
+| Exercise video/image tutorials          | Massive storage overhead, scope creep; user can Google form cues                 |
+| Workout prescription from library       | Belongs in future prescription milestone, not library browsing                   |
+| Workout prescription based on history   | Complex feature reserved for a future milestone (only recent/min weight for now) |
 
 ## Traceability
 
 Which phases cover which requirements. Updated during roadmap creation.
 
-| Requirement | Phase | Status |
-|-------------|-------|--------|
-| CONF-01 | Phase 7 | Pending |
-| CONF-02 | Phase 7 | Pending |
-| CONF-03 | Phase 7 | Pending |
-| SUGG-01 | Phase 7 | Pending |
-| SUGG-02 | Phase 7 | Pending |
+| Requirement | Phase   | Status  |
+| ----------- | ------- | ------- |
+| CONF-01     | Phase 7 | Pending |
+| CONF-02     | Phase 7 | Pending |
+| CONF-03     | Phase 7 | Pending |
+| SUGG-01     | Phase 7 | Pending |
+| SUGG-02     | Phase 7 | Pending |
 
 **Coverage:**
+
 - v1.2 requirements: 5 total
 - Mapped to phases: 5
 - Unmapped: 0 ✓
 
 ---
-*Requirements defined: 2026-03-03*
-*Last updated: 2026-03-03 after requirement definition*
+
+_Requirements defined: 2026-03-03_
+_Last updated: 2026-03-03 after requirement definition_

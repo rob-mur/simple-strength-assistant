@@ -4,24 +4,24 @@ on:
   workflow_call:
     inputs:
       git-ref:
-        description: 'Git ref to checkout (branch, tag, or commit SHA)'
+        description: "Git ref to checkout (branch, tag, or commit SHA)"
         required: true
         type: string
       vercel-environment:
-        description: 'Vercel deployment environment (production or preview)'
+        description: "Vercel deployment environment (production or preview)"
         required: true
         type: string
       use-release-artifact:
-        description: 'Download build from release instead of building'
+        description: "Download build from release instead of building"
         required: false
         type: boolean
         default: false
       release-tag:
-        description: 'Release tag to download artifact from (required if use-release-artifact is true)'
+        description: "Release tag to download artifact from (required if use-release-artifact is true)"
         required: false
         type: string
       github-comment:
-        description: 'Enable GitHub PR comments for deployment URL'
+        description: "Enable GitHub PR comments for deployment URL"
         required: false
         type: boolean
         default: false
@@ -34,38 +34,38 @@ on:
         required: true
     outputs:
       deployment-url:
-        description: 'Vercel deployment URL'
+        description: "Vercel deployment URL"
         value: ${{ jobs.deploy.outputs.url }}
       build-artifact-name:
-        description: 'Name of the uploaded build artifact'
+        description: "Name of the uploaded build artifact"
         value: ${{ jobs.build.outputs.artifact-name }}
 
   workflow_dispatch:
     inputs:
       git-ref:
-        description: 'Git ref to checkout (branch, tag, or commit SHA)'
+        description: "Git ref to checkout (branch, tag, or commit SHA)"
         required: true
         type: string
-        default: 'main'
+        default: "main"
       vercel-environment:
-        description: 'Vercel deployment environment'
+        description: "Vercel deployment environment"
         required: true
         type: choice
         options:
           - production
           - preview
-        default: 'preview'
+        default: "preview"
       use-release-artifact:
-        description: 'Download build from release instead of building'
+        description: "Download build from release instead of building"
         required: false
         type: boolean
         default: false
       release-tag:
-        description: 'Release tag to download artifact from (e.g., v0.1.0)'
+        description: "Release tag to download artifact from (e.g., v0.1.0)"
         required: false
         type: string
       github-comment:
-        description: 'Enable GitHub PR comments for deployment URL'
+        description: "Enable GitHub PR comments for deployment URL"
         required: false
         type: boolean
         default: false

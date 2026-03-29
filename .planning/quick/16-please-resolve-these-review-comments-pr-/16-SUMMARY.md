@@ -3,6 +3,7 @@
 **Description:** please resolve these review comments PR Review: Exercise Library Tab (STR-31)
 
 ## Actions Taken
+
 - **`exercise_form.rs`:** Updated string length validation to use `.chars().count()` instead of `.len()`, added comments explaining why HTML validation only checks for `<` and `>`.
 - **Debug files removed:** Deleted `test-debug.js`, `test-screenshot.png`, `swipe-end-state.png`.
 - **`library_view.rs`:** Replaced confusing nested Option signal with `enum FormState { Closed, New, Edit(ExerciseMetadata) }`. Wrapped `filtered_exercises` in `use_memo` and bound it to the `workout_state.exercises()` directly to ensure reactivity and prevent unnecessary reallocation on re-renders. Replaced the generic `try_consume_context<String>` with the `TestSearchQuery` newtype.

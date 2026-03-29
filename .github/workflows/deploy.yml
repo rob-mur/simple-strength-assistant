@@ -7,7 +7,7 @@ on:
   workflow_dispatch:
     inputs:
       force-release:
-        description: 'Force release even if no commits warrant it'
+        description: "Force release even if no commits warrant it"
         required: false
         type: boolean
         default: false
@@ -106,7 +106,7 @@ jobs:
     uses: ./.github/workflows/build-and-deploy.yml
     with:
       git-ref: ${{ needs.release.outputs.new_release_git_tag }}
-      vercel-environment: 'production'
+      vercel-environment: "production"
       use-release-artifact: true
       release-tag: ${{ needs.release.outputs.new_release_git_tag }}
     secrets:

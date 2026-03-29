@@ -5,6 +5,7 @@
 **Delivered:** Robust File System Access API integration and persistence layer.
 
 **Stats:**
+
 - Phases: 3 (Phases 1-3)
 - Plans: 6
 - Tasks: 14
@@ -13,6 +14,7 @@
 - Timeline: 2026-01-11 → 2026-02-26
 
 **Key Accomplishments:**
+
 - Fixed file picker visibility issues via user-gesture triggers and SecurityError detection.
 - Automatic permission state management for cached file handles with re-prompting.
 - Cross-browser LocalStorage fallback support for Safari/Firefox.
@@ -21,4 +23,5 @@
 - Refactored core state to use Dioxus 0.7 Signals for better reactivity.
 
 ---
+
 _See .planning/milestones/v1.0-ROADMAP.md for phase-by-phase details._

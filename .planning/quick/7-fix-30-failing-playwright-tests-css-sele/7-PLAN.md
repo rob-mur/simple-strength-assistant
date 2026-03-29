@@ -67,11 +67,11 @@ export CHROMIUM_EXECUTABLE_PATH="${CHROMIUM_EXECUTABLE_PATH:-$(which chromium)}"
 This uses the devenv-provided CHROMIUM_EXECUTABLE_PATH if available, otherwise falls back to chromium in PATH.
 
 Why: The ci-test.sh script runs `npm run test:e2e` as a subprocess, which doesn't inherit devenv environment variables unless explicitly exported.
-  </action>
-  <verify>
-    <automated>grep -q "export CHROMIUM_EXECUTABLE_PATH" scripts/ci-test.sh</automated>
-  </verify>
-  <done>ci-test.sh exports CHROMIUM_EXECUTABLE_PATH before running Playwright tests</done>
+</action>
+<verify>
+<automated>grep -q "export CHROMIUM_EXECUTABLE_PATH" scripts/ci-test.sh</automated>
+</verify>
+<done>ci-test.sh exports CHROMIUM_EXECUTABLE_PATH before running Playwright tests</done>
 </task>
 
 <task type="auto">
@@ -81,6 +81,7 @@ Why: The ci-test.sh script runs `npm run test:e2e` as a subprocess, which doesn'
 Remove the "Mobile Safari" project configuration that depends on webkit.
 
 Delete the entire second project block (lines 25-34):
+
 ```typescript
     {
       name: 'Mobile Safari',
@@ -97,11 +98,11 @@ Delete the entire second project block (lines 25-34):
 Keep only the chromium project. This is the pragmatic fix - mobile device testing can be added later with proper webkit support, but for now chromium with different viewport sizes is sufficient.
 
 Why: The comment "webkit uses chromium under the hood" is incorrect - webkit requires separate browser dependencies that don't exist in NixOS devenv. Mobile Safari testing was aspirational but not critical for current CI needs.
-  </action>
-  <verify>
-    <automated>! grep -q "Mobile Safari" playwright.config.ts</automated>
-  </verify>
-  <done>playwright.config.ts contains only chromium project, Mobile Safari removed</done>
+</action>
+<verify>
+<automated>! grep -q "Mobile Safari" playwright.config.ts</automated>
+</verify>
+<done>playwright.config.ts contains only chromium project, Mobile Safari removed</done>
 </task>
 
 <task type="auto">
@@ -113,22 +114,24 @@ Execute the ci-test script to verify all Playwright tests now pass using devenv 
 Run: `./scripts/ci-test.sh`
 
 Expected results:
+
 - All 18 chromium tests should pass (6 RPESlider + 7 StepControls + 5 TapeMeasure)
 - No webkit/Mobile Safari failures
 - No browser dependency errors
 - CI pipeline will be green
 
 If any tests still fail, diagnose whether it's:
+
 1. CSS selector issues (component not rendering as expected)
 2. Timing issues (need longer waits)
 3. Actual component bugs
 
 Note: With Mobile Safari removed, we go from 36 tests (18 chromium + 18 webkit) to 18 tests (chromium only).
-  </action>
-  <verify>
-    <automated>./scripts/ci-test.sh 2>&1 | grep -q "18 passed"</automated>
-  </verify>
-  <done>All 18 Playwright tests pass, ci-test.sh succeeds, no browser dependency errors</done>
+</action>
+<verify>
+<automated>./scripts/ci-test.sh 2>&1 | grep -q "18 passed"</automated>
+</verify>
+<done>All 18 Playwright tests pass, ci-test.sh succeeds, no browser dependency errors</done>
 </task>
 
 </tasks>
@@ -141,12 +144,13 @@ Note: With Mobile Safari removed, we go from 36 tests (18 chromium + 18 webkit) 
 </verification>
 
 <success_criteria>
+
 - [ ] scripts/ci-test.sh exports CHROMIUM_EXECUTABLE_PATH before running Playwright
 - [ ] playwright.config.ts contains only chromium project (Mobile Safari removed)
 - [ ] All 18 Playwright E2E tests pass using devenv chromium
 - [ ] No browser dependency errors in test output
 - [ ] CI pipeline can run E2E tests successfully
-</success_criteria>
+      </success_criteria>
 
 <output>
 After completion, create `.planning/quick/7-fix-30-failing-playwright-tests-css-sele/7-SUMMARY.md`

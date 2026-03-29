@@ -15,6 +15,7 @@ Enable users to browse all created exercises and search by name with instant fil
 ## Implementation Decisions
 
 ### Testing Strategy
+
 - BDD-first approach: Generate feature files first, then implement to make them pass
 - Use separate feature files: one for exercise list display, another for search filtering behavior
 - Continue using cucumber-rust as test runner (consistent with Phase 4 tab navigation tests)
@@ -28,6 +29,7 @@ Enable users to browse all created exercises and search by name with instant fil
 - Mocked tests cover component-level details and edge cases
 
 ### Claude's Discretion
+
 - Exercise list UI layout (card vs list view, spacing, typography)
 - Search box placement and styling
 - Exercise type badge design (colors, icons, text)
@@ -56,5 +58,5 @@ None - context stays within phase scope
 
 ---
 
-*Phase: 05-exercise-list-and-search*
-*Context gathered: 2026-03-02*
+_Phase: 05-exercise-list-and-search_
+_Context gathered: 2026-03-02_

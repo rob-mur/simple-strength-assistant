@@ -32,19 +32,20 @@ App (root)
 
 ### Integration Points with Existing Architecture
 
-| Existing Component | Integration Point | Change Type |
-|-------------------|-------------------|-------------|
-| `WorkoutState` | Add `active_tab: Signal<Tab>` field | **Extend** - minimal change |
-| `Database` | Add `list_exercises()`, `get_exercise_stats()` methods | **Extend** - new read queries |
-| `ExerciseMetadata` | Used as-is for exercise data | **Reuse** - no changes |
-| `WorkoutInterface` | Renamed to `WorkoutTab`, nested under `MainInterface` | **Refactor** - structure change |
-| `App` component | Replace `WorkoutInterface` with `MainInterface` | **Modify** - single line change |
+| Existing Component | Integration Point                                      | Change Type                     |
+| ------------------ | ------------------------------------------------------ | ------------------------------- |
+| `WorkoutState`     | Add `active_tab: Signal<Tab>` field                    | **Extend** - minimal change     |
+| `Database`         | Add `list_exercises()`, `get_exercise_stats()` methods | **Extend** - new read queries   |
+| `ExerciseMetadata` | Used as-is for exercise data                           | **Reuse** - no changes          |
+| `WorkoutInterface` | Renamed to `WorkoutTab`, nested under `MainInterface`  | **Refactor** - structure change |
+| `App` component    | Replace `WorkoutInterface` with `MainInterface`        | **Modify** - single line change |
 
 ## Component Boundaries
 
 ### NEW Components
 
 #### MainInterface
+
 **Responsibility:** Top-level tab coordinator
 **State:** Reads `WorkoutState.active_tab` signal
 **Communicates With:** TabBar, WorkoutTab, ExerciseLibraryTab
@@ -67,6 +68,7 @@ fn MainInterface(state: WorkoutState) -> Element {
 ```
 
 #### TabBar
+
 **Responsibility:** Tab selection UI
 **State:** Writes to `WorkoutState.active_tab` on click
 **Communicates With:** WorkoutState (setter only)
@@ -94,6 +96,7 @@ fn TabBar(state: WorkoutState) -> Element {
 ```
 
 #### ExerciseLibraryTab
+
 **Responsibility:** Exercise list view with search/filter
 **State:** Local `search_query: Signal<String>`, reads `Database` via `WorkoutState`
 **Communicates With:** Database (read-only), ExerciseCard (child components)
@@ -125,6 +128,7 @@ fn ExerciseLibraryTab(state: WorkoutState) -> Element {
 ```
 
 #### ExerciseCard
+
 **Responsibility:** Display single exercise with metadata
 **State:** Reads exercise stats via `use_resource` (last performed, total sessions)
 **Communicates With:** Database (read-only), ExerciseEditModal (future)
@@ -155,7 +159,9 @@ fn ExerciseCard(exercise: ExerciseMetadata, state: WorkoutState) -> Element {
 ### MODIFIED Components
 
 #### WorkoutState (extend)
+
 **NEW Fields:**
+
 ```rust
 pub struct WorkoutState {
     // ... existing fields ...
@@ -181,7 +187,9 @@ impl WorkoutState {
 ```
 
 #### Database (extend)
+
 **NEW Methods:**
+
 ```rust
 impl Database {
     // Phase 1: List all exercises
@@ -329,11 +337,13 @@ let exercises = use_resource(move || async move {
 ## Patterns to Follow
 
 ### Pattern 1: Tab-Based Conditional Rendering
+
 **What:** Use Signal<Tab> with match expression for view switching
 **When:** Simple PWA with 2-3 views, no URL routing needed
 **Why:** Simpler than router for basic tab navigation, maintains app state across tabs
 
 **Example:**
+
 ```rust
 match state.active_tab() {
     Tab::Workout => rsx! { WorkoutTab { state } },
@@ -344,11 +354,13 @@ match state.active_tab() {
 **Source:** [Dioxus Signals Documentation](https://dioxuslabs.com/learn/0.7/essentials/basics/signals/)
 
 ### Pattern 2: use_resource for Async Database Queries
+
 **What:** Dioxus hook for loading async data reactively
 **When:** Database queries in components, auto-reload on signal changes
 **Why:** Handles loading/error states, integrates with Signal reactivity
 
 **Example:**
+
 ```rust
 let exercises = use_resource(move || {
     let db = state.database().unwrap();
@@ -363,11 +375,13 @@ match exercises.read_unchecked() {
 ```
 
 ### Pattern 3: LEFT JOIN with MAX for "Last Performed"
+
 **What:** SQL query to get most recent session per exercise
 **When:** Displaying exercise metadata (last workout date)
 **Why:** Efficient aggregate query, single query per exercise
 
 **Example:**
+
 ```sql
 SELECT
     e.name,
@@ -382,11 +396,13 @@ GROUP BY e.name
 **Source:** [SQLite JOIN Tutorial](https://www.sqlitetutorial.net/sqlite-join/), [SQLite Aggregate Functions](https://www.sqlitetutorial.net/sqlite-aggregate-functions/)
 
 ### Pattern 4: Shared Context via use_context
+
 **What:** Existing pattern in codebase for WorkoutState
 **When:** Passing app state to deeply nested components
 **Why:** Avoids prop drilling, single source of truth
 
 **Example:**
+
 ```rust
 // In App component
 let workout_state = use_context_provider(WorkoutState::new);
@@ -400,17 +416,21 @@ fn ExerciseLibraryTab(state: WorkoutState) -> Element {
 ## Anti-Patterns to Avoid
 
 ### Anti-Pattern 1: Router for Simple Tabs
+
 **What:** Using dioxus-router for 2-view tab navigation
 **Why bad:** Adds complexity (URL routing, back button handling), overkill for simple tabs
 **Instead:** Use Signal<Tab> with conditional rendering (see Pattern 1)
 
 ### Anti-Pattern 2: N+1 Query Problem
+
 **What:** Querying exercise stats inside loop without batching
 **Why bad:** 100 exercises = 100 database queries, slow rendering
 **Detection:** `use_resource` inside `.map()` or `for` loop
 **Prevention:**
+
 - Phase 1: Acceptable for MVP (<20 exercises expected)
 - Phase 2: Batch query if >50 exercises detected
+
 ```rust
 // BAD (but acceptable for MVP)
 for exercise in exercises {
@@ -422,6 +442,7 @@ let all_stats = use_resource(|| db.get_all_exercise_stats());
 ```
 
 ### Anti-Pattern 3: Blocking Database Calls in Render
+
 **What:** Calling `db.list_exercises().await` directly in component body
 **Why bad:** Blocks rendering, no loading state, breaks Dioxus reactivity
 **Instead:** Always use `use_resource` for async database queries
@@ -441,20 +462,22 @@ fn ExerciseLibraryTab(state: WorkoutState) -> Element {
 ```
 
 ### Anti-Pattern 4: Tab State in Multiple Places
+
 **What:** Storing `active_tab` separately from WorkoutState
 **Why bad:** State divergence, hard to synchronize, violates single source of truth
 **Instead:** Add `active_tab: Signal<Tab>` to WorkoutState, access via context
 
 ## Scalability Considerations
 
-| Concern | At 10 exercises | At 50 exercises | At 200 exercises |
-|---------|----------------|-----------------|------------------|
-| **List rendering** | Instant | Instant | Instant (list rendering fast) |
-| **Stats loading** | 10 queries, ~100ms | 50 queries, ~500ms | Batch query needed (see Anti-Pattern 2) |
-| **Search filtering** | Client-side fine | Client-side fine | Client-side fine (JS array filter fast) |
-| **Memory usage** | Negligible | <1MB | <5MB (SQLite efficient) |
+| Concern              | At 10 exercises    | At 50 exercises    | At 200 exercises                        |
+| -------------------- | ------------------ | ------------------ | --------------------------------------- |
+| **List rendering**   | Instant            | Instant            | Instant (list rendering fast)           |
+| **Stats loading**    | 10 queries, ~100ms | 50 queries, ~500ms | Batch query needed (see Anti-Pattern 2) |
+| **Search filtering** | Client-side fine   | Client-side fine   | Client-side fine (JS array filter fast) |
+| **Memory usage**     | Negligible         | <1MB               | <5MB (SQLite efficient)                 |
 
 **Optimization Trigger:** If exercise count >100, implement batch stats query:
+
 ```rust
 pub async fn get_all_exercise_stats(&self) -> Result<HashMap<String, ExerciseStats>, DatabaseError> {
     let sql = r#"
@@ -472,6 +495,7 @@ pub async fn get_all_exercise_stats(&self) -> Result<HashMap<String, ExerciseSta
 ## Database Schema Changes
 
 ### Existing Schema (v1.0)
+
 ```sql
 CREATE TABLE exercises (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -490,11 +514,13 @@ CREATE TABLE sessions (
 ```
 
 **Analysis:** Schema already supports exercise library queries via:
+
 - `exercises` table contains all exercise metadata
 - `sessions.exercise_name` foreign key enables stats aggregation
 - No schema changes needed for Phase 1-2
 
 ### Phase 3: Archive Support (NEW column)
+
 ```sql
 -- Migration query
 ALTER TABLE exercises ADD COLUMN archived_at INTEGER DEFAULT NULL;
@@ -508,6 +534,7 @@ SELECT * FROM exercises WHERE archived_at IS NULL;
 ## Build Order (Dependency-Aware)
 
 ### Phase 1: Foundation (2-3 hours)
+
 **Goal:** Tab navigation working, no library functionality yet
 
 1. **Add Tab enum and active_tab to WorkoutState** (30 min)
@@ -534,6 +561,7 @@ SELECT * FROM exercises WHERE archived_at IS NULL;
 **Validation:** User can switch between tabs, workout session persists across switches.
 
 ### Phase 2: Exercise List (3-4 hours)
+
 **Goal:** Display exercise list with search
 
 **Dependencies:** Phase 1 complete
@@ -564,6 +592,7 @@ SELECT * FROM exercises WHERE archived_at IS NULL;
 **Validation:** User can view all exercises, search by name.
 
 ### Phase 3: Exercise Metadata (2-3 hours)
+
 **Goal:** Show last performed date and session count
 
 **Dependencies:** Phase 2 complete
@@ -589,12 +618,14 @@ SELECT * FROM exercises WHERE archived_at IS NULL;
 **Validation:** Each exercise shows when last performed and total session count.
 
 ### Phase 4: Edit Exercise (Deferred - Complex)
+
 **Goal:** Allow editing exercise name and config
 
 **Dependencies:** Phase 3 complete
 **Complexity:** Modal UI, validation, database update with name change
 
 **Recommendation:** Defer to separate milestone or Phase 4+ due to:
+
 - Name change affects `sessions.exercise_name` references
 - Requires transaction to update both tables
 - Validation complexity (prevent duplicate names)
@@ -603,12 +634,14 @@ SELECT * FROM exercises WHERE archived_at IS NULL;
 **Alternative for v1.1:** Read-only library, edit via "Start Session" flow (existing)
 
 ### Phase 5: Archive Exercise (Deferred - Schema Change)
+
 **Goal:** Soft delete exercises
 
 **Dependencies:** Phase 3 complete
 **Complexity:** Database migration, filtered queries
 
 **Recommendation:** Defer to v1.2+ due to:
+
 - Schema migration required (add `archived_at` column)
 - All list queries need `WHERE archived_at IS NULL`
 - Unarchive functionality needed for mistakes
@@ -617,11 +650,13 @@ SELECT * FROM exercises WHERE archived_at IS NULL;
 ## Build Order Summary
 
 **Recommended for v1.1:**
+
 1. Phase 1: Foundation (tabs working)
 2. Phase 2: Exercise List (view exercises, search)
 3. Phase 3: Exercise Metadata (last performed, session count)
 
 **Defer to future milestones:**
+
 - Phase 4: Edit Exercise (complex, name change implications)
 - Phase 5: Archive Exercise (schema migration, filtered queries)
 
@@ -630,6 +665,7 @@ SELECT * FROM exercises WHERE archived_at IS NULL;
 ## Integration Testing Strategy
 
 ### Test 1: Tab Navigation with Active Session
+
 ```
 Given: User has active workout session (ActiveSession view)
 When: User clicks "Library" tab
@@ -639,6 +675,7 @@ Then: ActiveSession view restores with same session data
 ```
 
 ### Test 2: Exercise List After Session
+
 ```
 Given: User completes workout session for "Bench Press"
 When: User navigates to Library tab
@@ -648,6 +685,7 @@ And: Total sessions shows 1
 ```
 
 ### Test 3: Search Filter
+
 ```
 Given: Library contains "Bench Press", "Squat", "Deadlift"
 When: User types "press" in search
@@ -657,6 +695,7 @@ Then: All 3 exercises display
 ```
 
 ### Test 4: Empty State
+
 ```
 Given: New database with no exercises
 When: User navigates to Library tab

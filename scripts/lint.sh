@@ -59,6 +59,7 @@ echo ""
 # Format check
 echo "→ Checking code formatting..."
 cargo fmt -- --check
+prettier --check .
 echo "✓ Code formatting valid"
 echo ""
 
