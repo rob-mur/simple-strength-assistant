@@ -22,6 +22,8 @@ if [ -z "$SUBTASK_IDS" ]; then
   exit 1
 fi
 
+# One container is shared for the entire run; all subtasks execute inside the same
+# worktree state, so changes made by an earlier subtask are visible to later ones.
 devcontainer up --workspace-folder "$WORKTREE"
 
 cleanup() {
@@ -81,6 +83,7 @@ ${TRUNCATED_CONTEXT}"
 
       if TEST_OUT=$(devcontainer exec --workspace-folder "$WORKTREE" -- devenv shell -- devenv test 2>&1); then
         backlog task edit "$SUBTASK_ID" --status "Done"
+        ERROR_CONTEXT=""
         break
       else
         ERROR_CONTEXT="--- Claude output ---

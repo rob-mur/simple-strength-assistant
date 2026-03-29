@@ -349,7 +349,7 @@ EOF
 # Cycle 12: each subtask marked In Progress before work starts
 # ---------------------------------------------------------------------------
 
-@test "marks each subtask In Progress before invoking claude" {
+@test "marks each subtask In Progress before marking it Done" {
   cat > "$STUB_BIN/backlog" <<'EOF'
 #!/usr/bin/env bash
 if [[ "$*" == *"task list"* ]]; then
@@ -377,6 +377,40 @@ EOF
   IN_PROGRESS_LINE=$(grep -n "task edit TASK-31.1.*--status.*In Progress" "$TMPDIR_ROOT/backlog.calls" | head -1 | cut -d: -f1)
   DONE_LINE=$(grep -n "task edit TASK-31.1.*--status.*Done" "$TMPDIR_ROOT/backlog.calls" | head -1 | cut -d: -f1)
   [ "$IN_PROGRESS_LINE" -lt "$DONE_LINE" ]
+}
+
+# ---------------------------------------------------------------------------
+# Cycle 12b: subtask succeeds on the final (MAX_RETRIES-th) attempt — must be Done not Blocked
+# ---------------------------------------------------------------------------
+
+@test "marks subtask Done when it passes on the third (final) attempt" {
+  cat > "$STUB_BIN/backlog" <<'EOF'
+#!/usr/bin/env bash
+if [[ "$*" == *"task list"* ]]; then printf "To Do:\n  TASK-35.1 - test task\n"; fi
+echo "$@" >> "$TMPDIR_ROOT/backlog.calls"
+EOF
+  chmod +x "$STUB_BIN/backlog"
+  # Fail devenv test twice, pass on the third attempt
+  cat > "$STUB_BIN/devcontainer" <<'STUB'
+#!/usr/bin/env bash
+if [[ "$*" == *"devenv test"* ]]; then
+  COUNT_FILE="$TMPDIR_ROOT/test.count"
+  COUNT=$(cat "$COUNT_FILE" 2>/dev/null || echo 0)
+  COUNT=$((COUNT + 1))
+  echo "$COUNT" > "$COUNT_FILE"
+  [ "$COUNT" -ge 3 ] && exit 0
+  echo "failure attempt $COUNT"; exit 1
+fi
+exit 0
+STUB
+  chmod +x "$STUB_BIN/devcontainer"
+
+  cd "$REPO_DIR"
+  run bash "$SCRIPT" 35
+  [ "$status" -eq 0 ]
+  grep -q "task edit TASK-35.1.*--status.*Done" "$TMPDIR_ROOT/backlog.calls"
+  run grep "Blocked" "$TMPDIR_ROOT/backlog.calls"
+  [ "$status" -ne 0 ]
 }
 
 # ---------------------------------------------------------------------------
