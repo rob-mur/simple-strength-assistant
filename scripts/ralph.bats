@@ -247,8 +247,9 @@ STUB
   cd "$REPO_DIR"
   run bash "$SCRIPT" 22
   [ "$status" -ne 0 ]
-  # Second (and later) claude invocations should contain the error marker
-  # (check lines after the first one)
+  # First invocation must NOT contain the error marker (no prior context yet)
+  head -n 1 "$TMPDIR_ROOT/claude.invocations" | grep -qv "SPECIFIC_ERROR_MARKER"
+  # Second (and later) invocations must contain the error marker
   tail -n +2 "$TMPDIR_ROOT/claude.invocations" | grep -q "SPECIFIC_ERROR_MARKER"
 }
 

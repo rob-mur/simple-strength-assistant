@@ -10,7 +10,7 @@ if [ -n "$GITHUB_ACTIONS" ] && [ -z "$BASE_SHA" ]; then
   echo "↷ Skipping commit lint (devenv test context)"
 elif [ -n "$GITHUB_ACTIONS" ] && [ -n "$BASE_SHA" ] && [ -n "$HEAD_SHA" ]; then
   echo "→ Validating commit messages..."
-  npx commitlint --from "$BASE_SHA" --to "$HEAD_SHA" --verbose
+  bunx commitlint --from "$BASE_SHA" --to "$HEAD_SHA" --verbose
   echo "✓ Commit messages valid"
 else
   echo "↷ Skipping commit lint locally (handled by commit-msg hook)"

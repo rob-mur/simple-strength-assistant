@@ -50,12 +50,20 @@ while [ $ATTEMPT -lt $MAX_RETRIES ]; do
   if [ -n "$ERROR_CONTEXT" ]; then
     # Only the most recent failure is included; earlier errors are dropped to keep prompt size bounded.
     # Cap at 8 KB to avoid hitting API context limits on verbose build/test output.
-    TRUNCATED_CONTEXT=$(printf '%s' "$ERROR_CONTEXT" | tail -c 8000)
+    CONTEXT_SIZE=$(printf '%s' "$ERROR_CONTEXT" | wc -c)
+    if [ "$CONTEXT_SIZE" -gt 8000 ]; then
+      TRUNCATED_CONTEXT="[Output truncated — showing last 8000 of ${CONTEXT_SIZE} bytes]
+$(printf '%s' "$ERROR_CONTEXT" | tail -c 8000)"
+    else
+      TRUNCATED_CONTEXT="$ERROR_CONTEXT"
+    fi
+    # ATTEMPT has already been incremented for this iteration; the failure being fed back
+    # is from the previous attempt, so reference ATTEMPT-1.
     FULL_PROMPT="${PROMPT}
 
 ---
 
-Attempt ${ATTEMPT} of ${MAX_RETRIES} failed with the following output:
+Attempt $((ATTEMPT - 1)) of ${MAX_RETRIES} failed with the following output:
 ${TRUNCATED_CONTEXT}"
   else
     FULL_PROMPT="$PROMPT"
@@ -69,11 +77,14 @@ ${TRUNCATED_CONTEXT}"
       backlog task edit "$SUBTASK_ID" --status "Done"
       exit 0
     else
-      ERROR_CONTEXT="${CLAUDE_OUT}
+      ERROR_CONTEXT="--- Claude output ---
+${CLAUDE_OUT}
+--- Test output ---
 ${TEST_OUT}"
     fi
   else
-    ERROR_CONTEXT="$CLAUDE_OUT"
+    ERROR_CONTEXT="--- Claude output ---
+${CLAUDE_OUT}"
   fi
 done
 
