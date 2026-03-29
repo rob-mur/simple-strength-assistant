@@ -1,110 +1,131 @@
-import { Given, When, Then, expect } from './fixtures';
+import { Given, When, Then, expect } from "./fixtures";
 
-Given('the user is on the Library tab', async ({ page }) => {
+Given("the user is on the Library tab", async ({ page }) => {
   await page.click('button[role="tab"]:has-text("Library")');
   // New UI uses uppercase "LIBRARY" in h2
   await expect(page.locator('h2:has-text("Library")')).toBeVisible();
 });
 
-Given('the database contains standard exercises', async ({ page }) => {
+Given("the database contains standard exercises", async ({ page }) => {
   const exercises = [
-    { name: 'Squat', isWeighted: true },
-    { name: 'Push-up', isWeighted: false }
+    { name: "Squat", isWeighted: true },
+    { name: "Push-up", isWeighted: false },
   ];
 
   await page.click('button[role="tab"]:has-text("Library")');
 
   for (const ex of exercises) {
     // Click Add Exercise or FAB
-    const addBtn = page.locator('button:has-text("Add First Exercise"), button:has-text("Add New Exercise")').first();
+    const addBtn = page
+      .locator(
+        'button:has-text("Add First Exercise"), button:has-text("Add New Exercise")',
+      )
+      .first();
     if (await addBtn.isVisible()) {
       await addBtn.click();
     } else {
-       await page.locator('button.btn-circle.btn-primary').click();
+      await page.locator("button.btn-circle.btn-primary").click();
     }
-    
+
     // Fill exercise name
-    await page.fill('#exercise-name-input', ex.name);
-    
+    await page.fill("#exercise-name-input", ex.name);
+
     // Handle weighted/bodyweight toggle
     const checkbox = page.locator('input[type="checkbox"].checkbox');
     const isChecked = await checkbox.isChecked();
     if (ex.isWeighted !== isChecked) {
       await checkbox.click();
     }
-    
+
     // Save exercise
     await page.click('button:has-text("Save Exercise")');
     // Wait for form to disappear
-    await expect(page.locator('#exercise-name-input')).not.toBeVisible();
+    await expect(page.locator("#exercise-name-input")).not.toBeVisible();
   }
 });
 
-Then('the user should see a list of exercises', async ({ page }) => {
-  const listItems = page.locator('div.card-body h3');
+Then("the user should see a list of exercises", async ({ page }) => {
+  const listItems = page.locator("div.card-body h3");
   await expect(listItems).toHaveCount(2);
 });
 
-Then('each exercise should display its name and type badge', async ({ page }) => {
-  await expect(page.locator('h3:has-text("Squat")')).toBeVisible();
-  // New UI uses uppercase "WEIGHTED"
-  await expect(page.locator('div.card', { hasText: 'Squat' }).locator('.badge')).toHaveText('WEIGHTED');
-  
-  await expect(page.locator('h3:has-text("Push-up")')).toBeVisible();
-  // New UI uses uppercase "BODYWEIGHT"
-  await expect(page.locator('div.card', { hasText: 'Push-up' }).locator('.badge')).toHaveText('BODYWEIGHT');
-});
+Then(
+  "each exercise should display its name and type badge",
+  async ({ page }) => {
+    await expect(page.locator('h3:has-text("Squat")')).toBeVisible();
+    // New UI uses uppercase "WEIGHTED"
+    await expect(
+      page.locator("div.card", { hasText: "Squat" }).locator(".badge"),
+    ).toHaveText("WEIGHTED");
 
-Given('the user is on the Library tab with multiple exercises', async ({ page }) => {
-  const exercises = [
-    { name: 'Back Squat', isWeighted: true },
-    { name: 'Front Squat', isWeighted: true },
-    { name: 'Push-up', isWeighted: false },
-    { name: 'Pull-up', isWeighted: false }
-  ];
+    await expect(page.locator('h3:has-text("Push-up")')).toBeVisible();
+    // New UI uses uppercase "BODYWEIGHT"
+    await expect(
+      page.locator("div.card", { hasText: "Push-up" }).locator(".badge"),
+    ).toHaveText("BODYWEIGHT");
+  },
+);
 
-  await page.click('button[role="tab"]:has-text("Library")');
+Given(
+  "the user is on the Library tab with multiple exercises",
+  async ({ page }) => {
+    const exercises = [
+      { name: "Back Squat", isWeighted: true },
+      { name: "Front Squat", isWeighted: true },
+      { name: "Push-up", isWeighted: false },
+      { name: "Pull-up", isWeighted: false },
+    ];
 
-  for (const ex of exercises) {
-    const addBtn = page.locator('button:has-text("Add First Exercise"), button:has-text("Add New Exercise")').first();
-    if (await addBtn.isVisible()) {
-      await addBtn.click();
-    } else {
-       await page.locator('button.btn-circle.btn-primary').click();
+    await page.click('button[role="tab"]:has-text("Library")');
+
+    for (const ex of exercises) {
+      const addBtn = page
+        .locator(
+          'button:has-text("Add First Exercise"), button:has-text("Add New Exercise")',
+        )
+        .first();
+      if (await addBtn.isVisible()) {
+        await addBtn.click();
+      } else {
+        await page.locator("button.btn-circle.btn-primary").click();
+      }
+      await page.fill("#exercise-name-input", ex.name);
+      const checkbox = page.locator('input[type="checkbox"].checkbox');
+      const isChecked = await checkbox.isChecked();
+      if (ex.isWeighted !== isChecked) {
+        await checkbox.click();
+      }
+      await page.click('button:has-text("Save Exercise")');
+      await expect(page.locator("#exercise-name-input")).not.toBeVisible();
     }
-    await page.fill('#exercise-name-input', ex.name);
-    const checkbox = page.locator('input[type="checkbox"].checkbox');
-    const isChecked = await checkbox.isChecked();
-    if (ex.isWeighted !== isChecked) {
-      await checkbox.click();
-    }
-    await page.click('button:has-text("Save Exercise")');
-    await expect(page.locator('#exercise-name-input')).not.toBeVisible();
-  }
-  
-  await expect(page.getByPlaceholder("Search exercises...")).toBeVisible();
+
+    await expect(page.getByPlaceholder("Search exercises...")).toBeVisible();
+  },
+);
+
+When("the user searches for a specific exercise", async ({ page }) => {
+  const searchInput = page.getByPlaceholder("Search exercises...");
+  await searchInput.fill("squat");
 });
 
-When('the user searches for a specific exercise', async ({ page }) => {
-  const searchInput = page.getByPlaceholder('Search exercises...');
-  await searchInput.fill('squat');
+Then(
+  "the list should instantly filter to show only matching exercises",
+  async ({ page }) => {
+    const listItems = page.locator("div.card-body h3");
+    // Matches "Back Squat" and "Front Squat"
+    await expect(listItems).toHaveCount(2);
+    await expect(page.locator('h3:has-text("Back Squat")')).toBeVisible();
+    await expect(page.locator('h3:has-text("Front Squat")')).toBeVisible();
+    await expect(page.locator('h3:has-text("Push-up")')).not.toBeVisible();
+  },
+);
+
+When("the user clears the search", async ({ page }) => {
+  const searchInput = page.getByPlaceholder("Search exercises...");
+  await searchInput.fill("");
 });
 
-Then('the list should instantly filter to show only matching exercises', async ({ page }) => {
-  const listItems = page.locator('div.card-body h3');
-  // Matches "Back Squat" and "Front Squat"
-  await expect(listItems).toHaveCount(2);
-  await expect(page.locator('h3:has-text("Back Squat")')).toBeVisible();
-  await expect(page.locator('h3:has-text("Front Squat")')).toBeVisible();
-  await expect(page.locator('h3:has-text("Push-up")')).not.toBeVisible();
-});
-
-When('the user clears the search', async ({ page }) => {
-  const searchInput = page.getByPlaceholder('Search exercises...');
-  await searchInput.fill('');
-});
-
-Then('the list should show all exercises again', async ({ page }) => {
-  const listItems = page.locator('div.card-body h3');
+Then("the list should show all exercises again", async ({ page }) => {
+  const listItems = page.locator("div.card-body h3");
   await expect(listItems).toHaveCount(4);
 });

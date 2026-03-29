@@ -1,118 +1,116 @@
 {
-	"branches": [
-		"main"
-	],
-	"plugins": [
-		[
-			"@semantic-release/commit-analyzer",
-			{
-				"preset": "conventionalcommits",
-				"releaseRules": [
-					{
-						"type": "feat",
-						"release": "minor"
-					},
-					{
-						"type": "fix",
-						"release": "patch"
-					},
-					{
-						"type": "perf",
-						"release": "patch"
-					},
-					{
-						"type": "revert",
-						"release": "patch"
-					},
-					{
-						"type": "docs",
-						"release": "patch"
-					},
-					{
-						"type": "style",
-						"release": "patch"
-					},
-					{
-						"type": "refactor",
-						"release": "patch"
-					},
-					{
-						"type": "test",
-						"release": "patch"
-					},
-					{
-						"type": "build",
-						"release": "patch"
-					},
-					{
-						"type": "ci",
-						"release": "patch"
-					},
-					{
-						"type": "chore",
-						"release": "patch"
-					}
-				]
-			}
-		],
-		[
-			"@semantic-release/release-notes-generator",
-			{
-				"preset": "conventionalcommits",
-				"presetConfig": {
-					"types": [
-						{
-							"type": "feat",
-							"section": "Features"
-						},
-						{
-							"type": "fix",
-							"section": "Bug Fixes"
-						},
-						{
-							"type": "perf",
-							"section": "Performance Improvements"
-						},
-						{
-							"type": "revert",
-							"section": "Reverts"
-						},
-						{
-							"type": "refactor",
-							"section": "Code Refactoring"
-						}
-					]
-				}
-			}
-		],
-		[
-			"@semantic-release/changelog",
-			{
-				"changelogFile": "CHANGELOG.md"
-			}
-		],
-		[
-			"@semantic-release/npm",
-			{
-				"npmPublish": false
-			}
-		],
-		[
-			"@semantic-release/github",
-			{
-				"assets": [
-					{
-						"path": "dist.zip",
-						"label": "Build Artifact"
-					}
-				]
-			}
-		],
-		[
-			"@semantic-release/exec",
-			{
-				"publishCmd": "echo 'new_release_published=true' >> $GITHUB_OUTPUT && echo 'new_release_version=${nextRelease.version}' >> $GITHUB_OUTPUT && echo 'new_release_git_tag=${nextRelease.gitTag}' >> $GITHUB_OUTPUT"
-			}
-		]
-	]
+  "branches": ["main"],
+  "plugins": [
+    [
+      "@semantic-release/commit-analyzer",
+      {
+        "preset": "conventionalcommits",
+        "releaseRules": [
+          {
+            "type": "feat",
+            "release": "minor"
+          },
+          {
+            "type": "fix",
+            "release": "patch"
+          },
+          {
+            "type": "perf",
+            "release": "patch"
+          },
+          {
+            "type": "revert",
+            "release": "patch"
+          },
+          {
+            "type": "docs",
+            "release": "patch"
+          },
+          {
+            "type": "style",
+            "release": "patch"
+          },
+          {
+            "type": "refactor",
+            "release": "patch"
+          },
+          {
+            "type": "test",
+            "release": "patch"
+          },
+          {
+            "type": "build",
+            "release": "patch"
+          },
+          {
+            "type": "ci",
+            "release": "patch"
+          },
+          {
+            "type": "chore",
+            "release": "patch"
+          }
+        ]
+      }
+    ],
+    [
+      "@semantic-release/release-notes-generator",
+      {
+        "preset": "conventionalcommits",
+        "presetConfig": {
+          "types": [
+            {
+              "type": "feat",
+              "section": "Features"
+            },
+            {
+              "type": "fix",
+              "section": "Bug Fixes"
+            },
+            {
+              "type": "perf",
+              "section": "Performance Improvements"
+            },
+            {
+              "type": "revert",
+              "section": "Reverts"
+            },
+            {
+              "type": "refactor",
+              "section": "Code Refactoring"
+            }
+          ]
+        }
+      }
+    ],
+    [
+      "@semantic-release/changelog",
+      {
+        "changelogFile": "CHANGELOG.md"
+      }
+    ],
+    [
+      "@semantic-release/npm",
+      {
+        "npmPublish": false
+      }
+    ],
+    [
+      "@semantic-release/github",
+      {
+        "assets": [
+          {
+            "path": "dist.zip",
+            "label": "Build Artifact"
+          }
+        ]
+      }
+    ],
+    [
+      "@semantic-release/exec",
+      {
+        "publishCmd": "echo 'new_release_published=true' >> $GITHUB_OUTPUT && echo 'new_release_version=${nextRelease.version}' >> $GITHUB_OUTPUT && echo 'new_release_git_tag=${nextRelease.gitTag}' >> $GITHUB_OUTPUT"
+      }
+    ]
+  ]
 }
