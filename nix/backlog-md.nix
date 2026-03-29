@@ -4,7 +4,9 @@
 # dependencies. This derivation fetches the linux-x64 binary tarball directly
 # from the npm registry and patches it with autoPatchelfHook so it works on
 # NixOS.
-{ pkgs ? import <nixpkgs> {} }:
+{
+  pkgs ? import <nixpkgs> { },
+}:
 
 pkgs.stdenv.mkDerivation rec {
   pname = "backlog-md";
@@ -16,7 +18,11 @@ pkgs.stdenv.mkDerivation rec {
   };
 
   nativeBuildInputs = [ pkgs.autoPatchelfHook ];
-  buildInputs = [ pkgs.glibc pkgs.gcc-unwrapped.lib pkgs.zlib ];
+  buildInputs = [
+    pkgs.glibc
+    pkgs.gcc-unwrapped.lib
+    pkgs.zlib
+  ];
 
   # The tarball unpacks to ./package/
   sourceRoot = "package";
@@ -24,8 +30,8 @@ pkgs.stdenv.mkDerivation rec {
   dontBuild = true;
   dontConfigure = true;
 
-  # CRITICAL: Bun-compiled binaries append a zip payload containing the application code 
-  # to the end of the executable. The default Nix `strip` phase will remove this payload, 
+  # CRITICAL: Bun-compiled binaries append a zip payload containing the application code
+  # to the end of the executable. The default Nix `strip` phase will remove this payload,
   # breaking the application and causing it to fall back to the default Bun REPL.
   dontStrip = true;
 
