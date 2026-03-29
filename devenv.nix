@@ -1,6 +1,8 @@
-{pkgs, ...}: let
-  backlog-md = pkgs.callPackage ./nix/backlog-md.nix {};
-in {
+{ pkgs, ... }:
+let
+  backlog-md = pkgs.callPackage ./nix/backlog-md.nix { };
+in
+{
   devcontainer.enable = true;
   devcontainer.settings.updateContentCommand = "direnv allow ; devenv shell";
   packages = with pkgs; [
@@ -20,7 +22,7 @@ in {
   languages.rust = {
     enable = true;
     channel = "stable";
-    targets = ["wasm32-unknown-unknown"];
+    targets = [ "wasm32-unknown-unknown" ];
   };
 
   languages.javascript = {
@@ -52,15 +54,20 @@ in {
   };
 
   git-hooks.hooks = {
+    rustfmt.enable = true;
+    nixfmt.enable = true;
+    prettier.enable = true;
     ci-checks = {
       enable = true;
       name = "Code quality checks (format, clippy, test, build)";
       entry = ''
-        format
         lint
         build
       '';
-      stages = ["pre-commit" "pre-push"];
+      stages = [
+        "pre-commit"
+        "pre-push"
+      ];
     };
   };
 
