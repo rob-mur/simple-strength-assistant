@@ -48,12 +48,15 @@ while [ $ATTEMPT -lt $MAX_RETRIES ]; do
   ATTEMPT=$((ATTEMPT + 1))
 
   if [ -n "$ERROR_CONTEXT" ]; then
+    # Only the most recent failure is included; earlier errors are dropped to keep prompt size bounded.
+    # Cap at 8 KB to avoid hitting API context limits on verbose build/test output.
+    TRUNCATED_CONTEXT=$(printf '%s' "$ERROR_CONTEXT" | tail -c 8000)
     FULL_PROMPT="${PROMPT}
 
 ---
 
-Previous attempt failed with the following output:
-${ERROR_CONTEXT}"
+Attempt ${ATTEMPT} of ${MAX_RETRIES} failed with the following output:
+${TRUNCATED_CONTEXT}"
   else
     FULL_PROMPT="$PROMPT"
   fi

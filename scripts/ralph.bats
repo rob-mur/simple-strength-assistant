@@ -166,6 +166,7 @@ EOF
 
 # ---------------------------------------------------------------------------
 # Cycle 6: retry logic — 3 failures marks Blocked
+# Task IDs 20-24 are reserved for retry-logic tests (cycles 6-10).
 # ---------------------------------------------------------------------------
 
 @test "marks subtask Blocked after 3 consecutive devenv test failures" {
@@ -203,7 +204,8 @@ EOF
   cat > "$STUB_BIN/devcontainer" <<'EOF'
 #!/usr/bin/env bash
 [[ "$*" == *"devenv test"* ]] && { echo "fail"; exit 1; }
-# Count claude invocations
+# Detect claude via substring match on the command line passed to devcontainer exec.
+# Works because ralph.sh always passes "-- devenv shell -- claude" as a literal sequence.
 [[ "$*" == *"claude"* ]] && echo "claude-call" >> "$TMPDIR_ROOT/claude.calls"
 exit 0
 EOF
@@ -234,6 +236,8 @@ if [[ "$*" == *"devenv test"* ]]; then
   exit 1
 fi
 if [[ "$*" == *"claude"* ]]; then
+  # echo "$@" flattens all args onto one line; FULL_PROMPT is a single -p argument so
+  # its content (including the error marker) is preserved in the output.
   echo "$@" >> "$TMPDIR_ROOT/claude.invocations"
 fi
 exit 0
@@ -259,7 +263,9 @@ if [[ "$*" == *"task list"* ]]; then printf "To Do:\n  TASK-23.1 - test task\n";
 echo "$@" >> "$TMPDIR_ROOT/backlog.calls"
 EOF
   chmod +x "$STUB_BIN/backlog"
-  # Fail devenv test once, then pass
+  # Fail devenv test once, then pass.
+  # COUNT_FILE lives under TMPDIR_ROOT which is unique per test (setup creates a fresh mktemp dir),
+  # so there is no cross-test race for sequential runs. Would need rethinking for parallel bats.
   cat > "$STUB_BIN/devcontainer" <<'STUB'
 #!/usr/bin/env bash
 if [[ "$*" == *"devenv test"* ]]; then
