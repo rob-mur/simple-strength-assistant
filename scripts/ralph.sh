@@ -79,9 +79,9 @@ ${TRUNCATED_CONTEXT}"
 
     if CLAUDE_OUT=$(devcontainer exec --workspace-folder "$WORKTREE" \
         -e CLAUDE_CODE_OAUTH_TOKEN="${CLAUDE_CODE_OAUTH_TOKEN:-}" \
-        -- devenv shell -- claude --print --dangerously-skip-permissions -p "$FULL_PROMPT" 2>&1); then
+        -- devenv shell claude --print --dangerously-skip-permissions -p "$FULL_PROMPT" 2>&1); then
 
-      if TEST_OUT=$(devcontainer exec --workspace-folder "$WORKTREE" -- devenv shell -- devenv test 2>&1); then
+      if TEST_OUT=$(devcontainer exec --workspace-folder "$WORKTREE" -- devenv shell devenv test 2>&1); then
         backlog task edit "$SUBTASK_ID" --status "Done"
         ERROR_CONTEXT=""
         break
