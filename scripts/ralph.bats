@@ -164,6 +164,143 @@ EOF
   grep -q "down\|stop" "$TMPDIR_ROOT/devcontainer.calls"
 }
 
+# ---------------------------------------------------------------------------
+# Cycle 6: retry logic — 3 failures marks Blocked
+# ---------------------------------------------------------------------------
+
+@test "marks subtask Blocked after 3 consecutive devenv test failures" {
+  cat > "$STUB_BIN/backlog" <<'EOF'
+#!/usr/bin/env bash
+if [[ "$*" == *"task list"* ]]; then printf "To Do:\n  TASK-20.1 - test task\n"; fi
+echo "$@" >> "$TMPDIR_ROOT/backlog.calls"
+EOF
+  chmod +x "$STUB_BIN/backlog"
+  # devcontainer: always fail on devenv test
+  cat > "$STUB_BIN/devcontainer" <<'EOF'
+#!/usr/bin/env bash
+echo "$@" >> "$TMPDIR_ROOT/devcontainer.calls"
+[[ "$*" == *"devenv test"* ]] && { echo "test failure output"; exit 1; }
+exit 0
+EOF
+  chmod +x "$STUB_BIN/devcontainer"
+
+  cd "$REPO_DIR"
+  run bash "$SCRIPT" 20
+  [ "$status" -ne 0 ]
+  grep -q "task edit TASK-20.1.*--status.*Blocked" "$TMPDIR_ROOT/backlog.calls"
+}
+
+# ---------------------------------------------------------------------------
+# Cycle 7: retry loop runs exactly 3 times before giving up
+# ---------------------------------------------------------------------------
+
+@test "invokes claude exactly 3 times before marking Blocked" {
+  cat > "$STUB_BIN/backlog" <<'EOF'
+#!/usr/bin/env bash
+if [[ "$*" == *"task list"* ]]; then printf "To Do:\n  TASK-21.1 - test task\n"; fi
+EOF
+  chmod +x "$STUB_BIN/backlog"
+  cat > "$STUB_BIN/devcontainer" <<'EOF'
+#!/usr/bin/env bash
+[[ "$*" == *"devenv test"* ]] && { echo "fail"; exit 1; }
+# Count claude invocations
+[[ "$*" == *"claude"* ]] && echo "claude-call" >> "$TMPDIR_ROOT/claude.calls"
+exit 0
+EOF
+  chmod +x "$STUB_BIN/devcontainer"
+
+  cd "$REPO_DIR"
+  run bash "$SCRIPT" 21
+  [ "$status" -ne 0 ]
+  [ "$(wc -l < "$TMPDIR_ROOT/claude.calls")" -eq 3 ]
+}
+
+# ---------------------------------------------------------------------------
+# Cycle 8: error context fed back to next Claude invocation
+# ---------------------------------------------------------------------------
+
+@test "passes previous failure output as context to next Claude invocation" {
+  cat > "$STUB_BIN/backlog" <<'EOF'
+#!/usr/bin/env bash
+if [[ "$*" == *"task list"* ]]; then printf "To Do:\n  TASK-22.1 - test task\n"; fi
+EOF
+  chmod +x "$STUB_BIN/backlog"
+  ATTEMPT_FILE="$TMPDIR_ROOT/attempt"
+  echo "0" > "$ATTEMPT_FILE"
+  cat > "$STUB_BIN/devcontainer" <<'STUB'
+#!/usr/bin/env bash
+if [[ "$*" == *"devenv test"* ]]; then
+  echo "SPECIFIC_ERROR_MARKER"
+  exit 1
+fi
+if [[ "$*" == *"claude"* ]]; then
+  echo "$@" >> "$TMPDIR_ROOT/claude.invocations"
+fi
+exit 0
+STUB
+  chmod +x "$STUB_BIN/devcontainer"
+
+  cd "$REPO_DIR"
+  run bash "$SCRIPT" 22
+  [ "$status" -ne 0 ]
+  # Second (and later) claude invocations should contain the error marker
+  # (check lines after the first one)
+  tail -n +2 "$TMPDIR_ROOT/claude.invocations" | grep -q "SPECIFIC_ERROR_MARKER"
+}
+
+# ---------------------------------------------------------------------------
+# Cycle 9: passes on retry → Done, not Blocked
+# ---------------------------------------------------------------------------
+
+@test "marks subtask Done when it passes on the second attempt" {
+  cat > "$STUB_BIN/backlog" <<'EOF'
+#!/usr/bin/env bash
+if [[ "$*" == *"task list"* ]]; then printf "To Do:\n  TASK-23.1 - test task\n"; fi
+echo "$@" >> "$TMPDIR_ROOT/backlog.calls"
+EOF
+  chmod +x "$STUB_BIN/backlog"
+  # Fail devenv test once, then pass
+  cat > "$STUB_BIN/devcontainer" <<'STUB'
+#!/usr/bin/env bash
+if [[ "$*" == *"devenv test"* ]]; then
+  COUNT_FILE="$TMPDIR_ROOT/test.count"
+  COUNT=$(cat "$COUNT_FILE" 2>/dev/null || echo 0)
+  COUNT=$((COUNT + 1))
+  echo "$COUNT" > "$COUNT_FILE"
+  [ "$COUNT" -gt 1 ] && exit 0
+  echo "first attempt failure"; exit 1
+fi
+exit 0
+STUB
+  chmod +x "$STUB_BIN/devcontainer"
+
+  cd "$REPO_DIR"
+  run bash "$SCRIPT" 23
+  [ "$status" -eq 0 ]
+  grep -q "task edit TASK-23.1.*--status.*Done" "$TMPDIR_ROOT/backlog.calls"
+  # Must NOT be marked Blocked
+  run grep "Blocked" "$TMPDIR_ROOT/backlog.calls"
+  [ "$status" -ne 0 ]
+}
+
+# ---------------------------------------------------------------------------
+# Cycle 10: loop stops after Blocked (no subsequent subtasks processed)
+# ---------------------------------------------------------------------------
+
+@test "exits non-zero immediately after marking subtask Blocked" {
+  cat > "$STUB_BIN/backlog" <<'EOF'
+#!/usr/bin/env bash
+if [[ "$*" == *"task list"* ]]; then printf "To Do:\n  TASK-24.1 - test task\n"; fi
+echo "$@" >> "$TMPDIR_ROOT/backlog.calls"
+EOF
+  chmod +x "$STUB_BIN/backlog"
+  make_stub devcontainer '[[ "$*" == *"devenv test"* ]] && exit 1; exit 0'
+
+  cd "$REPO_DIR"
+  run bash "$SCRIPT" 24
+  [ "$status" -ne 0 ]
+}
+
 @test "proceeds when a To Do subtask is found" {
   cat > "$STUB_BIN/backlog" <<'EOF'
 #!/usr/bin/env bash

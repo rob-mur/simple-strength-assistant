@@ -40,10 +40,39 @@ cleanup() {
 }
 trap cleanup EXIT
 
-devcontainer exec --workspace-folder "$WORKTREE" \
-  -e CLAUDE_CODE_OAUTH_TOKEN="${CLAUDE_CODE_OAUTH_TOKEN:-}" \
-  -- devenv shell -- claude --print --dangerously-skip-permissions -p "$PROMPT"
+MAX_RETRIES=3
+ATTEMPT=0
+ERROR_CONTEXT=""
 
-devcontainer exec --workspace-folder "$WORKTREE" -- devenv shell -- devenv test
+while [ $ATTEMPT -lt $MAX_RETRIES ]; do
+  ATTEMPT=$((ATTEMPT + 1))
 
-backlog task edit "$SUBTASK_ID" --status "Done"
+  if [ -n "$ERROR_CONTEXT" ]; then
+    FULL_PROMPT="${PROMPT}
+
+---
+
+Previous attempt failed with the following output:
+${ERROR_CONTEXT}"
+  else
+    FULL_PROMPT="$PROMPT"
+  fi
+
+  if CLAUDE_OUT=$(devcontainer exec --workspace-folder "$WORKTREE" \
+      -e CLAUDE_CODE_OAUTH_TOKEN="${CLAUDE_CODE_OAUTH_TOKEN:-}" \
+      -- devenv shell -- claude --print --dangerously-skip-permissions -p "$FULL_PROMPT" 2>&1); then
+
+    if TEST_OUT=$(devcontainer exec --workspace-folder "$WORKTREE" -- devenv shell -- devenv test 2>&1); then
+      backlog task edit "$SUBTASK_ID" --status "Done"
+      exit 0
+    else
+      ERROR_CONTEXT="${CLAUDE_OUT}
+${TEST_OUT}"
+    fi
+  else
+    ERROR_CONTEXT="$CLAUDE_OUT"
+  fi
+done
+
+backlog task edit "$SUBTASK_ID" --status "Blocked"
+exit 1
