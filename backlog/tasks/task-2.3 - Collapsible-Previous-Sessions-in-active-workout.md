@@ -4,10 +4,12 @@ title: Collapsible "Previous Sessions" in active workout
 status: To Do
 assignee: []
 created_date: '2026-03-29 18:03'
+updated_date: '2026-03-30 17:57'
 labels:
   - afk
 dependencies: []
 parent_task_id: TASK-2
+ordinal: 7000
 ---
 
 ## Description
@@ -23,15 +25,15 @@ Add a collapsible "Previous Sessions" section below the current session's set li
 
 No routing is required — this is an in-place expansion within the existing active session view.
 
-## Acceptance criteria
-
-- [ ] "Previous Sessions" collapsible appears below the current set list when a session is active
-- [ ] Section is collapsed by default
-- [ ] Tapping the section header expands/collapses it
-- [ ] Expanded section shows sets grouped by date; each set row displays set number, weight, reps, and RPE
-- [ ] Scrolling to the bottom of the expanded list loads the next page of history (infinite scroll)
-- [ ] Sets logged in the current session appear in the history feed immediately (reactive update)
-- [ ] E2E: history section is collapsed by default; log a set, expand section, set appears; scrolling loads more when history is long
+## Acceptance Criteria
+<!-- AC:BEGIN -->
+- [x] #1 "Previous Sessions" collapsible appears below the current set list when a session is active
+- [x] #2 Section is collapsed by default
+- [x] #3 Tapping the section header expands/collapses it
+- [x] #4 Expanded section shows sets grouped by date; each set row displays set number, weight, reps, and RPE
+- [x] #5 Scrolling to the bottom of the expanded list loads the next page of history (infinite scroll)
+- [x] #6 Sets logged in the current session appear in the history feed immediately (reactive update)
+- [x] #7 E2E: history section is collapsed by default; log a set, expand section, set appears; scrolling loads more when history is long
 
 ## Blocked by
 
@@ -45,3 +47,4 @@ No routing is required — this is an in-place expansion within the existing act
 - User story 4 (infinite scroll in Previous Sessions)
 - User story 27 (new sets appear in history immediately)
 <!-- SECTION:DESCRIPTION:END -->
+<!-- AC:END -->

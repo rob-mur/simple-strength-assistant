@@ -4,10 +4,12 @@ title: Full history view + navigation entry points
 status: To Do
 assignee: []
 created_date: '2026-03-29 18:03'
+updated_date: '2026-03-30 15:08'
 labels:
   - afk
 dependencies: []
 parent_task_id: TASK-2
+ordinal: 8000
 ---
 
 ## Description
@@ -29,21 +31,22 @@ Implement the full history view at the stub routes created in TASK-2.2 (`/workou
 - Day/exercise groups use device local timezone for day boundaries
 
 Add the two entry points that navigate into this view:
+
 - A history icon in the active session header → navigates to `/workout/history/:exercise_id`
 - A "View workout history" button on the idle Workout tab → navigates to `/workout/history`
 
-## Acceptance criteria
-
-- [ ] `/workout/history` renders the all-exercises feed by default
-- [ ] `/workout/history/:exercise_id` renders the feed defaulting to that exercise's tab
-- [ ] Toggle switches between per-exercise and all-exercises feeds
-- [ ] Feed is reverse-chronological; days are grouped correctly using device local timezone
-- [ ] Multiple exercises on the same day appear under one date header with separate sub-groups
-- [ ] Infinite scroll loads additional pages
-- [ ] History icon appears in the active session header and navigates correctly
-- [ ] "View workout history" button appears on the idle Workout tab and navigates to the all-exercises view
-- [ ] Sets logged during an active session appear in the history feed immediately
-- [ ] E2E: feed shows correct day groups after logging across multiple exercises/days; toggle switches content; infinite scroll works; correct default scope from each entry point
+## Acceptance Criteria
+<!-- AC:BEGIN -->
+- [ ] #1 `/workout/history` renders the all-exercises feed by default
+- [ ] #2 `/workout/history/:exercise_id` renders the feed defaulting to that exercise's tab
+- [ ] #3 Toggle switches between per-exercise and all-exercises feeds
+- [ ] #4 Feed is reverse-chronological; days are grouped correctly using device local timezone
+- [ ] #5 Multiple exercises on the same day appear under one date header with separate sub-groups
+- [ ] #6 Infinite scroll loads additional pages
+- [ ] #7 History icon appears in the active session header and navigates correctly
+- [ ] #8 "View workout history" button appears on the idle Workout tab and navigates to the all-exercises view
+- [ ] #9 Sets logged during an active session appear in the history feed immediately
+- [ ] #10 E2E: feed shows correct day groups after logging across multiple exercises/days; toggle switches content; infinite scroll works; correct default scope from each entry point
 
 ## Blocked by
 
@@ -63,3 +66,4 @@ Add the two entry points that navigate into this view:
 - User story 27 (new sets appear in history immediately)
 - User story 28 (day boundaries use device local timezone)
 <!-- SECTION:DESCRIPTION:END -->
+<!-- AC:END -->

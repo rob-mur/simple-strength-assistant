@@ -4,11 +4,12 @@ title: Schema migration + history data layer
 status: In Progress
 assignee: []
 created_date: '2026-03-29 18:02'
-updated_date: '2026-03-29 18:07'
+updated_date: '2026-03-30 16:56'
 labels:
   - afk
 dependencies: []
 parent_task_id: TASK-2
+ordinal: 5000
 ---
 
 ## Description

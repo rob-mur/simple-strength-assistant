@@ -5,15 +5,18 @@ title: >-
   exercises
 status: To Do
 assignee: []
-created_date: '2026-03-29 18:02'
+created_date: "2026-03-29 18:02"
+updated_date: "2026-03-30 15:01"
 labels:
   - feature
 dependencies: []
+ordinal: 4000
 ---
 
 ## Description
 
 <!-- SECTION:DESCRIPTION:BEGIN -->
+
 Parent task mirroring GH #51.
 
 ## Summary

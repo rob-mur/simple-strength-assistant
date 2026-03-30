@@ -4,10 +4,12 @@ title: Exercise detail view (Library)
 status: To Do
 assignee: []
 created_date: '2026-03-29 18:04'
+updated_date: '2026-03-30 15:08'
 labels:
   - afk
 dependencies: []
 parent_task_id: TASK-2
+ordinal: 10000
 ---
 
 ## Description
@@ -25,19 +27,20 @@ Make exercise cards in the Library navigable. Tapping a card navigates to `/libr
 - **Body**: the same paginated per-exercise history feed component built in TASK-2.4, scoped to this exercise
 
 Button behaviour:
+
 - **Start** → calls `start_session` for this exercise and navigates to `/workout`
 - **Edit** → opens the existing exercise metadata form (same form used from the Library list)
 - **Back chevron** → navigates back to `/library`
 
-## Acceptance criteria
-
-- [ ] Tapping an exercise card in the Library navigates to `/library/:exercise_id`
-- [ ] Header shows back chevron, exercise name, Edit button, and Start button
-- [ ] Body shows the full paginated per-exercise history feed for that exercise (reusing the component from TASK-2.4)
-- [ ] Start begins a session for the exercise and navigates to `/workout`
-- [ ] Edit opens the exercise metadata form; saving returns to the detail view with updated name
-- [ ] Back chevron returns to the Library list
-- [ ] E2E: open detail view from library; history feed shows correct sets; Start switches to workout with session active; Edit updates exercise and returns to detail view; back returns to library
+## Acceptance Criteria
+<!-- AC:BEGIN -->
+- [ ] #1 Tapping an exercise card in the Library navigates to `/library/:exercise_id`
+- [ ] #2 Header shows back chevron, exercise name, Edit button, and Start button
+- [ ] #3 Body shows the full paginated per-exercise history feed for that exercise (reusing the component from TASK-2.4)
+- [ ] #4 Start begins a session for the exercise and navigates to `/workout`
+- [ ] #5 Edit opens the exercise metadata form; saving returns to the detail view with updated name
+- [ ] #6 Back chevron returns to the Library list
+- [ ] #7 E2E: open detail view from library; history feed shows correct sets; Start switches to workout with session active; Edit updates exercise and returns to detail view; back returns to library
 
 ## Blocked by
 
@@ -53,3 +56,4 @@ Button behaviour:
 - User story 20 (Start begins session + switches to Workout tab)
 - User story 21 (Edit opens exercise metadata form)
 <!-- SECTION:DESCRIPTION:END -->
+<!-- AC:END -->

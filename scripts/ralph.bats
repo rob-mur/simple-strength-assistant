@@ -180,11 +180,11 @@ EOF
 }
 
 # ---------------------------------------------------------------------------
-# Cycle 6: retry logic — 3 failures marks Blocked
+# Cycle 6: retry logic — 3 failures marks To Do
 # Task IDs 20-24 are reserved for retry-logic tests (cycles 6-10).
 # ---------------------------------------------------------------------------
 
-@test "marks subtask Blocked after 3 consecutive devenv test failures" {
+@test "marks subtask To Do after 3 consecutive devenv test failures" {
   cat > "$STUB_BIN/backlog" <<'EOF'
 #!/usr/bin/env bash
 if [[ "$*" == *"task list"* ]]; then printf "To Do:\n  TASK-20.1 - test task\n"; fi
@@ -203,14 +203,14 @@ EOF
   cd "$REPO_DIR"
   run bash "$SCRIPT" 20
   [ "$status" -ne 0 ]
-  grep -q "task edit TASK-20.1.*--status.*Blocked" "$TMPDIR_ROOT/backlog.calls"
+  grep -q "task edit TASK-20.1.*--status.*To Do" "$TMPDIR_ROOT/backlog.calls"
 }
 
 # ---------------------------------------------------------------------------
 # Cycle 7: retry loop runs exactly 3 times before giving up
 # ---------------------------------------------------------------------------
 
-@test "invokes claude exactly 3 times before marking Blocked" {
+@test "invokes claude exactly 3 times before marking To Do" {
   cat > "$STUB_BIN/backlog" <<'EOF'
 #!/usr/bin/env bash
 if [[ "$*" == *"task list"* ]]; then printf "To Do:\n  TASK-21.1 - test task\n"; fi
@@ -269,7 +269,7 @@ STUB
 }
 
 # ---------------------------------------------------------------------------
-# Cycle 9: passes on retry → Done, not Blocked
+# Cycle 9: passes on retry → Done, not To Do
 # ---------------------------------------------------------------------------
 
 @test "marks subtask Done when it passes on the second attempt" {
@@ -300,16 +300,16 @@ STUB
   run bash "$SCRIPT" 23
   [ "$status" -eq 0 ]
   grep -q "task edit TASK-23.1.*--status.*Done" "$TMPDIR_ROOT/backlog.calls"
-  # Must NOT be marked Blocked
-  run grep "Blocked" "$TMPDIR_ROOT/backlog.calls"
+  # Must NOT be marked To Do again (it was already To Do at start)
+  run grep "task edit TASK-23.1.*--status.*To Do" "$TMPDIR_ROOT/backlog.calls"
   [ "$status" -ne 0 ]
 }
 
 # ---------------------------------------------------------------------------
-# Cycle 10: loop stops after Blocked (no subsequent subtasks processed)
+# Cycle 10: loop stops after To Do (no subsequent subtasks processed)
 # ---------------------------------------------------------------------------
 
-@test "exits non-zero immediately after marking subtask Blocked" {
+@test "exits non-zero immediately after marking subtask To Do" {
   cat > "$STUB_BIN/backlog" <<'EOF'
 #!/usr/bin/env bash
 if [[ "$*" == *"task list"* ]]; then printf "To Do:\n  TASK-24.1 - test task\n"; fi
@@ -380,7 +380,7 @@ EOF
 }
 
 # ---------------------------------------------------------------------------
-# Cycle 12b: subtask succeeds on the final (MAX_RETRIES-th) attempt — must be Done not Blocked
+# Cycle 12b: subtask succeeds on the final (MAX_RETRIES-th) attempt — must be Done not To Do
 # ---------------------------------------------------------------------------
 
 @test "marks subtask Done when it passes on the third (final) attempt" {
@@ -409,15 +409,16 @@ STUB
   run bash "$SCRIPT" 35
   [ "$status" -eq 0 ]
   grep -q "task edit TASK-35.1.*--status.*Done" "$TMPDIR_ROOT/backlog.calls"
-  run grep "Blocked" "$TMPDIR_ROOT/backlog.calls"
+  # Must NOT be marked To Do again (it was already To Do at start)
+  run grep "task edit TASK-35.1.*--status.*To Do" "$TMPDIR_ROOT/backlog.calls"
   [ "$status" -ne 0 ]
 }
 
 # ---------------------------------------------------------------------------
-# Cycle 13: loop stops when first subtask becomes Blocked
+# Cycle 13: loop stops when first subtask becomes To Do
 # ---------------------------------------------------------------------------
 
-@test "does not process second subtask when first becomes Blocked" {
+@test "does not process second subtask when first becomes To Do" {
   cat > "$STUB_BIN/backlog" <<'EOF'
 #!/usr/bin/env bash
 if [[ "$*" == *"task list"* ]]; then
@@ -426,13 +427,13 @@ fi
 echo "$@" >> "$TMPDIR_ROOT/backlog.calls"
 EOF
   chmod +x "$STUB_BIN/backlog"
-  # Always fail devenv test so first subtask gets Blocked after 3 retries
+  # Always fail devenv test so first subtask gets To Do after 3 retries
   make_stub devcontainer '[[ "$*" == *"devenv test"* ]] && exit 1; exit 0'
 
   cd "$REPO_DIR"
   run bash "$SCRIPT" 32
   [ "$status" -ne 0 ]
-  grep -q "task edit TASK-32.1.*--status.*Blocked" "$TMPDIR_ROOT/backlog.calls"
+  grep -q "task edit TASK-32.1.*--status.*To Do" "$TMPDIR_ROOT/backlog.calls"
   # Second subtask must never be touched
   run grep "TASK-32.2" "$TMPDIR_ROOT/backlog.calls"
   [ "$status" -ne 0 ]
@@ -453,6 +454,11 @@ EOF
   cat > "$STUB_BIN/git" <<'EOF'
 #!/usr/bin/env bash
 echo "$@" >> "$TMPDIR_ROOT/git.calls"
+if [[ "$*" == *"worktree add"* ]]; then
+  # Extract the last argument which is the path
+  for last; do true; done
+  mkdir -p "$last"
+fi
 exit 0
 EOF
   chmod +x "$STUB_BIN/git"
@@ -491,17 +497,55 @@ EOF
   grep -q "34" "$TMPDIR_ROOT/gh.calls"
 }
 
-@test "proceeds when a To Do subtask is found" {
+# ---------------------------------------------------------------------------
+# Cycle 16: Gemini support
+# ---------------------------------------------------------------------------
+
+@test "invokes gemini when --ai gemini is specified" {
   cat > "$STUB_BIN/backlog" <<'EOF'
 #!/usr/bin/env bash
-if [[ "$*" == *"task list"* ]]; then printf "To Do:\n  TASK-10.1 - test task\n"; fi
+if [[ "$*" == *"task list"* ]]; then printf "To Do:\n  TASK-40.1 - test task\n"; fi
 EOF
   chmod +x "$STUB_BIN/backlog"
-  make_stub devcontainer 'exit 0'
-  make_stub claude 'exit 0'
-  make_stub devenv 'exit 0'
+  # Mock docker to avoid errors with cp and ps
+  make_stub docker 'exit 0'
+  # Stub devcontainer to detect gemini call
+  cat > "$STUB_BIN/devcontainer" <<'EOF'
+#!/usr/bin/env bash
+[[ "$*" == *"devenv test"* ]] && exit 0
+if [[ "$*" == *"gemini"* ]]; then
+  echo "gemini-called" >> "$TMPDIR_ROOT/gemini.calls"
+fi
+exit 0
+EOF
+  chmod +x "$STUB_BIN/devcontainer"
 
   cd "$REPO_DIR"
-  run bash "$SCRIPT" 10
+  run bash "$SCRIPT" --ai gemini 40
   [ "$status" -eq 0 ]
+  [ -f "$TMPDIR_ROOT/gemini.calls" ]
+  grep -q "gemini-called" "$TMPDIR_ROOT/gemini.calls"
+}
+
+@test "gemini invocation includes yolo mode" {
+  cat > "$STUB_BIN/backlog" <<'EOF'
+#!/usr/bin/env bash
+if [[ "$*" == *"task list"* ]]; then printf "To Do:\n  TASK-41.1 - test task\n"; fi
+EOF
+  chmod +x "$STUB_BIN/backlog"
+  make_stub docker 'exit 0'
+  cat > "$STUB_BIN/devcontainer" <<'EOF'
+#!/usr/bin/env bash
+[[ "$*" == *"devenv test"* ]] && exit 0
+if [[ "$*" == *"gemini"* ]]; then
+  echo "$@" >> "$TMPDIR_ROOT/gemini.invocations"
+fi
+exit 0
+EOF
+  chmod +x "$STUB_BIN/devcontainer"
+
+  cd "$REPO_DIR"
+  run bash "$SCRIPT" --ai gemini 41
+  [ "$status" -eq 0 ]
+  grep -q "\-\-yolo" "$TMPDIR_ROOT/gemini.invocations"
 }
