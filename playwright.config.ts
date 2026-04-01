@@ -6,6 +6,8 @@ const testDir = defineBddConfig({
   steps: "tests/e2e/steps/**/*.ts",
 });
 
+const baseURL = process.env.PLAYWRIGHT_BASE_URL ?? "http://localhost:3000";
+
 export default defineConfig({
   testDir,
   timeout: process.env.CI ? 60000 : 30000,
@@ -14,15 +16,23 @@ export default defineConfig({
   retries: process.env.CI ? 2 : 0,
   workers: process.env.CI ? 1 : undefined,
   reporter: process.env.CI ? [["list"], ["html", { open: "never" }]] : "html",
-  webServer: {
-    command: "dx serve --port 3000 --features test-mode",
-    url: "http://localhost:3000",
-    reuseExistingServer: true,
-    timeout: 300000,
-  },
+  webServer: process.env.PLAYWRIGHT_BASE_URL
+    ? undefined
+    : {
+        command: "dx serve --port 3000 --features test-mode",
+        url: "http://localhost:3000",
+        reuseExistingServer: true,
+        timeout: 300000,
+      },
   use: {
-    baseURL: "http://localhost:3000",
+    baseURL,
     trace: "on-first-retry",
+    extraHTTPHeaders: process.env.VERCEL_AUTOMATION_BYPASS_SECRET
+      ? {
+          "x-vercel-protection-bypass":
+            process.env.VERCEL_AUTOMATION_BYPASS_SECRET,
+        }
+      : {},
   },
   projects: [
     {
