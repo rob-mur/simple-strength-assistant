@@ -25,6 +25,11 @@ on:
         required: false
         type: boolean
         default: false
+      build-command:
+        description: "devenv build script to run (e.g., 'build' or 'build-e2e')"
+        required: false
+        type: string
+        default: "build"
     secrets:
       VERCEL_TOKEN:
         required: true
@@ -69,6 +74,11 @@ on:
         required: false
         type: boolean
         default: false
+      build-command:
+        description: "devenv build script to run (e.g., 'build' or 'build-e2e')"
+        required: false
+        type: string
+        default: "build"
 
 jobs:
   build:
@@ -90,7 +100,7 @@ jobs:
         uses: ./.github/actions/setup-devenv
 
       - name: Build project
-        run: devenv shell build
+        run: devenv shell ${{ inputs.build-command }}
 
       - name: Set artifact name
         id: artifact-info
