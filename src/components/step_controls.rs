@@ -34,9 +34,11 @@ pub fn StepControls(props: StepControlsProps) -> Element {
                 class: "flex-1 flex justify-start gap-3",
                 for step in neg_steps {
                     {
+                        let abs_step = step.abs() as i64;
                         rsx! {
                             button {
                                 key: "{step}",
+                                "data-testid": "step-btn-neg-{abs_step}",
                                 class: "btn btn-circle btn-md shadow-lg glass border-2 border-error/30 hover:border-error text-error transition-all hover:scale-110 active:scale-95",
                                 onclick: move |_| {
                                     let new_val = (props.value + step).clamp(props.min, props.max);
@@ -68,9 +70,11 @@ pub fn StepControls(props: StepControlsProps) -> Element {
                 class: "flex-1 flex justify-end gap-3",
                 for step in pos_steps {
                     {
+                        let abs_step = step as i64;
                         rsx! {
                             button {
                                 key: "{step}",
+                                "data-testid": "step-btn-pos-{abs_step}",
                                 class: "btn btn-circle btn-md shadow-lg glass border-2 border-success/30 hover:border-success text-success transition-all hover:scale-110 active:scale-95",
                                 onclick: move |_| {
                                     let new_val = (props.value + step).clamp(props.min, props.max);

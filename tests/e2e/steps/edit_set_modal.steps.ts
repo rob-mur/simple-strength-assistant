@@ -52,24 +52,27 @@ When(
       '[data-testid="edit-set-modal"] .tape-measure-container',
     );
     const box = await tape.boundingBox();
-    if (box) {
-      // Current is 100. Goal is 105. Two 2.5kg clicks.
-      const centerX = box.x + box.width / 2;
-      const centerY = box.y + box.height / 2;
-      await page.mouse.click(centerX + 60, centerY);
-      await page.waitForTimeout(500);
-      await page.mouse.click(centerX + 60, centerY);
-      await page.waitForTimeout(500);
-    }
+    if (!box) throw new Error("Tape measure container not found");
+    // Click 60px right of center: moves +1 step (2.5kg) each click
+    // Use locator.click with relative position for actionability checks
+    await tape.click({
+      position: { x: box.width / 2 + 60, y: box.height / 2 },
+    });
+    await page.waitForTimeout(500);
+    await tape.click({
+      position: { x: box.width / 2 + 60, y: box.height / 2 },
+    });
+    // Confirm the weight display updated before proceeding
+    await expect(
+      page.locator('[data-testid="edit-set-modal"] .text-4xl'),
+    ).toContainText(`${weight} kg`);
   },
 );
 
 When("I change the reps to {int} in the modal", async ({ page }, reps) => {
-  // Use StepControls +1 button.
-  // Initial reps was 5. Goal is 6. Click +1 once.
+  // Use StepControls +1 button (data-testid="step-btn-pos-1")
   await page
-    .locator('[data-testid="edit-set-modal"] .btn-circle.text-success')
-    .filter({ hasText: "1" })
+    .locator('[data-testid="edit-set-modal"] [data-testid="step-btn-pos-1"]')
     .click();
   await page.waitForTimeout(300);
 });
