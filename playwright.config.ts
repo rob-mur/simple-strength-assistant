@@ -27,6 +27,7 @@ export default defineConfig({
   use: {
     baseURL,
     trace: "on-first-retry",
+    serviceWorkers: process.env.PLAYWRIGHT_BASE_URL ? "block" : "allow",
     extraHTTPHeaders: process.env.VERCEL_AUTOMATION_BYPASS_SECRET
       ? {
           "x-vercel-protection-bypass":
