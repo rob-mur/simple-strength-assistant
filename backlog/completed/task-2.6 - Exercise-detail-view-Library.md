@@ -1,20 +1,20 @@
 ---
 id: TASK-2.6
 title: Exercise detail view (Library)
-status: To Do
+status: Done
 assignee: []
-created_date: '2026-03-29 18:04'
-updated_date: '2026-03-30 15:08'
+created_date: "2026-03-29 18:04"
+updated_date: "2026-04-01 08:15"
 labels:
   - afk
 dependencies: []
 parent_task_id: TASK-2
-ordinal: 10000
 ---
 
 ## Description
 
 <!-- SECTION:DESCRIPTION:BEGIN -->
+
 ## Parent PRD
 
 TASK-2 / GH #51
@@ -33,14 +33,16 @@ Button behaviour:
 - **Back chevron** → navigates back to `/library`
 
 ## Acceptance Criteria
+
 <!-- AC:BEGIN -->
-- [ ] #1 Tapping an exercise card in the Library navigates to `/library/:exercise_id`
-- [ ] #2 Header shows back chevron, exercise name, Edit button, and Start button
-- [ ] #3 Body shows the full paginated per-exercise history feed for that exercise (reusing the component from TASK-2.4)
-- [ ] #4 Start begins a session for the exercise and navigates to `/workout`
-- [ ] #5 Edit opens the exercise metadata form; saving returns to the detail view with updated name
-- [ ] #6 Back chevron returns to the Library list
-- [ ] #7 E2E: open detail view from library; history feed shows correct sets; Start switches to workout with session active; Edit updates exercise and returns to detail view; back returns to library
+
+- [x] #1 Tapping an exercise card in the Library navigates to `/library/:exercise_id`
+- [x] #2 Header shows back chevron, exercise name, Edit button, and Start button
+- [x] #3 Body shows the full paginated per-exercise history feed for that exercise (reusing the component from TASK-2.4)
+- [x] #4 Start begins a session for the exercise and navigates to `/workout`
+- [x] #5 Edit opens the exercise metadata form; saving returns to the detail view with updated name
+- [x] #6 Back chevron returns to the Library list
+- [x] #7 E2E: open detail view from library; history feed shows correct sets; Start switches to workout with session active; Edit updates exercise and returns to detail view; back returns to library
 
 ## Blocked by
 
@@ -55,5 +57,5 @@ Button behaviour:
 - User story 19 (full paginated history in detail view)
 - User story 20 (Start begins session + switches to Workout tab)
 - User story 21 (Edit opens exercise metadata form)
-<!-- SECTION:DESCRIPTION:END -->
-<!-- AC:END -->
+  <!-- SECTION:DESCRIPTION:END -->
+  <!-- AC:END -->

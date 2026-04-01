@@ -294,6 +294,7 @@ pub fn TapeMeasure(props: TapeMeasureProps) -> Element {
             // trust pointer capture for out-of-bounds movement.
 
             svg {
+                style: "overflow: visible;",
                 view_box: "0 0 {VIEWPORT_WIDTH} {VIEWPORT_HEIGHT}",
                 width: "100%",
                 height: "100%",

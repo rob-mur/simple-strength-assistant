@@ -1,20 +1,20 @@
 ---
 id: TASK-2.3
 title: Collapsible "Previous Sessions" in active workout
-status: To Do
+status: Done
 assignee: []
-created_date: '2026-03-29 18:03'
-updated_date: '2026-03-30 17:57'
+created_date: "2026-03-29 18:03"
+updated_date: "2026-03-30 20:11"
 labels:
   - afk
 dependencies: []
 parent_task_id: TASK-2
-ordinal: 7000
 ---
 
 ## Description
 
 <!-- SECTION:DESCRIPTION:BEGIN -->
+
 ## Parent PRD
 
 TASK-2 / GH #51
@@ -26,7 +26,9 @@ Add a collapsible "Previous Sessions" section below the current session's set li
 No routing is required — this is an in-place expansion within the existing active session view.
 
 ## Acceptance Criteria
+
 <!-- AC:BEGIN -->
+
 - [x] #1 "Previous Sessions" collapsible appears below the current set list when a session is active
 - [x] #2 Section is collapsed by default
 - [x] #3 Tapping the section header expands/collapses it
@@ -47,4 +49,19 @@ No routing is required — this is an in-place expansion within the existing act
 - User story 4 (infinite scroll in Previous Sessions)
 - User story 27 (new sets appear in history immediately)
 <!-- SECTION:DESCRIPTION:END -->
+
 <!-- AC:END -->
+
+## Final Summary
+
+<!-- SECTION:FINAL_SUMMARY:BEGIN -->
+
+Completed collapsible "Previous Sessions" in active workout.
+
+- Added a collapsible panel below the current session's set list.
+- Implemented grouped history by calendar date using `group_sets_by_day`.
+- Fixed reactivity issues where new sets wouldn't appear immediately in the history feed (AC #6) by using signals for props.
+- Implemented automatic infinite scroll using `web_sys` `IntersectionObserver` on a sentinel element (AC #5).
+- Verified behavior with 4 E2E tests, ensuring that expanding/collapsing works, new sets appear instantly, and scrolling triggers pagination correctly.
+- Updated E2E tests to better handle the automatic loading trigger by scrolling elements into view and polling for row count changes.
+<!-- SECTION:FINAL_SUMMARY:END -->

@@ -1,6 +1,7 @@
 use cucumber::{World, given, then, when};
 use dioxus::prelude::*;
-use simple_strength_assistant::components::library_view::LibraryView;
+use dioxus_history::MemoryHistory;
+use simple_strength_assistant::app::{Route, TabNavigationState};
 use simple_strength_assistant::models::{ExerciseMetadata, SetTypeConfig};
 use simple_strength_assistant::state::WorkoutState;
 
@@ -22,9 +23,14 @@ fn TestWrapper(props: WrapperProps) -> Element {
     let state = WorkoutState::new();
     state.set_exercises(props.exercises.clone());
     use_context_provider(|| state);
-    use_context_provider(|| {
-        Signal::new(simple_strength_assistant::components::tab_bar::Tab::Library)
+    use_context_provider(|| TabNavigationState {
+        last_workout_route: Signal::new(Route::WorkoutTab),
+        last_library_route: Signal::new(Route::LibraryTab),
     });
+    provide_context(
+        std::rc::Rc::new(MemoryHistory::with_initial_path("/library"))
+            as std::rc::Rc<dyn dioxus_history::History>,
+    );
 
     // Inject the search term for testing
     use_context_provider(|| {
@@ -34,7 +40,7 @@ fn TestWrapper(props: WrapperProps) -> Element {
     });
 
     rsx! {
-        LibraryView {}
+        Router::<Route> {}
     }
 }
 
@@ -95,8 +101,10 @@ async fn type_into_search_bar(world: &mut ExerciseSearchWorld, term: String) {
 
 #[then(regex = r#"^I should see "([^"]*)" in the exercise list$"#)]
 async fn should_see_exercise_in_list(world: &mut ExerciseSearchWorld, exercise: String) {
+    let html_upper = world.rendered_html.to_uppercase();
+    let exercise_upper = exercise.to_uppercase();
     assert!(
-        world.rendered_html.contains(&exercise),
+        html_upper.contains(&exercise_upper),
         "Expected HTML to contain exercise: {}, but got {}",
         exercise,
         world.rendered_html
@@ -105,8 +113,10 @@ async fn should_see_exercise_in_list(world: &mut ExerciseSearchWorld, exercise: 
 
 #[then(regex = r#"^I should not see "([^"]*)" in the exercise list$"#)]
 async fn should_not_see_exercise_in_list(world: &mut ExerciseSearchWorld, exercise: String) {
+    let html_upper = world.rendered_html.to_uppercase();
+    let exercise_upper = exercise.to_uppercase();
     assert!(
-        !world.rendered_html.contains(&exercise),
+        !html_upper.contains(&exercise_upper),
         "Expected HTML to NOT contain exercise: {}",
         exercise
     );

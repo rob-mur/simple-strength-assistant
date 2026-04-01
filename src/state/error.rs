@@ -28,12 +28,6 @@ pub enum WorkoutError {
     #[error("Failed to save exercise: {0}")]
     SaveExerciseError(String),
 
-    #[error("Failed to create session: {0}")]
-    CreateSessionError(String),
-
     #[error("Failed to insert set: {0}")]
     InsertSetError(String),
-
-    #[error("Failed to complete session: {0}")]
-    CompleteSessionError(String),
 }

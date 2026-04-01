@@ -282,7 +282,7 @@ impl WorkoutStateManager {
             })?;
         exercise.id = Some(id);
 
-        // Fetch last set for suggestions from previous sessions (only for weighted exercises)
+        // Fetch last set for suggestions (only for weighted exercises)
         let last_set = match exercise.set_type_config {
             crate::models::SetTypeConfig::Weighted { .. } => {
                 db.get_last_set_for_exercise(id).await.unwrap_or_else(|e| {
@@ -298,17 +298,11 @@ impl WorkoutStateManager {
             log::warn!("Failed to sync exercises after saving: {}", e);
         }
 
-        let session_id =
-            db.create_session(&exercise.name)
-                .await
-                .map_err(|e: crate::state::DatabaseError| {
-                    WorkoutError::CreateSessionError(e.to_string())
-                })?;
-
         let predicted = Self::calculate_initial_predictions(&exercise, last_set.as_ref());
 
+        // Use exercise_id as session_id so the UI can detect a new session started
         let session = WorkoutSession {
-            session_id: Some(session_id),
+            session_id: exercise.id,
             exercise,
             completed_sets: Vec::new(),
             predicted,
@@ -324,8 +318,9 @@ impl WorkoutStateManager {
             .current_session()
             .ok_or(WorkoutError::NoActiveSession)?;
 
-        let session_id = session
-            .session_id
+        let exercise_id = session
+            .exercise
+            .id
             .ok_or(WorkoutError::SessionNotPersisted)?;
 
         let db = state.database().ok_or(WorkoutError::NotInitialized)?;
@@ -334,7 +329,7 @@ impl WorkoutStateManager {
             .map_err(|e| WorkoutError::InvalidSetData(e.to_string()))?;
 
         let _set_id =
-            db.insert_set(session_id, &set)
+            db.log_set(exercise_id, &set)
                 .await
                 .map_err(|e: crate::state::DatabaseError| {
                     WorkoutError::InsertSetError(e.to_string())
@@ -370,21 +365,9 @@ impl WorkoutStateManager {
     }
 
     pub async fn complete_session(state: &WorkoutState) -> Result<(), WorkoutError> {
-        let session = state
+        state
             .current_session()
             .ok_or(WorkoutError::NoActiveSession)?;
-
-        let session_id = session
-            .session_id
-            .ok_or(WorkoutError::SessionNotPersisted)?;
-
-        let db = state.database().ok_or(WorkoutError::NotInitialized)?;
-
-        db.complete_session(session_id)
-            .await
-            .map_err(|e: crate::state::DatabaseError| {
-                WorkoutError::CompleteSessionError(e.to_string())
-            })?;
 
         Self::save_database(state).await?;
 
@@ -393,7 +376,7 @@ impl WorkoutStateManager {
         Ok(())
     }
 
-    async fn save_database(state: &WorkoutState) -> Result<(), WorkoutError> {
+    pub async fn save_database(state: &WorkoutState) -> Result<(), WorkoutError> {
         let db = state.database().ok_or(WorkoutError::NotInitialized)?;
 
         let file_manager = state.file_manager().ok_or(WorkoutError::FileSystem(

@@ -14,6 +14,12 @@ export default defineConfig({
   retries: process.env.CI ? 2 : 0,
   workers: process.env.CI ? 1 : undefined,
   reporter: process.env.CI ? [["list"], ["html", { open: "never" }]] : "html",
+  webServer: {
+    command: "dx serve --port 3000 --features test-mode",
+    url: "http://localhost:3000",
+    reuseExistingServer: true,
+    timeout: 300000,
+  },
   use: {
     baseURL: "http://localhost:3000",
     trace: "on-first-retry",

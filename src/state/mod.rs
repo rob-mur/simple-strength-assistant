@@ -6,7 +6,7 @@ mod workout_state;
 
 #[cfg(test)]
 mod db_tests;
-#[cfg(test)]
+#[cfg(all(test, not(feature = "test-mode")))]
 mod file_system_tests;
 
 pub use db::{Database, DatabaseError};

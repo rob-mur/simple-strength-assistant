@@ -1,5 +1,20 @@
 use serde::{Deserialize, Serialize};
 
+/// A set returned from the history queries, including its DB id and timestamp.
+#[derive(Clone, Debug, PartialEq)]
+pub struct HistorySet {
+    /// Primary key in completed_sets
+    pub id: i64,
+    pub exercise_id: i64,
+    pub exercise_name: String,
+    pub set_number: u32,
+    pub reps: u32,
+    pub rpe: f32,
+    pub set_type: SetType,
+    /// Unix milliseconds (device local time is applied when grouping)
+    pub recorded_at: f64,
+}
+
 /// Distinguishes between weighted and bodyweight exercises with type safety.
 ///
 /// The enum forces compile-time handling of both exercise types, ensuring

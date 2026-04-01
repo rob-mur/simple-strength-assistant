@@ -406,7 +406,7 @@ async fn local_storage_should_contain(world: &mut TabNavigationWorld, key: Strin
     let stored_value = world
         .local_storage
         .get(&key)
-        .expect(&format!("localStorage should contain key '{}'", key));
+        .unwrap_or_else(|| panic!("localStorage should contain key '{}'", key));
     assert_eq!(
         stored_value, &value,
         "localStorage['{}'] should be '{}'",

@@ -1,4 +1,7 @@
+use crate::components::exercise_form::ExerciseForm;
+use crate::components::history_view::HistoryView;
 use crate::components::library_view::LibraryView;
+use crate::components::previous_sessions::PreviousSessions;
 use crate::components::rpe_slider::RPESlider;
 use crate::components::step_controls::StepControls;
 use crate::components::tab_bar::{Tab, TabBar};
@@ -9,7 +12,6 @@ use crate::models::{CompletedSet, SetType, SetTypeConfig};
 use crate::state::StorageBackend;
 use crate::state::{InitializationState, WorkoutError, WorkoutState, WorkoutStateManager};
 use dioxus::prelude::*;
-use gloo_storage::{LocalStorage, Storage};
 use wasm_bindgen::JsCast;
 
 struct ErrorInfo {
@@ -70,17 +72,331 @@ fn parse_error_for_ui(error: &WorkoutError) -> ErrorInfo {
     }
 }
 
-pub(crate) const ACTIVE_TAB_KEY: &str = "active_tab";
+// ── Router ────────────────────────────────────────────────────────────────────
+
+#[derive(Clone, Routable, Debug, PartialEq)]
+pub enum Route {
+    #[layout(Shell)]
+    #[route("/workout")]
+    WorkoutTab,
+    #[route("/workout/history")]
+    WorkoutHistory,
+    #[route("/workout/history/:exercise_id")]
+    WorkoutHistoryExercise { exercise_id: i64 },
+    #[route("/library")]
+    LibraryTab,
+    #[route("/library/:exercise_id")]
+    LibraryExercise { exercise_id: i64 },
+    #[end_layout]
+    #[route("/:..path")]
+    NotFound { path: Vec<String> },
+}
+
+// ── Shell layout (tab bar + content area) ─────────────────────────────────────
+
+#[component]
+fn Shell() -> Element {
+    let workout_state = consume_context::<WorkoutState>();
+    let mut navigation_state = consume_context::<TabNavigationState>();
+    let route = use_route::<Route>();
+    let navigator = use_navigator();
+
+    let active_tab = match &route {
+        Route::WorkoutTab | Route::WorkoutHistory | Route::WorkoutHistoryExercise { .. } => {
+            Tab::Workout
+        }
+        Route::LibraryTab | Route::LibraryExercise { .. } => Tab::Library,
+        _ => Tab::Workout,
+    };
+
+    // AC #4: Update last seen route for the current tab whenever it changes.
+    // We do this in the component body so it runs on every render of Shell
+    // (which re-renders whenever the route changes).
+    let current_route = route.clone();
+    match current_route.clone() {
+        Route::WorkoutTab | Route::WorkoutHistory | Route::WorkoutHistoryExercise { .. } => {
+            if *navigation_state.last_workout_route.peek() != current_route {
+                navigation_state.last_workout_route.set(current_route);
+            }
+        }
+        Route::LibraryTab | Route::LibraryExercise { .. } => {
+            if *navigation_state.last_library_route.peek() != current_route {
+                navigation_state.last_library_route.set(current_route);
+            }
+        }
+        _ => {}
+    }
+
+    let storage_mode_banner = if let Some(fm) = workout_state.file_manager() {
+        if fm.is_using_fallback() {
+            Some(rsx! {
+                div {
+                    class: "alert alert-info mb-4",
+                    svg {
+                        xmlns: "http://www.w3.org/2000/svg",
+                        fill: "none",
+                        view_box: "0 0 24 24",
+                        class: "stroke-current shrink-0 w-6 h-6",
+                        path {
+                            stroke_linecap: "round",
+                            stroke_linejoin: "round",
+                            stroke_width: "2",
+                            d: "M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"
+                        }
+                    }
+                    div {
+                        h4 { class: "font-bold", "Browser Storage Mode" }
+                        p {
+                            class: "text-sm",
+                            "Your data is stored in browser LocalStorage. This works offline but won't sync across devices or browsers."
+                        }
+                    }
+                }
+            })
+        } else {
+            None
+        }
+    } else {
+        None
+    };
+
+    let save_error_banner = workout_state.save_error().map(|err_msg| rsx! {
+        div {
+            class: "alert alert-warning mb-4",
+            svg {
+                xmlns: "http://www.w3.org/2000/svg",
+                fill: "none",
+                view_box: "0 0 24 24",
+                class: "stroke-current shrink-0 w-6 h-6",
+                path {
+                    stroke_linecap: "round",
+                    stroke_linejoin: "round",
+                    stroke_width: "2",
+                    d: "M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"
+                }
+            }
+            div {
+                h4 { class: "font-bold", "Sync Warning" }
+                p { class: "text-sm", "{err_msg}" }
+            }
+        }
+    });
+
+    rsx! {
+        div {
+            class: "flex-1 flex flex-col min-h-0",
+            div {
+                class: "flex-1 overflow-y-auto min-h-0",
+                "data-testid": "shell-content",
+                div {
+                    class: "container mx-auto p-4",
+                    {storage_mode_banner}
+                    {save_error_banner}
+                    Outlet::<Route> {}
+                }
+            }
+            TabBar {
+                active_tab,
+                on_change: move |tab| {
+                    match tab {
+                        Tab::Workout => {
+                            if active_tab == Tab::Workout {
+                                navigator.push(Route::WorkoutTab);
+                            } else {
+                                let target = navigation_state.last_workout_route.peek();
+                                navigator.push(target.clone());
+                            }
+                        }
+                        Tab::Library => {
+                            if active_tab == Tab::Library {
+                                navigator.push(Route::LibraryTab);
+                            } else {
+                                let target = navigation_state.last_library_route.peek();
+                                navigator.push(target.clone());
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
+// ── Route components ──────────────────────────────────────────────────────────
+
+#[component]
+fn WorkoutTab() -> Element {
+    let state = consume_context::<WorkoutState>();
+    rsx! { WorkoutView { state } }
+}
+
+#[component]
+fn WorkoutHistory() -> Element {
+    let state = consume_context::<WorkoutState>();
+    rsx! { HistoryView { state, exercise_id: None } }
+}
+
+#[component]
+fn WorkoutHistoryExercise(exercise_id: i64) -> Element {
+    let state = consume_context::<WorkoutState>();
+    rsx! { HistoryView { state, exercise_id: Some(exercise_id) } }
+}
+
+#[component]
+fn LibraryTab() -> Element {
+    rsx! { LibraryView {} }
+}
+
+#[component]
+fn LibraryExercise(exercise_id: i64) -> Element {
+    let workout_state = consume_context::<WorkoutState>();
+    let navigator = use_navigator();
+    let mut show_edit_form = use_signal(|| false);
+
+    let exercises = workout_state.exercises();
+    let exercise = exercises
+        .iter()
+        .find(|e| e.id == Some(exercise_id))
+        .cloned();
+
+    let Some(exercise) = exercise else {
+        return rsx! {
+            div {
+                class: "max-w-md mx-auto p-4",
+                p { "Exercise not found." }
+                button {
+                    class: "btn btn-primary",
+                    onclick: move |_| { navigator.push(Route::LibraryTab); },
+                    "Back to Library"
+                }
+            }
+        };
+    };
+
+    if show_edit_form() {
+        return rsx! {
+            div {
+                class: "max-w-md mx-auto p-4",
+                ExerciseForm {
+                    initial_exercise: Some(exercise.clone()),
+                    on_cancel: move |_| show_edit_form.set(false),
+                    on_save: move |updated_exercise| {
+                        let state = workout_state;
+                        spawn(async move {
+                            if let Err(e) = WorkoutStateManager::save_exercise(&state, updated_exercise).await {
+                                WorkoutStateManager::handle_error(&state, e);
+                            }
+                            show_edit_form.set(false);
+                        });
+                    }
+                }
+            }
+        };
+    }
+
+    rsx! {
+        div {
+            class: "max-w-md mx-auto",
+            "data-testid": "exercise-detail-view",
+            // Header
+            div {
+                class: "flex items-center justify-between mb-4 sticky top-0 bg-base-200 z-20 py-2",
+                div {
+                    class: "flex items-center gap-1",
+                    button {
+                        class: "btn btn-ghost btn-sm btn-circle",
+                        "data-testid": "back-button",
+                        onclick: move |_| { navigator.go_back(); },
+                        svg {
+                            xmlns: "http://www.w3.org/2000/svg",
+                            fill: "none",
+                            view_box: "0 0 24 24",
+                            stroke_width: "2.5",
+                            stroke: "currentColor",
+                            class: "w-6 h-6",
+                            path {
+                                stroke_linecap: "round",
+                                stroke_linejoin: "round",
+                                d: "M15.75 19.5L8.25 12l7.5-7.5"
+                            }
+                        }
+                    }
+                    h2 {
+                        class: "text-xl font-black tracking-tight truncate max-w-[150px] sm:max-w-xs",
+                        "{exercise.name.to_uppercase()}"
+                    }
+                }
+                div {
+                    class: "flex gap-2",
+                    button {
+                        class: "btn btn-ghost btn-sm btn-circle",
+                        "data-testid": "edit-button",
+                        onclick: move |_| show_edit_form.set(true),
+                        svg {
+                            xmlns: "http://www.w3.org/2000/svg",
+                            fill: "none",
+                            view_box: "0 0 24 24",
+                            stroke_width: "2",
+                            stroke: "currentColor",
+                            class: "w-5 h-5",
+                            path {
+                                stroke_linecap: "round",
+                                stroke_linejoin: "round",
+                                d: "m16.862 4.487 1.687-1.688a1.875 1.875 0 1 1 2.652 2.652L10.582 16.07a4.5 4.5 0 0 1-1.897 1.13L6 18l.8-2.685a4.5 4.5 0 0 1 1.13-1.897l8.932-8.931Zm0 0L19.5 7.125M18 14v4.75A2.25 2.25 0 0 1 15.75 21H5.25A2.25 2.25 0 0 1 3 18.75V8.25A2.25 2.25 0 0 1 5.25 6H10"
+                            }
+                        }
+                    }
+                    button {
+                        class: "btn btn-primary btn-sm px-4 font-bold shadow-sm",
+                        "data-testid": "start-button",
+                        onclick: move |_| {
+                            let state = workout_state;
+                            let ex = exercise.clone();
+                            spawn(async move {
+                                if let Err(e) = WorkoutStateManager::start_session(&state, ex).await {
+                                    WorkoutStateManager::handle_error(&state, e);
+                                } else {
+                                    navigator.push(Route::WorkoutTab);
+                                }
+                            });
+                        },
+                        "START"
+                    }
+                }
+            }
+
+            // Body
+            HistoryView {
+                state: workout_state,
+                exercise_id: Some(exercise_id)
+            }
+        }
+    }
+}
+
+#[component]
+fn NotFound(path: Vec<String>) -> Element {
+    let nav = use_navigator();
+    use_effect(move || {
+        nav.replace(Route::WorkoutTab);
+    });
+    rsx! { div {} }
+}
+
+// ── App root ──────────────────────────────────────────────────────────────────
+
+#[derive(Clone, Copy)]
+pub struct TabNavigationState {
+    pub last_workout_route: Signal<Route>,
+    pub last_library_route: Signal<Route>,
+}
 
 #[component]
 pub fn App() -> Element {
     let workout_state = use_context_provider(WorkoutState::new);
-    let mut active_tab = use_context_provider(|| {
-        Signal::new(LocalStorage::get(ACTIVE_TAB_KEY).unwrap_or(Tab::Workout))
-    });
-
-    use_effect(move || {
-        let _ = LocalStorage::set(ACTIVE_TAB_KEY, active_tab());
+    use_context_provider(|| TabNavigationState {
+        last_workout_route: Signal::new(Route::WorkoutTab),
+        last_library_route: Signal::new(Route::LibraryTab),
     });
 
     use_effect(move || {
@@ -91,27 +407,32 @@ pub fn App() -> Element {
         });
     });
 
-    // Set data-hydrated attribute after WASM initialization
+    // Set data-hydrated attribute after the app is past the initial loading state
     use_effect(move || {
-        spawn(async move {
-            if let Some(window) = web_sys::window()
-                && let Some(document) = window.document()
-                && let Some(body) = document.body()
-            {
-                if let Err(e) = body.set_attribute("data-hydrated", "true") {
-                    log::error!("Failed to set data-hydrated attribute: {:?}", e);
-                } else {
-                    log::debug!("WASM hydration complete - data-hydrated attribute set");
+        let state = workout_state.initialization_state();
+        if state != InitializationState::NotInitialized
+            && state != InitializationState::Initializing
+        {
+            spawn(async move {
+                if let Some(window) = web_sys::window()
+                    && let Some(document) = window.document()
+                    && let Some(body) = document.body()
+                {
+                    if let Err(e) = body.set_attribute("data-hydrated", "true") {
+                        log::error!("Failed to set data-hydrated attribute: {:?}", e);
+                    } else {
+                        log::debug!("WASM hydration complete - data-hydrated attribute set");
+                    }
                 }
-            }
-        });
+            });
+        }
     });
 
     rsx! {
         div {
             class: "flex flex-col min-h-screen bg-base-200",
             header {
-                class: "navbar bg-primary text-primary-content",
+                class: "navbar bg-primary text-primary-content flex-none",
                 div {
                     class: "flex-1",
                     h1 {
@@ -120,466 +441,388 @@ pub fn App() -> Element {
                     }
                 }
             }
-            main {
-                class: "flex-1 container mx-auto p-4",
-                match workout_state.initialization_state() {
-                    InitializationState::NotInitialized | InitializationState::Initializing => {
-                        rsx! {
+            match workout_state.initialization_state() {
+                InitializationState::NotInitialized | InitializationState::Initializing => {
+                    rsx! {
+                        main {
+                            class: "flex-1 container mx-auto p-4 flex items-center justify-center",
                             div {
-                                class: "flex items-center justify-center h-full",
+                                class: "text-center",
                                 div {
-                                    class: "text-center",
-                                    div {
-                                        class: "loading loading-spinner loading-lg text-primary"
-                                    }
-                                    p {
-                                        class: "mt-4 text-lg",
-                                        "Initializing database..."
-                                    }
+                                    class: "loading loading-spinner loading-lg text-primary"
+                                }
+                                p {
+                                    class: "mt-4 text-lg",
+                                    "Initializing database..."
                                 }
                             }
                         }
                     }
-                    InitializationState::SelectingFile => {
-                        // Check if mobile and not installed (for PWA banner)
-                        let mut show_pwa_banner = use_signal(|| {
-                            if let Some(window) = web_sys::window() {
-                                // Check if mobile
-                                let is_mobile = window.inner_width().unwrap_or(1920.0.into()).as_f64().unwrap_or(1920.0) < 768.0;
-                                // Check if already installed
-                                let is_installed = js_sys::Reflect::get(&window, &"isPWAInstalled".into())
-                                    .ok()
-                                    .and_then(|v| v.as_bool())
-                                    .unwrap_or(false);
-                                // Check if install prompt available
-                                let install_available = js_sys::Reflect::get(&window, &"pwaInstallAvailable".into())
-                                    .ok()
-                                    .and_then(|v| v.as_bool())
-                                    .unwrap_or(false);
+                }
+                InitializationState::SelectingFile => {
+                    // Check if mobile and not installed (for PWA banner)
+                    let mut show_pwa_banner = use_signal(|| {
+                        if let Some(window) = web_sys::window() {
+                            // Check if mobile
+                            let is_mobile = window.inner_width().unwrap_or(1920.0.into()).as_f64().unwrap_or(1920.0) < 768.0;
+                            // Check if already installed
+                            let is_installed = js_sys::Reflect::get(&window, &"isPWAInstalled".into())
+                                .ok()
+                                .and_then(|v| v.as_bool())
+                                .unwrap_or(false);
+                            // Check if install prompt available
+                            let install_available = js_sys::Reflect::get(&window, &"pwaInstallAvailable".into())
+                                .ok()
+                                .and_then(|v| v.as_bool())
+                                .unwrap_or(false);
 
-                                is_mobile && !is_installed && install_available
-                            } else {
-                                false
-                            }
-                        });
-
-                        rsx! {
-                            div {
-                                class: "flex items-center justify-center h-full",
-                                div {
-                                    class: "card bg-base-100 shadow-xl max-w-md",
-                                    div {
-                                        class: "card-body",
-                                        h2 {
-                                            class: "card-title text-xl mb-2",
-                                            "Choose Database Setup"
-                                        }
-
-                                        // PWA Install Banner (mobile only)
-                                        if show_pwa_banner() {
-                                            div {
-                                                class: "alert alert-info mb-4",
-                                                svg {
-                                                    xmlns: "http://www.w3.org/2000/svg",
-                                                    fill: "none",
-                                                    view_box: "0 0 24 24",
-                                                    class: "stroke-current shrink-0 w-6 h-6",
-                                                    path {
-                                                        stroke_linecap: "round",
-                                                        stroke_linejoin: "round",
-                                                        stroke_width: "2",
-                                                        d: "M12 18h.01M8 21h8a2 2 0 002-2V5a2 2 0 00-2-2H8a2 2 0 00-2 2v14a2 2 0 002 2z"
-                                                    }
-                                                }
-                                                div {
-                                                    class: "flex-1",
-                                                    h4 {
-                                                        class: "font-bold",
-                                                        "Install for Best Mobile Experience"
-                                                    }
-                                                    p {
-                                                        class: "text-sm",
-                                                        "Install this app to your home screen for better file access permissions."
-                                                    }
-                                                }
-                                                button {
-                                                    class: "btn btn-sm btn-primary",
-                                                    onclick: move |_| {
-                                                        if let Some(window) = web_sys::window() {
-                                                            let install_fn = js_sys::Reflect::get(&window, &"installPWA".into()).ok();
-                                                            if let Some(func) = install_fn.and_then(|f| f.dyn_into::<js_sys::Function>().ok()) {
-                                                                let _ = func.call0(&window);
-                                                                // Hide banner after attempting install
-                                                                show_pwa_banner.set(false);
-                                                            }
-                                                        }
-                                                    },
-                                                    "Install"
-                                                }
-                                            }
-                                        }
-
-                                        p {
-                                            class: "text-sm text-gray-600 mb-6",
-                                            "Your data will be stored locally on your device and remain completely private."
-                                        }
-
-                                        // Create New Database Button
-                                        div {
-                                            class: "mb-4",
-                                            button {
-                                                class: "btn btn-primary btn-block justify-start h-auto py-4",
-                                                onclick: move |_| {
-                                                    spawn(async move {
-                                                        log::debug!("[UI] User clicked create new database - has user gesture");
-                                                        let mut file_manager = crate::state::Storage::new();
-
-                                                        match file_manager.create_new_file().await {
-                                                            Ok(_) => {
-                                                                log::debug!("[UI] New database file created successfully");
-
-                                                                // Continue initialization inline
-                                                                workout_state.set_initialization_state(InitializationState::Initializing);
-
-                                                                // New file is always empty
-                                                                log::debug!("[UI] Initializing new database...");
-                                                                let mut database = crate::state::Database::new();
-                                                                match database.init(None).await {
-                                                                    Ok(_) => {
-                                                                        log::debug!("[UI] New database initialized successfully");
-
-                                                                        // Clear any existing session state to ensure clean slate
-                                                                        log::debug!("[UI] Clearing current_session to ensure fresh start");
-                                                                        workout_state.set_current_session(None);
-                                                                        log::debug!("[UI] current_session cleared, should show StartSessionView");
-
-                                                                        // Store database and file manager in state
-                                                                        workout_state.set_database(database);
-                                                                        workout_state.set_file_manager(file_manager);
-
-                                                                        workout_state.set_initialization_state(InitializationState::Ready);
-
-                                                                        log::debug!("[UI] Setup complete! State is now Ready");
-                                                                    }
-                                                                    Err(e) => {
-                                                                        log::error!("Database initialization failed: {}", e);
-                                                                        WorkoutStateManager::handle_error(&workout_state, WorkoutError::Database(e));
-                                                                    }
-                                                                }
-                                                            }
-                                                            Err(e) => {
-                                                                log::error!("Failed to create new database: {}", e);
-                                                                WorkoutStateManager::handle_error(&workout_state, WorkoutError::FileSystem(e));
-                                                            }
-                                                        }
-                                                    });
-                                                },
-                                                div {
-                                                    class: "flex items-start gap-3",
-                                                    svg {
-                                                        xmlns: "http://www.w3.org/2000/svg",
-                                                        fill: "none",
-                                                        view_box: "0 0 24 24",
-                                                        class: "w-6 h-6 flex-shrink-0 mt-1",
-                                                        stroke: "currentColor",
-                                                        stroke_width: "2",
-                                                        path {
-                                                            stroke_linecap: "round",
-                                                            stroke_linejoin: "round",
-                                                            d: "M12 4v16m8-8H4"
-                                                        }
-                                                    }
-                                                    div {
-                                                        class: "text-left",
-                                                        div {
-                                                            class: "font-bold text-base",
-                                                            "Create New Database"
-                                                        }
-                                                        div {
-                                                            class: "text-sm opacity-90 mt-1",
-                                                            "Start fresh with an empty workout database"
-                                                        }
-                                                    }
-                                                }
-                                            }
-                                        }
-
-                                        // Open Existing Database Button
-                                        div {
-                                            button {
-                                                class: "btn btn-outline btn-block justify-start h-auto py-4",
-                                                onclick: move |_| {
-                                                    spawn(async move {
-                                                        log::debug!("[UI] User clicked open existing database - has user gesture");
-                                                        let mut file_manager = crate::state::Storage::new();
-
-                                                        match file_manager.prompt_for_file().await {
-                                                            Ok(_) => {
-                                                                log::debug!("[UI] File selected successfully");
-
-                                                                // Continue initialization inline
-                                                                workout_state.set_initialization_state(InitializationState::Initializing);
-
-                                                                // Read file data if handle exists
-                                                                let file_data = if file_manager.has_handle() {
-                                                                    log::debug!("[UI] Reading file contents...");
-                                                                    match file_manager.read_file().await {
-                                                                        Ok(data) if data.is_empty() => {
-                                                                            log::debug!("[UI] File is empty (0 bytes), will create new database");
-                                                                            None
-                                                                        }
-                                                                        Ok(data) => {
-                                                                            log::debug!("[UI] Read {} bytes from file, loading existing database", data.len());
-                                                                            Some(data)
-                                                                        }
-                                                                        Err(e) => {
-                                                                            log::error!("Failed to read selected file: {}", e);
-
-                                                                            // Clear the handle if it's invalid so it doesn't stay cached
-                                                                            if matches!(e, crate::state::FileSystemError::InvalidFormat) {
-                                                                                let mut fm_clone = file_manager.clone();
-                                                                                spawn(async move {
-                                                                                    let _ = fm_clone.clear_handle().await;
-                                                                                });
-                                                                            }
-
-                                                                            WorkoutStateManager::handle_error(&workout_state, WorkoutError::FileSystem(e));
-                                                                            return;
-                                                                        }
-                                                                    }
-                                                                } else {
-                                                                    log::debug!("[UI] No file handle, will create new database in memory");
-                                                                    None
-                                                                };
-
-                                                                // Initialize database
-                                                                log::debug!("[UI] Initializing database...");
-                                                                let mut database = crate::state::Database::new();
-                                                                match database.init(file_data).await {
-                                                                    Ok(_) => {
-                                                                        log::debug!("[UI] Database initialized successfully");
-
-                                                                        // Store database and file manager in state
-                                                                        workout_state.set_database(database);
-                                                                        workout_state.set_file_manager(file_manager);
-
-                                                                        workout_state.set_initialization_state(InitializationState::Ready);
-
-                                                                        log::debug!("[UI] Setup complete! State is now Ready");
-                                                                    }
-                                                                    Err(e) => {
-                                                                        log::error!("Database initialization failed: {}", e);
-                                                                        WorkoutStateManager::handle_error(&workout_state, WorkoutError::Database(e));
-                                                                    }
-                                                                }
-                                                            }
-                                                            Err(e) => {
-                                                                log::error!("File selection failed: {}", e);
-                                                                WorkoutStateManager::handle_error(&workout_state, WorkoutError::FileSystem(e));
-                                                            }
-                                                        }
-                                                    });
-                                                },
-                                                div {
-                                                    class: "flex items-start gap-3",
-                                                    svg {
-                                                        xmlns: "http://www.w3.org/2000/svg",
-                                                        fill: "none",
-                                                        view_box: "0 0 24 24",
-                                                        class: "w-6 h-6 flex-shrink-0 mt-1",
-                                                        stroke: "currentColor",
-                                                        stroke_width: "2",
-                                                        path {
-                                                            stroke_linecap: "round",
-                                                            stroke_linejoin: "round",
-                                                            d: "M3 7v10a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-6l-2-2H5a2 2 0 00-2 2z"
-                                                        }
-                                                    }
-                                                    div {
-                                                        class: "text-left",
-                                                        div {
-                                                            class: "font-bold text-base",
-                                                            "Open Existing Database"
-                                                        }
-                                                        div {
-                                                            class: "text-sm opacity-90 mt-1",
-                                                            "Continue with your existing workout data"
-                                                        }
-                                                    }
-                                                }
-                                            }
-                                        }
-                                    }
-                                }
-                            }
-                        }
-                    }
-                    InitializationState::Ready => {
-                        let storage_mode_banner = if let Some(fm) = workout_state.file_manager() {
-                            if fm.is_using_fallback() {
-                                Some(rsx! {
-                                    div {
-                                        class: "alert alert-info mb-4",
-                                        svg {
-                                            xmlns: "http://www.w3.org/2000/svg",
-                                            fill: "none",
-                                            view_box: "0 0 24 24",
-                                            class: "stroke-current shrink-0 w-6 h-6",
-                                            path {
-                                                stroke_linecap: "round",
-                                                stroke_linejoin: "round",
-                                                stroke_width: "2",
-                                                d: "M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"
-                                            }
-                                        }
-                                        div {
-                                            h4 {
-                                                class: "font-bold",
-                                                "Browser Storage Mode"
-                                            }
-                                            p {
-                                                class: "text-sm",
-                                                "Your data is stored in browser LocalStorage. This works offline but won't sync across devices or browsers."
-                                            }
-                                        }
-                                    }
-                                })
-                            } else {
-                                None
-                            }
+                            is_mobile && !is_installed && install_available
                         } else {
-                            None
-                        };
-
-                        let save_error_banner = workout_state.save_error().map(|err_msg| rsx! {
-                            div {
-                                class: "alert alert-warning mb-4",
-                                svg {
-                                    xmlns: "http://www.w3.org/2000/svg",
-                                    fill: "none",
-                                    view_box: "0 0 24 24",
-                                    class: "stroke-current shrink-0 w-6 h-6",
-                                    path {
-                                        stroke_linecap: "round",
-                                        stroke_linejoin: "round",
-                                        stroke_width: "2",
-                                        d: "M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"
-                                    }
-                                }
-                                div {
-                                    h4 {
-                                        class: "font-bold",
-                                        "Sync Warning"
-                                    }
-                                    p {
-                                        class: "text-sm",
-                                        "{err_msg}"
-                                    }
-                                }
-                            }
-                        });
-
-                        rsx! {
-                            div {
-                                class: "pb-safe-nav",
-                                {storage_mode_banner}
-                                {save_error_banner}
-                                match active_tab() {
-                                    Tab::Workout => rsx! { WorkoutView { state: workout_state } },
-                                    Tab::Library => rsx! { LibraryView {} },
-                                }
-                            }
-                            TabBar {
-                                active_tab: active_tab(),
-                                on_change: move |tab| {
-                                    active_tab.set(tab);
-                                }
-                            }
+                            false
                         }
-                    }
-                    InitializationState::Error => {
-                        let error = workout_state.error().unwrap_or(WorkoutError::Database(crate::state::DatabaseError::NotInitialized));
-                        let error_info = parse_error_for_ui(&error);
+                    });
 
-                        // Check if we have a handle but need permission
-                        let has_handle = workout_state.file_manager().map(|fm| fm.has_handle()).unwrap_or(false);
-                        let is_permission_error = matches!(error, WorkoutError::FileSystem(crate::state::FileSystemError::PermissionDenied));
-
-                        rsx! {
+                    rsx! {
+                        main {
+                            class: "flex-1 container mx-auto p-4 flex items-center justify-center",
                             div {
-                                class: "flex items-center justify-center h-full",
+                                class: "card bg-base-100 shadow-xl max-w-md",
                                 div {
-                                    class: "card bg-base-100 shadow-xl max-w-md",
-                                    div {
-                                        class: "card-body",
+                                    class: "card-body",
+                                    h2 {
+                                        class: "card-title text-xl mb-2",
+                                        "Choose Database Setup"
+                                    }
+
+                                    // PWA Install Banner (mobile only)
+                                    if show_pwa_banner() {
                                         div {
-                                            class: "alert alert-error mb-4",
+                                            class: "alert alert-info mb-4",
                                             svg {
                                                 xmlns: "http://www.w3.org/2000/svg",
-                                                class: "stroke-current shrink-0 h-6 w-6",
                                                 fill: "none",
                                                 view_box: "0 0 24 24",
+                                                class: "stroke-current shrink-0 w-6 h-6",
                                                 path {
                                                     stroke_linecap: "round",
                                                     stroke_linejoin: "round",
                                                     stroke_width: "2",
-                                                    d: "M10 14l2-2m0 0l2-2m-2 2l-2-2m2 2l2 2m7-2a9 9 0 11-18 0 9 9 0 0118 0z"
+                                                    d: "M12 18h.01M8 21h8a2 2 0 002-2V5a2 2 0 00-2-2H8a2 2 0 00-2 2v14a2 2 0 002 2z"
                                                 }
                                             }
                                             div {
-                                                h3 {
+                                                class: "flex-1",
+                                                h4 {
                                                     class: "font-bold",
-                                                    {error_info.title}
+                                                    "Install for Best Mobile Experience"
                                                 }
                                                 p {
-                                                    class: "text-sm mt-2",
-                                                    {error_info.message}
+                                                    class: "text-sm",
+                                                    "Install this app to your home screen for better file access permissions."
                                                 }
-                                                if let Some(tip) = error_info.recovery_tip {
-                                                    p {
-                                                        class: "text-sm mt-3 flex items-start gap-2",
-                                                        span {
-                                                            class: "text-base",
-                                                            "💡"
+                                            }
+                                            button {
+                                                class: "btn btn-sm btn-primary",
+                                                onclick: move |_| {
+                                                    if let Some(window) = web_sys::window() {
+                                                        let install_fn = js_sys::Reflect::get(&window, &"installPWA".into()).ok();
+                                                        if let Some(func) = install_fn.and_then(|f| f.dyn_into::<js_sys::Function>().ok()) {
+                                                            let _ = func.call0(&window);
+                                                            // Hide banner after attempting install
+                                                            show_pwa_banner.set(false);
                                                         }
-                                                        span { {tip} }
+                                                    }
+                                                },
+                                                "Install"
+                                            }
+                                        }
+                                    }
+
+                                    p {
+                                        class: "text-sm text-gray-600 mb-6",
+                                        "Your data will be stored locally on your device and remain completely private."
+                                    }
+
+                                    // Create New Database Button
+                                    div {
+                                        class: "mb-4",
+                                        button {
+                                            class: "btn btn-primary btn-block justify-start h-auto py-4",
+                                            onclick: move |_| {
+                                                spawn(async move {
+                                                    log::debug!("[UI] User clicked create new database - has user gesture");
+                                                    let mut file_manager = crate::state::Storage::new();
+
+                                                    match file_manager.create_new_file().await {
+                                                        Ok(_) => {
+                                                            log::debug!("[UI] New database file created successfully");
+
+                                                            // Continue initialization inline
+                                                            workout_state.set_initialization_state(InitializationState::Initializing);
+
+                                                            // New file is always empty
+                                                            log::debug!("[UI] Initializing new database...");
+                                                            let mut database = crate::state::Database::new();
+                                                            match database.init(None).await {
+                                                                Ok(_) => {
+                                                                    log::debug!("[UI] New database initialized successfully");
+
+                                                                    // Clear any existing session state to ensure clean slate
+                                                                    log::debug!("[UI] Clearing current_session to ensure fresh start");
+                                                                    workout_state.set_current_session(None);
+                                                                    log::debug!("[UI] current_session cleared, should show StartSessionView");
+
+                                                                    // Store database and file manager in state
+                                                                    workout_state.set_database(database);
+                                                                    workout_state.set_file_manager(file_manager);
+
+                                                                    workout_state.set_initialization_state(InitializationState::Ready);
+
+                                                                    log::debug!("[UI] Setup complete! State is now Ready");
+                                                                }
+                                                                Err(e) => {
+                                                                    log::error!("Database initialization failed: {}", e);
+                                                                    WorkoutStateManager::handle_error(&workout_state, WorkoutError::Database(e));
+                                                                }
+                                                            }
+                                                        }
+                                                        Err(e) => {
+                                                            log::error!("Failed to create new database: {}", e);
+                                                            WorkoutStateManager::handle_error(&workout_state, WorkoutError::FileSystem(e));
+                                                        }
+                                                    }
+                                                });
+                                            },
+                                            div {
+                                                class: "flex items-start gap-3",
+                                                svg {
+                                                    xmlns: "http://www.w3.org/2000/svg",
+                                                    fill: "none",
+                                                    view_box: "0 0 24 24",
+                                                    class: "w-6 h-6 flex-shrink-0 mt-1",
+                                                    stroke: "currentColor",
+                                                    stroke_width: "2",
+                                                    path {
+                                                        stroke_linecap: "round",
+                                                        stroke_linejoin: "round",
+                                                        d: "M12 4v16m8-8H4"
+                                                    }
+                                                }
+                                                div {
+                                                    class: "text-left",
+                                                    div {
+                                                        class: "font-bold text-base",
+                                                        "Create New Database"
+                                                    }
+                                                    div {
+                                                        class: "text-sm opacity-90 mt-1",
+                                                        "Start fresh with an empty workout database"
                                                     }
                                                 }
                                             }
                                         }
-                                        div {
-                                            class: "card-actions justify-end",
-                                            button {
-                                                class: "btn btn-primary",
-                                                onclick: move |_| {
-                                                    spawn(async move {
-                                                        if has_handle && is_permission_error {
-                                                            log::debug!("[UI] Re-requesting permission for existing handle...");
-                                                            if let Some(fm) = workout_state.file_manager() {
-                                                                if let Err(e) = fm.request_permission().await {
-                                                                    log::error!("[UI] Permission re-request failed: {:?}", e);
-                                                                    WorkoutStateManager::handle_error(&workout_state, WorkoutError::FileSystem(e));
-                                                                    return;
+                                    }
+
+                                    // Open Existing Database Button
+                                    div {
+                                        button {
+                                            class: "btn btn-outline btn-block justify-start h-auto py-4",
+                                            onclick: move |_| {
+                                                spawn(async move {
+                                                    log::debug!("[UI] User clicked open existing database - has user gesture");
+                                                    let mut file_manager = crate::state::Storage::new();
+
+                                                    match file_manager.prompt_for_file().await {
+                                                        Ok(_) => {
+                                                            log::debug!("[UI] File selected successfully");
+
+                                                            // Continue initialization inline
+                                                            workout_state.set_initialization_state(InitializationState::Initializing);
+
+                                                            // Read file data if handle exists
+                                                            let file_data = if file_manager.has_handle() {
+                                                                log::debug!("[UI] Reading file contents...");
+                                                                match file_manager.read_file().await {
+                                                                    Ok(data) if data.is_empty() => {
+                                                                        log::debug!("[UI] File is empty (0 bytes), will create new database");
+                                                                        None
+                                                                    }
+                                                                    Ok(data) => {
+                                                                        log::debug!("[UI] Read {} bytes from file, loading existing database", data.len());
+                                                                        Some(data)
+                                                                    }
+                                                                    Err(e) => {
+                                                                        log::error!("Failed to read selected file: {}", e);
+
+                                                                        // Clear the handle if it's invalid so it doesn't stay cached
+                                                                        if matches!(e, crate::state::FileSystemError::InvalidFormat) {
+                                                                            let mut fm_clone = file_manager.clone();
+                                                                            spawn(async move {
+                                                                                let _ = fm_clone.clear_handle().await;
+                                                                            });
+                                                                        }
+
+                                                                        WorkoutStateManager::handle_error(&workout_state, WorkoutError::FileSystem(e));
+                                                                        return;
+                                                                    }
                                                                 }
-                                                                log::debug!("[UI] Permission granted! Retrying initialization...");
+                                                            } else {
+                                                                log::debug!("[UI] No file handle, will create new database in memory");
+                                                                None
+                                                            };
+
+                                                            // Initialize database
+                                                            log::debug!("[UI] Initializing database...");
+                                                            let mut database = crate::state::Database::new();
+                                                            match database.init(file_data).await {
+                                                                Ok(_) => {
+                                                                    log::debug!("[UI] Database initialized successfully");
+
+                                                                    // Store database and file manager in state
+                                                                    workout_state.set_database(database);
+                                                                    workout_state.set_file_manager(file_manager);
+
+                                                                    workout_state.set_initialization_state(InitializationState::Ready);
+
+                                                                    log::debug!("[UI] Setup complete! State is now Ready");
+                                                                }
+                                                                Err(e) => {
+                                                                    log::error!("Database initialization failed: {}", e);
+                                                                    WorkoutStateManager::handle_error(&workout_state, WorkoutError::Database(e));
+                                                                }
                                                             }
                                                         }
-
-                                                        // Reset error state
-                                                        workout_state.set_error(None);
-                                                        workout_state.set_initialization_state(InitializationState::NotInitialized);
-                                                        // Retry initialization
-                                                        if let Err(e) = WorkoutStateManager::setup_database(&workout_state).await {
-                                                            WorkoutStateManager::handle_error(&workout_state, e);
+                                                        Err(e) => {
+                                                            log::error!("File selection failed: {}", e);
+                                                            WorkoutStateManager::handle_error(&workout_state, WorkoutError::FileSystem(e));
                                                         }
-                                                    });
-                                                },
-                                                {
-                                                    if has_handle && is_permission_error {
-                                                        "Grant Permission"
-                                                    } else {
-                                                        error_info.retry_label.as_str()
                                                     }
+                                                });
+                                            },
+                                            div {
+                                                class: "flex items-start gap-3",
+                                                svg {
+                                                    xmlns: "http://www.w3.org/2000/svg",
+                                                    fill: "none",
+                                                    view_box: "0 0 24 24",
+                                                    class: "w-6 h-6 flex-shrink-0 mt-1",
+                                                    stroke: "currentColor",
+                                                    stroke_width: "2",
+                                                    path {
+                                                        stroke_linecap: "round",
+                                                        stroke_linejoin: "round",
+                                                        d: "M3 7v10a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-6l-2-2H5a2 2 0 00-2 2z"
+                                                    }
+                                                }
+                                                div {
+                                                    class: "text-left",
+                                                    div {
+                                                        class: "font-bold text-base",
+                                                        "Open Existing Database"
+                                                    }
+                                                    div {
+                                                        class: "text-sm opacity-90 mt-1",
+                                                        "Continue with your existing workout data"
+                                                    }
+                                                }
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+                InitializationState::Ready => {
+                    rsx! {
+                        main {
+                            class: "flex-1 flex flex-col min-h-0 w-full",
+                            Router::<Route> {}
+                        }
+                    }
+                }
+                InitializationState::Error => {
+                    let error = workout_state.error().unwrap_or(WorkoutError::Database(crate::state::DatabaseError::NotInitialized));
+                    let error_info = parse_error_for_ui(&error);
+
+                    // Check if we have a handle but need permission
+                    let has_handle = workout_state.file_manager().map(|fm| fm.has_handle()).unwrap_or(false);
+                    let is_permission_error = matches!(error, WorkoutError::FileSystem(crate::state::FileSystemError::PermissionDenied));
+
+                    rsx! {
+                        main {
+                            class: "flex-1 container mx-auto p-4 flex items-center justify-center",
+                            div {
+                                class: "card bg-base-100 shadow-xl max-w-md",
+                                div {
+                                    class: "card-body",
+                                    div {
+                                        class: "alert alert-error mb-4",
+                                        svg {
+                                            xmlns: "http://www.w3.org/2000/svg",
+                                            class: "stroke-current shrink-0 h-6 w-6",
+                                            fill: "none",
+                                            view_box: "0 0 24 24",
+                                            path {
+                                                stroke_linecap: "round",
+                                                stroke_linejoin: "round",
+                                                stroke_width: "2",
+                                                d: "M10 14l2-2m0 0l2-2m-2 2l-2-2m2 2l2 2m7-2a9 9 0 11-18 0 9 9 0 0118 0z"
+                                            }
+                                        }
+                                        div {
+                                            h3 {
+                                                class: "font-bold",
+                                                {error_info.title}
+                                            }
+                                            p {
+                                                class: "text-sm mt-2",
+                                                {error_info.message}
+                                            }
+                                            if let Some(tip) = error_info.recovery_tip {
+                                                p {
+                                                    class: "text-sm mt-3 flex items-start gap-2",
+                                                    span {
+                                                        class: "text-base",
+                                                        "💡"
+                                                    }
+                                                    span { {tip} }
+                                                }
+                                            }
+                                        }
+                                    }
+                                    div {
+                                        class: "card-actions justify-end",
+                                        button {
+                                            class: "btn btn-primary",
+                                            onclick: move |_| {
+                                                spawn(async move {
+                                                    if has_handle && is_permission_error {
+                                                        log::debug!("[UI] Re-requesting permission for existing handle...");
+                                                        if let Some(fm) = workout_state.file_manager() {
+                                                            if let Err(e) = fm.request_permission().await {
+                                                                log::error!("[UI] Permission re-request failed: {:?}", e);
+                                                                WorkoutStateManager::handle_error(&workout_state, WorkoutError::FileSystem(e));
+                                                                return;
+                                                            }
+                                                            log::debug!("[UI] Permission granted! Retrying initialization...");
+                                                        }
+                                                    }
+
+                                                    // Reset error state
+                                                    workout_state.set_error(None);
+                                                    workout_state.set_initialization_state(InitializationState::NotInitialized);
+                                                    // Retry initialization
+                                                    if let Err(e) = WorkoutStateManager::setup_database(&workout_state).await {
+                                                        WorkoutStateManager::handle_error(&workout_state, e);
+                                                    }
+                                                });
+                                            },
+                                            {
+                                                if has_handle && is_permission_error {
+                                                    "Grant Permission"
+                                                } else {
+                                                    error_info.retry_label.as_str()
                                                 }
                                             }
                                         }
@@ -656,6 +899,9 @@ pub fn ActiveSession(state: WorkoutState, session: crate::state::WorkoutSession)
         });
     };
 
+    let navigator = use_navigator();
+    let history_exercise_id = session_for_display.exercise.id.unwrap_or(0);
+
     rsx! {
         div {
             class: "max-w-md mx-auto space-y-8 pb-10",
@@ -671,8 +917,33 @@ pub fn ActiveSession(state: WorkoutState, session: crate::state::WorkoutSession)
                             {session_for_display.exercise.name.clone()}
                         }
                         div {
-                            class: "badge badge-primary badge-lg font-bold",
-                            "Set {session_for_display.completed_sets.len() + 1}"
+                            class: "flex items-center gap-2",
+                            div {
+                                class: "badge badge-primary badge-lg font-bold",
+                                "Set {session_for_display.completed_sets.len() + 1}"
+                            }
+                            // History icon — AC #7
+                            button {
+                                class: "btn btn-ghost btn-sm btn-circle",
+                                "aria-label": "View exercise history",
+                                "data-testid": "history-icon-btn",
+                                onclick: move |_| {
+                                    navigator.push(Route::WorkoutHistoryExercise { exercise_id: history_exercise_id });
+                                },
+                                svg {
+                                    xmlns: "http://www.w3.org/2000/svg",
+                                    fill: "none",
+                                    view_box: "0 0 24 24",
+                                    stroke_width: "1.5",
+                                    stroke: "currentColor",
+                                    class: "w-5 h-5",
+                                    path {
+                                        stroke_linecap: "round",
+                                        stroke_linejoin: "round",
+                                        d: "M12 6v6h4.5m4.5 0a9 9 0 1 1-18 0 9 9 0 0 1 18 0Z"
+                                    }
+                                }
+                            }
                         }
                     }
                 }
@@ -817,6 +1088,16 @@ pub fn ActiveSession(state: WorkoutState, session: crate::state::WorkoutSession)
                             }
                         }
                     }
+                }
+            }
+
+            // Previous Sessions — collapsible history for this exercise (AC #1–#6)
+            if let Some(eid) = session_for_display.exercise.id {
+                PreviousSessions {
+                    key: "{eid}",
+                    state: state,
+                    exercise_id: eid,
+                    completed_sets_count: session_for_display.completed_sets.len(),
                 }
             }
 

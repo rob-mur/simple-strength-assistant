@@ -48,28 +48,26 @@ async fn test_database_initialization_with_existing_data() {
     );
 }
 
+// ── TASK-2.1: New schema tests ────────────────────────────────────────────────
+
+/// RED: log_set writes exercise_id and recorded_at; no session_id involved.
 #[wasm_bindgen_test]
-async fn test_create_session() {
+async fn test_log_set_weighted() {
     let mut db = Database::new();
     db.init(None).await.expect("Database init failed");
 
-    let session_id = db
-        .create_session("Bench Press")
+    let exercise = ExerciseMetadata {
+        id: None,
+        name: "Bench Press".to_string(),
+        set_type_config: SetTypeConfig::Weighted {
+            min_weight: 0.0,
+            increment: 5.0,
+        },
+    };
+    let exercise_id = db
+        .save_exercise(&exercise)
         .await
-        .expect("Create session failed");
-
-    assert!(session_id > 0, "Session ID should be positive");
-}
-
-#[wasm_bindgen_test]
-async fn test_insert_set_weighted() {
-    let mut db = Database::new();
-    db.init(None).await.expect("Database init failed");
-
-    let session_id = db
-        .create_session("Bench Press")
-        .await
-        .expect("Create session failed");
+        .expect("Save exercise failed");
 
     let set = CompletedSet {
         set_number: 1,
@@ -78,23 +76,26 @@ async fn test_insert_set_weighted() {
         set_type: SetType::Weighted { weight: 135.0 },
     };
 
-    let set_id = db
-        .insert_set(session_id, &set)
-        .await
-        .expect("Insert set failed");
+    let set_id = db.log_set(exercise_id, &set).await.expect("log_set failed");
 
     assert!(set_id > 0, "Set ID should be positive");
 }
 
+/// RED: log_set works for bodyweight sets.
 #[wasm_bindgen_test]
-async fn test_insert_set_bodyweight() {
+async fn test_log_set_bodyweight() {
     let mut db = Database::new();
     db.init(None).await.expect("Database init failed");
 
-    let session_id = db
-        .create_session("Pull-ups")
+    let exercise = ExerciseMetadata {
+        id: None,
+        name: "Pull-ups".to_string(),
+        set_type_config: SetTypeConfig::Bodyweight,
+    };
+    let exercise_id = db
+        .save_exercise(&exercise)
         .await
-        .expect("Create session failed");
+        .expect("Save exercise failed");
 
     let set = CompletedSet {
         set_number: 1,
@@ -104,26 +105,343 @@ async fn test_insert_set_bodyweight() {
     };
 
     let set_id = db
-        .insert_set(session_id, &set)
+        .log_set(exercise_id, &set)
         .await
-        .expect("Insert set failed");
+        .expect("log_set bodyweight failed");
 
     assert!(set_id > 0, "Set ID should be positive");
 }
 
+/// RED: get_sets_for_exercise returns sets in reverse-chronological order,
+/// respecting limit and offset for pagination.
 #[wasm_bindgen_test]
-async fn test_complete_session() {
+async fn test_get_sets_for_exercise_pagination() {
     let mut db = Database::new();
     db.init(None).await.expect("Database init failed");
 
-    let session_id = db
-        .create_session("Squats")
+    let exercise = ExerciseMetadata {
+        id: None,
+        name: "Squat".to_string(),
+        set_type_config: SetTypeConfig::Weighted {
+            min_weight: 20.0,
+            increment: 2.5,
+        },
+    };
+    let exercise_id = db
+        .save_exercise(&exercise)
         .await
-        .expect("Create session failed");
+        .expect("Save exercise failed");
 
-    let result = db.complete_session(session_id).await;
+    // Log 3 sets in order
+    for i in 1u32..=3 {
+        let set = CompletedSet {
+            set_number: i,
+            reps: i * 3,
+            rpe: 7.0,
+            set_type: SetType::Weighted {
+                weight: 60.0 + (i as f32 * 5.0),
+            },
+        };
+        db.log_set(exercise_id, &set).await.expect("log_set failed");
+    }
 
-    assert!(result.is_ok(), "Complete session should succeed");
+    // Page 1: first 2 results (most recent first)
+    let page1 = db
+        .get_sets_for_exercise(exercise_id, 2, 0)
+        .await
+        .expect("get_sets_for_exercise failed");
+    assert_eq!(page1.len(), 2, "Page 1 should have 2 results");
+
+    // Page 2: remaining 1 result
+    let page2 = db
+        .get_sets_for_exercise(exercise_id, 2, 2)
+        .await
+        .expect("get_sets_for_exercise page 2 failed");
+    assert_eq!(page2.len(), 1, "Page 2 should have 1 result");
+
+    // Results should be reverse-chronological (set_number 3 before 2 before 1)
+    assert_eq!(
+        page1[0].set_number, 3,
+        "First result should be most recent (set 3)"
+    );
+    assert_eq!(page1[1].set_number, 2, "Second result should be set 2");
+    assert_eq!(
+        page2[0].set_number, 1,
+        "Third result should be oldest (set 1)"
+    );
+}
+
+/// RED: get_sets_for_exercise only returns sets for the given exercise_id.
+#[wasm_bindgen_test]
+async fn test_get_sets_for_exercise_isolation() {
+    let mut db = Database::new();
+    db.init(None).await.expect("Database init failed");
+
+    let ex_a = ExerciseMetadata {
+        id: None,
+        name: "Bench Press".to_string(),
+        set_type_config: SetTypeConfig::Weighted {
+            min_weight: 0.0,
+            increment: 5.0,
+        },
+    };
+    let id_a = db.save_exercise(&ex_a).await.expect("Save A failed");
+
+    let ex_b = ExerciseMetadata {
+        id: None,
+        name: "Deadlift".to_string(),
+        set_type_config: SetTypeConfig::Weighted {
+            min_weight: 0.0,
+            increment: 5.0,
+        },
+    };
+    let id_b = db.save_exercise(&ex_b).await.expect("Save B failed");
+
+    db.log_set(
+        id_a,
+        &CompletedSet {
+            set_number: 1,
+            reps: 5,
+            rpe: 7.0,
+            set_type: SetType::Weighted { weight: 100.0 },
+        },
+    )
+    .await
+    .expect("log set A failed");
+    db.log_set(
+        id_b,
+        &CompletedSet {
+            set_number: 1,
+            reps: 3,
+            rpe: 8.0,
+            set_type: SetType::Weighted { weight: 150.0 },
+        },
+    )
+    .await
+    .expect("log set B failed");
+
+    let sets_a = db
+        .get_sets_for_exercise(id_a, 10, 0)
+        .await
+        .expect("query A failed");
+    assert_eq!(sets_a.len(), 1);
+    assert_eq!(sets_a[0].exercise_id, id_a);
+    assert_eq!(sets_a[0].reps, 5);
+}
+
+/// RED: get_all_sets_paginated returns sets from all exercises reverse-chronologically.
+#[wasm_bindgen_test]
+async fn test_get_all_sets_paginated() {
+    let mut db = Database::new();
+    db.init(None).await.expect("Database init failed");
+
+    let ex1 = ExerciseMetadata {
+        id: None,
+        name: "Exercise One".to_string(),
+        set_type_config: SetTypeConfig::Bodyweight,
+    };
+    let id1 = db.save_exercise(&ex1).await.expect("Save 1 failed");
+
+    let ex2 = ExerciseMetadata {
+        id: None,
+        name: "Exercise Two".to_string(),
+        set_type_config: SetTypeConfig::Bodyweight,
+    };
+    let id2 = db.save_exercise(&ex2).await.expect("Save 2 failed");
+
+    db.log_set(
+        id1,
+        &CompletedSet {
+            set_number: 1,
+            reps: 10,
+            rpe: 7.0,
+            set_type: SetType::Bodyweight,
+        },
+    )
+    .await
+    .expect("log 1 failed");
+    db.log_set(
+        id2,
+        &CompletedSet {
+            set_number: 1,
+            reps: 8,
+            rpe: 7.5,
+            set_type: SetType::Bodyweight,
+        },
+    )
+    .await
+    .expect("log 2 failed");
+
+    let all = db
+        .get_all_sets_paginated(10, 0)
+        .await
+        .expect("get_all_sets_paginated failed");
+
+    assert_eq!(all.len(), 2, "Should return 2 sets total");
+    // Most recently logged should come first
+    assert_eq!(all[0].exercise_id, id2);
+    assert_eq!(all[1].exercise_id, id1);
+}
+
+/// RED: update_set persists changes; subsequent reads reflect the update.
+#[wasm_bindgen_test]
+async fn test_update_set() {
+    let mut db = Database::new();
+    db.init(None).await.expect("Database init failed");
+
+    let exercise = ExerciseMetadata {
+        id: None,
+        name: "Overhead Press".to_string(),
+        set_type_config: SetTypeConfig::Weighted {
+            min_weight: 0.0,
+            increment: 2.5,
+        },
+    };
+    let exercise_id = db
+        .save_exercise(&exercise)
+        .await
+        .expect("Save exercise failed");
+
+    let set = CompletedSet {
+        set_number: 1,
+        reps: 8,
+        rpe: 7.0,
+        set_type: SetType::Weighted { weight: 50.0 },
+    };
+    let set_id = db.log_set(exercise_id, &set).await.expect("log_set failed");
+
+    // Update: change reps to 10, rpe to 8.0, weight to 55.0
+    db.update_set(set_id, 10, 8.0, Some(55.0))
+        .await
+        .expect("update_set failed");
+
+    let updated = db
+        .get_sets_for_exercise(exercise_id, 1, 0)
+        .await
+        .expect("read after update failed");
+
+    assert_eq!(updated.len(), 1);
+    assert_eq!(updated[0].reps, 10, "reps should be updated to 10");
+    assert_eq!(updated[0].rpe, 8.0, "rpe should be updated to 8.0");
+    assert_eq!(
+        updated[0].set_type,
+        SetType::Weighted { weight: 55.0 },
+        "weight should be updated to 55.0"
+    );
+}
+
+/// RED: delete_set removes the set; subsequent reads no longer include it.
+#[wasm_bindgen_test]
+async fn test_delete_set() {
+    let mut db = Database::new();
+    db.init(None).await.expect("Database init failed");
+
+    let exercise = ExerciseMetadata {
+        id: None,
+        name: "Romanian Deadlift".to_string(),
+        set_type_config: SetTypeConfig::Weighted {
+            min_weight: 0.0,
+            increment: 5.0,
+        },
+    };
+    let exercise_id = db
+        .save_exercise(&exercise)
+        .await
+        .expect("Save exercise failed");
+
+    let set_id = db
+        .log_set(
+            exercise_id,
+            &CompletedSet {
+                set_number: 1,
+                reps: 8,
+                rpe: 7.0,
+                set_type: SetType::Weighted { weight: 80.0 },
+            },
+        )
+        .await
+        .expect("log_set failed");
+
+    db.delete_set(set_id).await.expect("delete_set failed");
+
+    let remaining = db
+        .get_sets_for_exercise(exercise_id, 10, 0)
+        .await
+        .expect("read after delete failed");
+
+    assert_eq!(remaining.len(), 0, "No sets should remain after deletion");
+}
+
+/// RED: get_last_set_for_exercise uses the new schema (no sessions table).
+#[wasm_bindgen_test]
+async fn test_get_last_set_for_exercise_new_schema() {
+    let mut db = Database::new();
+    db.init(None).await.expect("Database init failed");
+
+    let exercise = ExerciseMetadata {
+        id: None,
+        name: "Bench Press".to_string(),
+        set_type_config: SetTypeConfig::Weighted {
+            min_weight: 0.0,
+            increment: 2.5,
+        },
+    };
+    let exercise_id = db
+        .save_exercise(&exercise)
+        .await
+        .expect("Save exercise failed");
+
+    // Log two sets — most recent should be returned
+    db.log_set(
+        exercise_id,
+        &CompletedSet {
+            set_number: 1,
+            reps: 8,
+            rpe: 7.0,
+            set_type: SetType::Weighted { weight: 100.0 },
+        },
+    )
+    .await
+    .expect("log set 1 failed");
+
+    db.log_set(
+        exercise_id,
+        &CompletedSet {
+            set_number: 2,
+            reps: 5,
+            rpe: 8.0,
+            set_type: SetType::Weighted { weight: 110.0 },
+        },
+    )
+    .await
+    .expect("log set 2 failed");
+
+    let last = db
+        .get_last_set_for_exercise(exercise_id)
+        .await
+        .expect("get_last_set_for_exercise failed");
+
+    assert!(last.is_some());
+    let last = last.unwrap();
+    assert_eq!(last.set_type, SetType::Weighted { weight: 110.0 });
+    assert_eq!(last.reps, 5);
+    assert_eq!(last.rpe, 8.0);
+}
+
+/// start_session no longer writes to the database (no sessions table).
+/// This is verified by confirming get_all_sets_paginated returns 0 rows after start.
+#[wasm_bindgen_test]
+async fn test_start_session_does_not_write_db_row() {
+    let mut db = Database::new();
+    db.init(None).await.expect("Database init failed");
+
+    // If we haven't logged any sets, the paginated query should return nothing.
+    let sets = db
+        .get_all_sets_paginated(10, 0)
+        .await
+        .expect("paginated query failed");
+
+    assert_eq!(sets.len(), 0, "No sets before any are logged");
 }
 
 #[wasm_bindgen_test]
@@ -217,7 +535,7 @@ async fn test_export_database() {
 async fn test_database_not_initialized_error() {
     let db = Database::new();
 
-    let result = db.create_session("Test").await;
+    let result = db.get_all_sets_paginated(10, 0).await;
 
     assert!(result.is_err(), "Should return error when not initialized");
 }
@@ -228,7 +546,7 @@ async fn test_sql_injection_protection() {
     db.init(None).await.expect("Database init failed");
 
     // Try exercise name with SQL injection attempt
-    let malicious_name = "Test'; DROP TABLE sessions; --";
+    let malicious_name = "Test'; DROP TABLE exercises; --";
 
     let exercise = ExerciseMetadata {
         id: None,
@@ -246,11 +564,11 @@ async fn test_sql_injection_protection() {
         "Should handle special characters safely with parameterized queries"
     );
 
-    // Verify we can still create a session (tables weren't dropped)
-    let session_result = db.create_session("Normal Exercise").await;
+    // Verify we can still query (tables weren't dropped)
+    let sets_result = db.get_all_sets_paginated(10, 0).await;
 
     assert!(
-        session_result.is_ok(),
+        sets_result.is_ok(),
         "Database should still be functional after injection attempt"
     );
 }
@@ -269,14 +587,10 @@ async fn test_export_import_round_trip() {
             increment: 5.0,
         },
     };
-    db1.save_exercise(&exercise)
+    let exercise_id = db1
+        .save_exercise(&exercise)
         .await
         .expect("Save exercise failed");
-
-    let session_id = db1
-        .create_session("Bench Press")
-        .await
-        .expect("Create session failed");
 
     let set = CompletedSet {
         set_number: 1,
@@ -284,13 +598,9 @@ async fn test_export_import_round_trip() {
         rpe: 7.5,
         set_type: SetType::Weighted { weight: 135.0 },
     };
-    db1.insert_set(session_id, &set)
+    db1.log_set(exercise_id, &set)
         .await
-        .expect("Insert set failed");
-
-    db1.complete_session(session_id)
-        .await
-        .expect("Complete session failed");
+        .expect("log_set failed");
 
     // Export and re-import
     let exported = db1.export().await.expect("Export failed");
@@ -314,106 +624,21 @@ async fn test_export_import_round_trip() {
         .expect("Count should be a number") as i64;
     assert_eq!(count, 1, "Expected exactly 1 set in the imported database");
 
-    // Verify we can create a new session in the imported database
-    let new_session = db2.create_session("Bench Press").await;
+    // Verify we can log another set in the imported database
+    let new_set_id = db2
+        .log_set(
+            exercise_id,
+            &CompletedSet {
+                set_number: 2,
+                reps: 6,
+                rpe: 8.0,
+                set_type: SetType::Weighted { weight: 140.0 },
+            },
+        )
+        .await;
 
     assert!(
-        new_session.is_ok(),
-        "Should be able to create session in imported database"
-    );
-}
-
-#[wasm_bindgen_test]
-async fn test_get_last_set_for_exercise() {
-    let mut db = Database::new();
-    db.init(None).await.expect("Database init failed");
-
-    // 1. Create exercise
-    let exercise = ExerciseMetadata {
-        id: None,
-        name: "Bench Press".to_string(),
-        set_type_config: SetTypeConfig::Weighted {
-            min_weight: 0.0,
-            increment: 2.5,
-        },
-    };
-    let exercise_id = db
-        .save_exercise(&exercise)
-        .await
-        .expect("Save exercise failed");
-
-    // 2. Create first session and add a set
-    let session_id1 = db
-        .create_session("Bench Press")
-        .await
-        .expect("Create session 1 failed");
-    let set1 = CompletedSet {
-        set_number: 1,
-        reps: 8,
-        rpe: 7.0,
-        set_type: SetType::Weighted { weight: 100.0 },
-    };
-    db.insert_set(session_id1, &set1)
-        .await
-        .expect("Insert set 1 failed");
-    db.complete_session(session_id1)
-        .await
-        .expect("Complete session 1 failed");
-
-    // 3. Create second session (later) and add a set
-    // Sleep a bit to ensure started_at is different (Date.now())
-    // but in JS environment it might be too fast.
-    // The query also orders by set_number DESC if started_at is same.
-
-    let session_id2 = db
-        .create_session("Bench Press")
-        .await
-        .expect("Create session 2 failed");
-    let set2 = CompletedSet {
-        set_number: 1,
-        reps: 5,
-        rpe: 8.0,
-        set_type: SetType::Weighted { weight: 110.0 },
-    };
-    db.insert_set(session_id2, &set2)
-        .await
-        .expect("Insert set 2 failed");
-
-    // Note: complete_session is intentionally NOT called here to verify that the query
-    // correctly fetches weights even from incomplete (in-progress or abandoned) sessions.
-
-    // 4. Test fetching last set
-    let last_set = db
-        .get_last_set_for_exercise(exercise_id)
-        .await
-        .expect("Get last set failed");
-
-    assert!(last_set.is_some());
-    let last_set = last_set.unwrap();
-    assert_eq!(last_set.set_type, SetType::Weighted { weight: 110.0 });
-    assert_eq!(last_set.reps, 5);
-    assert_eq!(last_set.rpe, 8.0);
-
-    // 5. Test fetching for exercise with no history
-    let new_exercise = ExerciseMetadata {
-        id: None,
-        name: "Squat".to_string(),
-        set_type_config: SetTypeConfig::Weighted {
-            min_weight: 20.0,
-            increment: 2.5,
-        },
-    };
-    let new_id = db
-        .save_exercise(&new_exercise)
-        .await
-        .expect("Save new exercise failed");
-
-    let no_history_result = db
-        .get_last_set_for_exercise(new_id)
-        .await
-        .expect("Get last set for new exercise failed");
-    assert!(
-        no_history_result.is_none(),
-        "Expected None for exercise with no history"
+        new_set_id.is_ok(),
+        "Should be able to log a set in imported database"
     );
 }

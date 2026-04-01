@@ -8,12 +8,14 @@ pub enum Tab {
     Library,
 }
 
+/// Tab bar component. `active_tab` controls which tab appears selected.
+/// `on_change` is called when the user taps a tab; the caller handles navigation.
 #[component]
 pub fn TabBar(active_tab: Tab, on_change: EventHandler<Tab>) -> Element {
     rsx! {
         div {
             role: "tablist",
-            class: "tabs tabs-boxed fixed bottom-0 left-0 right-0 bg-base-100 shadow-lg z-50 p-2 pb-safe-tabbar",
+            class: "tabs tabs-boxed bg-base-100 shadow-lg z-50 p-2 pb-safe-tabbar",
 
             button {
                 role: "tab",
@@ -23,6 +25,7 @@ pub fn TabBar(active_tab: Tab, on_change: EventHandler<Tab>) -> Element {
                 } else {
                     "tab h-12"
                 },
+                "data-testid": "tab-workout",
                 onclick: move |_| on_change.call(Tab::Workout),
                 "Workout"
             }
@@ -35,6 +38,7 @@ pub fn TabBar(active_tab: Tab, on_change: EventHandler<Tab>) -> Element {
                 } else {
                     "tab h-12"
                 },
+                "data-testid": "tab-library",
                 onclick: move |_| on_change.call(Tab::Library),
                 "Library"
             }

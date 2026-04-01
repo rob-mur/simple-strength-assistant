@@ -1,6 +1,7 @@
 use cucumber::{World, given, then, when};
 use dioxus::prelude::*;
-use simple_strength_assistant::components::library_view::LibraryView;
+use dioxus_history::MemoryHistory;
+use simple_strength_assistant::app::{Route, TabNavigationState};
 use simple_strength_assistant::components::tab_bar::Tab;
 use simple_strength_assistant::models::{ExerciseMetadata, SetTypeConfig};
 use simple_strength_assistant::state::WorkoutState;
@@ -23,10 +24,17 @@ fn TestWrapper(props: WrapperProps) -> Element {
     let state = WorkoutState::new();
     state.set_exercises(props.exercises.clone());
     use_context_provider(|| state);
-    use_context_provider(|| Signal::new(props.active_tab));
+    use_context_provider(|| TabNavigationState {
+        last_workout_route: Signal::new(Route::WorkoutTab),
+        last_library_route: Signal::new(Route::LibraryTab),
+    });
+    provide_context(
+        std::rc::Rc::new(MemoryHistory::with_initial_path("/library"))
+            as std::rc::Rc<dyn dioxus_history::History>,
+    );
 
     rsx! {
-        LibraryView {}
+        Router::<Route> {}
     }
 }
 
@@ -99,7 +107,13 @@ async fn step_save_exercise(world: &mut LibraryWorld) {
 
 #[then(expr = "{string} should appear in the exercise list")]
 async fn step_check_list(world: &mut LibraryWorld, name: String) {
-    assert!(world.rendered_html.contains(&name));
+    let html_upper = world.rendered_html.to_uppercase();
+    let name_upper = name.to_uppercase();
+    assert!(
+        html_upper.contains(&name_upper),
+        "Expected exercise '{}' in exercise list",
+        name
+    );
 }
 
 #[then(expr = "it should display a minimum weight of {string} and increment of {string}")]
