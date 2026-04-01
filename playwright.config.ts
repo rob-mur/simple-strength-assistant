@@ -6,7 +6,7 @@ const testDir = defineBddConfig({
   steps: "tests/e2e/steps/**/*.ts",
 });
 
-const baseURL = process.env.PLAYWRIGHT_BASE_URL ?? "http://localhost:3000";
+const baseURL = process.env.PLAYWRIGHT_BASE_URL || "http://localhost:3000";
 
 export default defineConfig({
   testDir,
