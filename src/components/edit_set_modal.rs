@@ -33,9 +33,11 @@ pub fn EditSetModal(
 
     rsx! {
         div {
-            class: "fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm",
+            class: "fixed inset-0 z-50 overflow-y-auto bg-black/60 backdrop-blur-sm",
             "data-testid": "edit-set-modal",
             div {
+                class: "flex min-h-full items-center justify-center p-4",
+                div {
                 class: "bg-base-100 rounded-2xl shadow-2xl w-full max-w-md overflow-hidden animate-in fade-in zoom-in duration-200",
                 div {
                     class: "p-6",
@@ -82,6 +84,7 @@ pub fn EditSetModal(
 
                     div {
                         class: "mb-8",
+                        "data-testid": "reps-section",
                         label { class: "label font-bold", "Reps" }
                         div {
                             class: "text-center text-5xl font-black text-primary mb-2",
@@ -131,6 +134,7 @@ pub fn EditSetModal(
                         }
                     }
                 }
+            }
             }
         }
     }

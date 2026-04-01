@@ -72,7 +72,8 @@ When(
 When("I change the reps to {int} in the modal", async ({ page }, reps) => {
   // Use StepControls +1 button (data-testid="step-btn-pos-1")
   await page
-    .locator('[data-testid="edit-set-modal"] [data-testid="step-btn-pos-1"]')
+    .locator('[data-testid="reps-section"] .justify-end button')
+    .first()
     .click();
   await page.waitForTimeout(300);
 });
