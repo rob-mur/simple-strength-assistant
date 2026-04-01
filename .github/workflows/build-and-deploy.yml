@@ -104,7 +104,7 @@ jobs:
 
       - name: Set artifact name
         id: artifact-info
-        run: echo "name=build-${{ inputs.git-ref }}-${{ github.run_id }}" >> $GITHUB_OUTPUT
+        run: echo "name=build-${{ inputs.build-command }}-${{ inputs.git-ref }}-${{ github.run_id }}" >> $GITHUB_OUTPUT
 
       - name: Upload build artifact
         uses: actions/upload-artifact@v4
