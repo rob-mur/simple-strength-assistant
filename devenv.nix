@@ -1,8 +1,6 @@
-{ pkgs, ... }:
-let
-  backlog-md = pkgs.callPackage ./nix/backlog-md.nix { };
-in
-{
+{pkgs, ...}: let
+  backlog-md = pkgs.callPackage ./nix/backlog-md.nix {};
+in {
   devcontainer.enable = true;
   devcontainer.settings.updateContentCommand = "direnv allow ; devenv shell -- true";
   packages = with pkgs; [
@@ -12,7 +10,6 @@ in
     wasm-bindgen-cli
     binaryen
     devcontainer
-    claude-code
     chromium
     bats
     backlog-md
@@ -21,7 +18,7 @@ in
   languages.rust = {
     enable = true;
     channel = "stable";
-    targets = [ "wasm32-unknown-unknown" ];
+    targets = ["wasm32-unknown-unknown"];
   };
 
   languages.javascript = {
@@ -61,7 +58,7 @@ in
       enable = true;
       name = "Validate commit message";
       entry = "npx commitlint --edit";
-      stages = [ "commit-msg" ];
+      stages = ["commit-msg"];
     };
     ci-checks = {
       enable = true;
