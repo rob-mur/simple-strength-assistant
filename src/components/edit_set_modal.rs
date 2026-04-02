@@ -33,14 +33,12 @@ pub fn EditSetModal(
 
     rsx! {
         div {
-            class: "fixed inset-0 z-50 overflow-y-auto bg-black/60 backdrop-blur-sm",
+            class: "fixed inset-0 z-[200] flex items-end sm:items-center justify-center bg-black/60 backdrop-blur-sm",
             "data-testid": "edit-set-modal",
             div {
-                class: "flex min-h-full items-center justify-center p-4",
+                class: "bg-base-100 rounded-2xl shadow-2xl w-full max-w-md flex flex-col max-h-[90dvh] animate-in fade-in zoom-in duration-200",
                 div {
-                class: "bg-base-100 rounded-2xl shadow-2xl w-full max-w-md overflow-hidden animate-in fade-in zoom-in duration-200",
-                div {
-                    class: "p-6",
+                    class: "flex-1 overflow-y-auto p-6",
                     div {
                         class: "flex justify-between items-start mb-1",
                         h3 { class: "text-xl font-bold", "{set.exercise_name}" }
@@ -107,34 +105,32 @@ pub fn EditSetModal(
                             on_change: move |val| rpe.set(val)
                         }
                     }
-
+                }
+                div {
+                    class: "p-4 border-t border-base-200 flex flex-col gap-3",
+                    button {
+                        class: "btn btn-primary btn-block shadow-lg",
+                        "data-testid": "save-set-button",
+                        onclick: move |_| {
+                            on_save.call((reps(), rpe() as f32, weight().map(|w| w as f32)));
+                        },
+                        "Save Changes"
+                    }
                     div {
-                        class: "flex flex-col gap-3 mt-4",
+                        class: "flex gap-2",
                         button {
-                            class: "btn btn-primary btn-block shadow-lg",
-                            "data-testid": "save-set-button",
-                            onclick: move |_| {
-                                on_save.call((reps(), rpe() as f32, weight().map(|w| w as f32)));
-                            },
-                            "Save Changes"
+                            class: "btn btn-error btn-outline flex-1",
+                            "data-testid": "delete-set-button",
+                            onclick: move |_| on_delete.call(set.id),
+                            "Delete Set"
                         }
-                        div {
-                            class: "flex gap-2",
-                            button {
-                                class: "btn btn-error btn-outline flex-1",
-                                "data-testid": "delete-set-button",
-                                onclick: move |_| on_delete.call(set.id),
-                                "Delete Set"
-                            }
-                            button {
-                                class: "btn btn-ghost flex-1",
-                                onclick: move |_| on_cancel.call(()),
-                                "Cancel"
-                            }
+                        button {
+                            class: "btn btn-ghost flex-1",
+                            onclick: move |_| on_cancel.call(()),
+                            "Cancel"
                         }
                     }
                 }
-            }
             }
         }
     }

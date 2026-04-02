@@ -2927,6 +2927,9 @@ details.collapse summary::-webkit-details-marker {
 .z-50 {
   z-index: 50;
 }
+.z-\[200\] {
+  z-index: 200;
+}
 .mx-auto {
   margin-left: auto;
   margin-right: auto;
@@ -3010,6 +3013,9 @@ details.collapse summary::-webkit-details-marker {
 .h-auto {
   height: auto;
 }
+.max-h-\[90dvh\] {
+  max-height: 90dvh;
+}
 .min-h-0 {
   min-height: 0px;
 }
@@ -3018,9 +3024,6 @@ details.collapse summary::-webkit-details-marker {
 }
 .min-h-8 {
   min-height: 2rem;
-}
-.min-h-full {
-  min-height: 100%;
 }
 .min-h-screen {
   min-height: 100vh;
@@ -3084,6 +3087,9 @@ details.collapse summary::-webkit-details-marker {
 }
 .items-start {
   align-items: flex-start;
+}
+.items-end {
+  align-items: flex-end;
 }
 .items-center {
   align-items: center;
@@ -3160,6 +3166,9 @@ details.collapse summary::-webkit-details-marker {
 }
 .border-2 {
   border-width: 2px;
+}
+.border-t {
+  border-top-width: 1px;
 }
 .border-t-4 {
   border-top-width: 4px;
@@ -3505,6 +3514,10 @@ details.collapse summary::-webkit-details-marker {
 
   .sm\:max-w-xs {
     max-width: 20rem;
+  }
+
+  .sm\:items-center {
+    align-items: center;
   }
 
   .sm\:p-6 {

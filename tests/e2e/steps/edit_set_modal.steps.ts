@@ -103,7 +103,7 @@ Then(
 
 When("I click the delete button in the modal", async ({ page }) => {
   const btn = page.locator('[data-testid="delete-set-button"]');
-  await btn.scrollIntoViewIfNeeded();
+  await expect(btn).toBeInViewport();
   await btn.click();
   await page.waitForTimeout(500);
 });
