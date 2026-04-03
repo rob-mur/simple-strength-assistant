@@ -135,3 +135,17 @@ Feature: Full workout history view
     And I should see "Bench Press" in the history feed
     When I select "Squat" from the exercise filter
     Then the history feed should show only "Squat" sets
+
+  # Issue #72: Exercise filter dropdown default label
+  Scenario: Exercise filter dropdown shows "All exercises" when no filter is active
+    When I navigate directly to the history page
+    Then the exercise filter selector default option should read "All exercises"
+
+  Scenario: Clearing the exercise filter resets the dropdown label to "All exercises"
+    Given I start a test session with "Squat"
+    And I log a set in the current session
+    And I finish any active session
+    When I click the "View workout history" button
+    And I select "Squat" from the exercise filter
+    And I click the "All Exercises" toggle
+    Then the exercise filter selector default option should read "All exercises"

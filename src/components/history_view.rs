@@ -324,7 +324,7 @@ pub fn HistoryView(
                                 scope.set(HistoryScope::Exercise);
                             }
                         },
-                        option { value: "", "Filter by exercise" }
+                        option { value: "", "All exercises" }
                         for ex in available_exercises.read().iter() {
                             if let Some(id) = ex.id {
                                 option {

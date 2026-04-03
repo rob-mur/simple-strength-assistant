@@ -158,6 +158,17 @@ Then(
 );
 
 Then(
+  "the exercise filter selector default option should read {string}",
+  async ({ page }, expectedText: string) => {
+    const select = page.locator('[data-testid="exercise-filter-select"]');
+    await expect(select).toBeVisible();
+    // The default option (value="") should have the expected label text
+    const defaultOption = select.locator('option[value=""]');
+    await expect(defaultOption).toHaveText(expectedText);
+  },
+);
+
+Then(
   "the back button should be visible on the history page",
   async ({ page }) => {
     await expect(
