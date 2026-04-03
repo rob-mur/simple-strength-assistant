@@ -229,6 +229,68 @@ async fn test_get_sets_for_exercise_isolation() {
     assert_eq!(sets_a[0].reps, 5);
 }
 
+/// RED: get_sets_for_exercise_before excludes sets recorded on or after the cutoff.
+/// The "Previous Sessions" panel must not show sets logged during the current (today's) session.
+#[wasm_bindgen_test]
+async fn test_get_sets_for_exercise_before_excludes_today() {
+    let mut db = Database::new();
+    db.init(None).await.expect("Database init failed");
+
+    let exercise = ExerciseMetadata {
+        id: None,
+        name: "Squat".to_string(),
+        set_type_config: SetTypeConfig::Weighted {
+            min_weight: 20.0,
+            increment: 2.5,
+        },
+    };
+    let exercise_id = db
+        .save_exercise(&exercise)
+        .await
+        .expect("Save exercise failed");
+
+    // Compute the UTC ms at the start of today (local calendar day).
+    let now_ms = js_sys::Date::now();
+    let offset_ms = -(js_sys::Date::new_0().get_timezone_offset() as f64) * 60_000.0;
+    let local_now_ms = now_ms + offset_ms;
+    let start_of_today_utc = (local_now_ms / 86_400_000.0).floor() * 86_400_000.0 - offset_ms;
+
+    // A set recorded firmly in the previous day.
+    let yesterday_ms = start_of_today_utc - 86_400_000.0;
+    let yesterday_set = CompletedSet {
+        set_number: 1,
+        reps: 5,
+        rpe: 7.0,
+        set_type: SetType::Weighted { weight: 100.0 },
+    };
+    // A set recorded right now (today).
+    let today_set = CompletedSet {
+        set_number: 2,
+        reps: 3,
+        rpe: 8.0,
+        set_type: SetType::Weighted { weight: 110.0 },
+    };
+
+    db.log_set_at(exercise_id, &yesterday_set, yesterday_ms)
+        .await
+        .expect("log yesterday set failed");
+    db.log_set(exercise_id, &today_set)
+        .await
+        .expect("log today set failed");
+
+    let results = db
+        .get_sets_for_exercise_before(exercise_id, start_of_today_utc, 10, 0)
+        .await
+        .expect("get_sets_for_exercise_before failed");
+
+    assert_eq!(
+        results.len(),
+        1,
+        "Should only return the set from before today"
+    );
+    assert_eq!(results[0].reps, 5, "Returned set should be yesterday's");
+}
+
 /// RED: get_all_sets_paginated returns sets from all exercises reverse-chronologically.
 #[wasm_bindgen_test]
 async fn test_get_all_sets_paginated() {

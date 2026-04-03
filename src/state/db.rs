@@ -212,6 +212,41 @@ impl Database {
         self.extract_id(&result, "set")
     }
 
+    /// Log a single set with an explicit timestamp (Unix ms). Used in tests and
+    /// data-import scenarios where the recording time is known.
+    pub async fn log_set_at(
+        &self,
+        exercise_id: i64,
+        set: &CompletedSet,
+        recorded_at: f64,
+    ) -> Result<i64, DatabaseError> {
+        let (weight, is_bodyweight) = match set.set_type {
+            SetType::Weighted { weight } => (Some(weight), false),
+            SetType::Bodyweight => (None, true),
+        };
+
+        let sql = r#"
+            INSERT INTO completed_sets (exercise_id, set_number, reps, rpe, weight, is_bodyweight, recorded_at)
+            VALUES (?, ?, ?, ?, ?, ?, ?)
+            RETURNING id
+        "#;
+
+        let params = vec![
+            JsValue::from_f64(exercise_id as f64),
+            JsValue::from_f64(set.set_number as f64),
+            JsValue::from_f64(set.reps as f64),
+            JsValue::from_f64(set.rpe as f64),
+            weight
+                .map(|w| JsValue::from_f64(w as f64))
+                .unwrap_or(JsValue::NULL),
+            JsValue::from_bool(is_bodyweight),
+            JsValue::from_f64(recorded_at),
+        ];
+
+        let result = self.execute(sql, &params).await?;
+        self.extract_id(&result, "set")
+    }
+
     /// Returns sets for one exercise in reverse-chronological order with pagination.
     pub async fn get_sets_for_exercise(
         &self,
@@ -231,6 +266,39 @@ impl Database {
 
         let params = vec![
             JsValue::from_f64(exercise_id as f64),
+            JsValue::from_f64(limit as f64),
+            JsValue::from_f64(offset as f64),
+        ];
+
+        let result = self.execute(sql, &params).await?;
+        self.parse_history_sets(&result)
+    }
+
+    /// Returns sets for one exercise recorded **before** `before_ms` (Unix ms),
+    /// in reverse-chronological order with pagination.
+    ///
+    /// Used by the "Previous Sessions" panel so that sets logged during the
+    /// current (today's) session are not shown alongside historical data.
+    pub async fn get_sets_for_exercise_before(
+        &self,
+        exercise_id: i64,
+        before_ms: f64,
+        limit: i64,
+        offset: i64,
+    ) -> Result<Vec<HistorySet>, DatabaseError> {
+        let sql = r#"
+            SELECT cs.id, cs.exercise_id, e.name AS exercise_name,
+                   cs.set_number, cs.reps, cs.rpe, cs.weight, cs.is_bodyweight, cs.recorded_at
+            FROM completed_sets cs
+            JOIN exercises e ON cs.exercise_id = e.id
+            WHERE cs.exercise_id = ? AND cs.recorded_at < ?
+            ORDER BY cs.recorded_at DESC, cs.id DESC
+            LIMIT ? OFFSET ?
+        "#;
+
+        let params = vec![
+            JsValue::from_f64(exercise_id as f64),
+            JsValue::from_f64(before_ms),
             JsValue::from_f64(limit as f64),
             JsValue::from_f64(offset as f64),
         ];
