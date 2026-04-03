@@ -1,4 +1,5 @@
 import { Given } from "./fixtures";
+import { setDioxusInput } from "./dioxus_helpers";
 
 Given("I have a fresh context and clear storage", async ({ page, context }) => {
   page.on("console", (msg) => console.log("BROWSER:", msg.text()));
@@ -44,7 +45,7 @@ Given(
       await page.locator("button.btn-circle.btn-primary").click();
     }
 
-    await page.fill("#exercise-name-input", exerciseName);
+    await setDioxusInput(page, "#exercise-name-input", exerciseName);
     await page.click('button:has-text("Save Exercise")');
 
     // Now start session from the list

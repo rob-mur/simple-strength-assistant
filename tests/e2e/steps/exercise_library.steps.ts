@@ -1,9 +1,9 @@
 import { Given, When, Then, expect } from "./fixtures";
+import { setDioxusInput } from "./dioxus_helpers";
 
 Given("the user is on the Library tab", async ({ page }) => {
   await page.click('button[role="tab"]:has-text("Library")');
-  // New UI uses uppercase "LIBRARY" in h2
-  await expect(page.locator('h2:has-text("Library")')).toBeVisible();
+  await expect(page.getByTestId("library-view")).toBeVisible();
 });
 
 Given("the database contains standard exercises", async ({ page }) => {
@@ -27,8 +27,7 @@ Given("the database contains standard exercises", async ({ page }) => {
       await page.locator("button.btn-circle.btn-primary").click();
     }
 
-    // Fill exercise name
-    await page.fill("#exercise-name-input", ex.name);
+    await setDioxusInput(page, "#exercise-name-input", ex.name);
 
     // Handle weighted/bodyweight toggle
     const checkbox = page.locator('input[type="checkbox"].checkbox');
@@ -89,7 +88,7 @@ Given(
       } else {
         await page.locator("button.btn-circle.btn-primary").click();
       }
-      await page.fill("#exercise-name-input", ex.name);
+      await setDioxusInput(page, "#exercise-name-input", ex.name);
       const checkbox = page.locator('input[type="checkbox"].checkbox');
       const isChecked = await checkbox.isChecked();
       if (ex.isWeighted !== isChecked) {
@@ -104,8 +103,11 @@ Given(
 );
 
 When("the user searches for a specific exercise", async ({ page }) => {
-  const searchInput = page.getByPlaceholder("Search exercises...");
-  await searchInput.fill("squat");
+  await setDioxusInput(
+    page,
+    'input[placeholder="Search exercises..."]',
+    "squat",
+  );
 });
 
 Then(
@@ -121,8 +123,7 @@ Then(
 );
 
 When("the user clears the search", async ({ page }) => {
-  const searchInput = page.getByPlaceholder("Search exercises...");
-  await searchInput.fill("");
+  await setDioxusInput(page, 'input[placeholder="Search exercises..."]', "");
 });
 
 Then("the list should show all exercises again", async ({ page }) => {

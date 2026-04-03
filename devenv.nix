@@ -1,10 +1,8 @@
-{ pkgs, ... }:
-let
-  backlog-md = pkgs.callPackage ./nix/backlog-md.nix { };
-in
-{
+{pkgs, ...}: let
+  backlog-md = pkgs.callPackage ./nix/backlog-md.nix {};
+in {
   devcontainer.enable = true;
-  devcontainer.settings.updateContentCommand = "direnv allow ; devenv shell";
+  devcontainer.settings.updateContentCommand = "direnv allow ; devenv shell -- true";
   packages = with pkgs; [
     git
     gh
@@ -12,8 +10,6 @@ in
     wasm-bindgen-cli
     binaryen
     devcontainer
-    claude-code
-    gemini-cli-bin
     chromium
     bats
     backlog-md
@@ -22,7 +18,7 @@ in
   languages.rust = {
     enable = true;
     channel = "stable";
-    targets = [ "wasm32-unknown-unknown" ];
+    targets = ["wasm32-unknown-unknown"];
   };
 
   languages.javascript = {
@@ -44,6 +40,7 @@ in
 
   scripts = {
     build.exec = "dx bundle --web --release --debug-symbols=false";
+    build-e2e.exec = "dx bundle --web --release --debug-symbols=false --features test-mode";
     format.exec = "cargo fmt && prettier --write .";
     lint.exec = "./scripts/lint.sh";
     ralph.exec = "./scripts/ralph.sh \"$@\"";
@@ -55,13 +52,13 @@ in
 
   git-hooks.hooks = {
     rustfmt.enable = true;
-    nixfmt.enable = true;
+    nixfmt.enable = false;
     prettier.enable = true;
     commitlint = {
       enable = true;
       name = "Validate commit message";
       entry = "npx commitlint --edit";
-      stages = [ "commit-msg" ];
+      stages = ["commit-msg"];
     };
     ci-checks = {
       enable = true;

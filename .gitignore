@@ -41,3 +41,6 @@ CHANGELOG.md
 
 # Git worktrees for ralph loop
 worktrees/
+.ralph*
+.dx_serve.log
+.ralph_pid

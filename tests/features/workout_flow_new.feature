@@ -15,3 +15,16 @@ Feature: Streamlined Workout Flow
     When I open the "Workout" tab
     Then I should see a message saying "No active session"
     And I should see a button that says "Go to Library"
+
+  # AC #8: "View workout history" button on idle Workout tab
+  Scenario: Idle Workout tab shows a View workout history button
+    Given no workout session is currently active
+    When I open the "Workout" tab
+    Then I should see a button that says "View workout history"
+
+  # AC #7: History icon appears in active session header
+  Scenario: Active session header shows history navigation icon
+    Given the Library tab is open
+    When I select the "Bench Press" exercise
+    And I click the "Start Session" button
+    Then I should see a message saying "View exercise history"

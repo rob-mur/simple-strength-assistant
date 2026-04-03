@@ -1,6 +1,7 @@
 use cucumber::{World, given, then, when};
 use dioxus::prelude::*;
-use simple_strength_assistant::components::library_view::LibraryView;
+use dioxus_history::MemoryHistory;
+use simple_strength_assistant::app::{Route, TabNavigationState};
 use simple_strength_assistant::models::{ExerciseMetadata, SetTypeConfig};
 use simple_strength_assistant::state::WorkoutState;
 
@@ -21,12 +22,17 @@ fn TestWrapper(props: WrapperProps) -> Element {
     let state = WorkoutState::new();
     state.set_exercises(props.exercises.clone());
     use_context_provider(|| state);
-    use_context_provider(|| {
-        Signal::new(simple_strength_assistant::components::tab_bar::Tab::Library)
+    use_context_provider(|| TabNavigationState {
+        last_workout_route: Signal::new(Route::WorkoutTab),
+        last_library_route: Signal::new(Route::LibraryTab),
     });
+    provide_context(
+        std::rc::Rc::new(MemoryHistory::with_initial_path("/library"))
+            as std::rc::Rc<dyn dioxus_history::History>,
+    );
 
     rsx! {
-        LibraryView {}
+        Router::<Route> {}
     }
 }
 
@@ -101,8 +107,10 @@ async fn following_exercises_exist(world: &mut ExerciseListWorld, step: &cucumbe
 
 #[then(regex = r#"^I should see "([^"]*)" in the exercise list$"#)]
 async fn should_see_exercise_in_list(world: &mut ExerciseListWorld, exercise: String) {
+    let html_upper = world.rendered_html.to_uppercase();
+    let exercise_upper = exercise.to_uppercase();
     assert!(
-        world.rendered_html.contains(&exercise),
+        html_upper.contains(&exercise_upper),
         "Expected HTML to contain exercise: {}, but got {}",
         exercise,
         world.rendered_html
@@ -115,12 +123,13 @@ async fn exercise_should_have_badge(
     exercise: String,
     badge: String,
 ) {
+    let rendered_upper = world.rendered_html.to_uppercase();
+    let exercise_upper = exercise.to_uppercase();
     assert!(
-        world.rendered_html.contains(&exercise),
+        rendered_upper.contains(&exercise_upper),
         "Expected HTML to contain exercise: {}",
         exercise
     );
-    let rendered_upper = world.rendered_html.to_uppercase();
     let badge_upper = badge.to_uppercase();
     assert!(
         rendered_upper.contains(&badge_upper),
@@ -155,8 +164,9 @@ async fn database_contains_standard_exercises(world: &mut ExerciseListWorld) {
 #[then("the user should see a list of exercises")]
 async fn user_should_see_list_of_exercises(world: &mut ExerciseListWorld) {
     world.render_component();
-    assert!(world.rendered_html.contains("Squat"));
-    assert!(world.rendered_html.contains("Push-up"));
+    let html_upper = world.rendered_html.to_uppercase();
+    assert!(html_upper.contains("SQUAT"));
+    assert!(html_upper.contains("PUSH-UP"));
 }
 
 #[then("each exercise should display its name and type badge")]

@@ -11,7 +11,7 @@ pub mod validation;
 #[allow(unused_imports)]
 pub use exercise::{ExerciseMetadata, SetTypeConfig};
 #[allow(unused_imports)]
-pub use set::{CompletedSet, SetType};
+pub use set::{CompletedSet, HistorySet, SetType};
 #[allow(unused_imports)]
 pub use validation::{
     ValidationError, validate_completed_set, validate_reps, validate_rpe, validate_set_number,

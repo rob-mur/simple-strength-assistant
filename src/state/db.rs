@@ -1,4 +1,4 @@
-use crate::models::{CompletedSet, ExerciseMetadata};
+use crate::models::{CompletedSet, ExerciseMetadata, HistorySet, SetType};
 use thiserror::Error;
 use wasm_bindgen::prelude::*;
 use web_sys::js_sys;
@@ -39,6 +39,9 @@ extern "C" {
     async fn export_database() -> JsValue;
 }
 
+/// Current schema version. Bump this when the schema changes.
+const SCHEMA_VERSION: i64 = 2;
+
 #[derive(Clone, PartialEq)]
 pub struct Database {
     initialized: bool,
@@ -55,7 +58,7 @@ impl Database {
 
         if result.is_truthy() {
             log::debug!("[DB] initDatabase succeeded, creating tables...");
-            self.create_tables().await?;
+            self.migrate_and_create_tables().await?;
             self.initialized = true;
             log::debug!("[DB] Tables created successfully and database initialized");
             Ok(())
@@ -66,28 +69,24 @@ impl Database {
         }
     }
 
-    async fn create_tables(&self) -> Result<(), DatabaseError> {
-        let create_sessions = r#"
-            CREATE TABLE IF NOT EXISTS sessions (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                exercise_name TEXT NOT NULL,
-                started_at INTEGER NOT NULL,
-                completed_at INTEGER
-            )
-        "#;
+    async fn migrate_and_create_tables(&self) -> Result<(), DatabaseError> {
+        // Detect old schema by checking user_version pragma
+        let current_version = self.get_schema_version().await.unwrap_or(0);
+        log::debug!("[DB] Current schema version: {}", current_version);
 
-        let create_sets = r#"
-            CREATE TABLE IF NOT EXISTS completed_sets (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                session_id INTEGER NOT NULL,
-                set_number INTEGER NOT NULL,
-                reps INTEGER NOT NULL,
-                rpe REAL NOT NULL,
-                weight REAL,
-                is_bodyweight INTEGER NOT NULL,
-                FOREIGN KEY (session_id) REFERENCES sessions(id) ON DELETE CASCADE
-            )
-        "#;
+        if current_version < SCHEMA_VERSION {
+            log::debug!(
+                "[DB] Migrating schema from v{} to v{}",
+                current_version,
+                SCHEMA_VERSION
+            );
+            // Drop old tables that are incompatible with the new schema.
+            // Exercises table is retained (compatible across versions).
+            self.execute_internal("DROP TABLE IF EXISTS completed_sets", &[])
+                .await?;
+            self.execute_internal("DROP TABLE IF EXISTS sessions", &[])
+                .await?;
+        }
 
         let create_exercises = r#"
             CREATE TABLE IF NOT EXISTS exercises (
@@ -99,21 +98,54 @@ impl Database {
             )
         "#;
 
-        let create_index = r#"
-            CREATE INDEX IF NOT EXISTS idx_sets_session_id
-            ON completed_sets(session_id)
+        let create_sets = r#"
+            CREATE TABLE IF NOT EXISTS completed_sets (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                exercise_id INTEGER NOT NULL,
+                set_number INTEGER NOT NULL,
+                reps INTEGER NOT NULL,
+                rpe REAL NOT NULL,
+                weight REAL,
+                is_bodyweight INTEGER NOT NULL,
+                recorded_at INTEGER NOT NULL,
+                FOREIGN KEY (exercise_id) REFERENCES exercises(id)
+            )
         "#;
 
-        log::debug!("[DB] Creating sessions table...");
-        self.execute_internal(create_sessions, &[]).await?;
-        log::debug!("[DB] Creating completed_sets table...");
-        self.execute_internal(create_sets, &[]).await?;
+        let create_index = r#"
+            CREATE INDEX IF NOT EXISTS idx_sets_exercise_id
+            ON completed_sets(exercise_id)
+        "#;
+
         log::debug!("[DB] Creating exercises table...");
         self.execute_internal(create_exercises, &[]).await?;
-        log::debug!("[DB] Creating index on session_id...");
+        log::debug!("[DB] Creating completed_sets table...");
+        self.execute_internal(create_sets, &[]).await?;
+        log::debug!("[DB] Creating index on exercise_id...");
         self.execute_internal(create_index, &[]).await?;
 
+        // Stamp the new version
+        self.execute_internal(&format!("PRAGMA user_version = {}", SCHEMA_VERSION), &[])
+            .await?;
+
         Ok(())
+    }
+
+    async fn get_schema_version(&self) -> Result<i64, DatabaseError> {
+        let result = self.execute_internal("PRAGMA user_version", &[]).await?;
+        let array = match result.dyn_ref::<js_sys::Array>() {
+            Some(a) => a,
+            None => return Ok(0),
+        };
+        if array.length() == 0 {
+            return Ok(0);
+        }
+        let row = array.get(0);
+        let version = js_sys::Reflect::get(&row, &JsValue::from_str("user_version"))
+            .unwrap_or(JsValue::from_f64(0.0))
+            .as_f64()
+            .unwrap_or(0.0) as i64;
+        Ok(version)
     }
 
     pub async fn execute(&self, sql: &str, params: &[JsValue]) -> Result<JsValue, DatabaseError> {
@@ -145,59 +177,27 @@ impl Database {
         Ok(result)
     }
 
-    pub async fn create_session(&self, exercise_name: &str) -> Result<i64, DatabaseError> {
-        let sql = "INSERT INTO sessions (exercise_name, started_at) VALUES (?, ?) RETURNING id";
-        let now = js_sys::Date::now();
-
-        let params = vec![JsValue::from_str(exercise_name), JsValue::from_f64(now)];
-
-        let result = self.execute(sql, &params).await?;
-
-        let array = result
-            .dyn_ref::<js_sys::Array>()
-            .ok_or_else(|| DatabaseError::QueryError("Expected array result".to_string()))?;
-
-        if array.length() == 0 {
-            return Err(DatabaseError::QueryError("No rows returned".to_string()));
-        }
-
-        let first_row = array.get(0);
-        let id = js_sys::Reflect::get(&first_row, &JsValue::from_str("id"))?
-            .as_f64()
-            .ok_or_else(|| DatabaseError::QueryError("Failed to get session id".to_string()))?
-            as i64;
-
-        Ok(id)
-    }
-
-    pub async fn complete_session(&self, session_id: i64) -> Result<(), DatabaseError> {
-        let sql = "UPDATE sessions SET completed_at = ? WHERE id = ?";
-        let now = js_sys::Date::now();
-
-        let params = vec![JsValue::from_f64(now), JsValue::from_f64(session_id as f64)];
-
-        self.execute(sql, &params).await?;
-        Ok(())
-    }
-
-    pub async fn insert_set(
+    /// Log a single set for the given exercise. Records the current timestamp.
+    pub async fn log_set(
         &self,
-        session_id: i64,
+        exercise_id: i64,
         set: &CompletedSet,
     ) -> Result<i64, DatabaseError> {
         let (weight, is_bodyweight) = match set.set_type {
-            crate::models::SetType::Weighted { weight } => (Some(weight), false),
-            crate::models::SetType::Bodyweight => (None, true),
+            SetType::Weighted { weight } => (Some(weight), false),
+            SetType::Bodyweight => (None, true),
         };
 
+        let now = js_sys::Date::now();
+
         let sql = r#"
-            INSERT INTO completed_sets (session_id, set_number, reps, rpe, weight, is_bodyweight)
-            VALUES (?, ?, ?, ?, ?, ?)
+            INSERT INTO completed_sets (exercise_id, set_number, reps, rpe, weight, is_bodyweight, recorded_at)
+            VALUES (?, ?, ?, ?, ?, ?, ?)
             RETURNING id
         "#;
 
         let params = vec![
-            JsValue::from_f64(session_id as f64),
+            JsValue::from_f64(exercise_id as f64),
             JsValue::from_f64(set.set_number as f64),
             JsValue::from_f64(set.reps as f64),
             JsValue::from_f64(set.rpe as f64),
@@ -205,25 +205,171 @@ impl Database {
                 .map(|w| JsValue::from_f64(w as f64))
                 .unwrap_or(JsValue::NULL),
             JsValue::from_bool(is_bodyweight),
+            JsValue::from_f64(now),
         ];
 
         let result = self.execute(sql, &params).await?;
+        self.extract_id(&result, "set")
+    }
 
-        let array = result
-            .dyn_ref::<js_sys::Array>()
-            .ok_or_else(|| DatabaseError::QueryError("Expected array result".to_string()))?;
+    /// Log a single set with an explicit timestamp (Unix ms). Used in tests and
+    /// data-import scenarios where the recording time is known.
+    pub async fn log_set_at(
+        &self,
+        exercise_id: i64,
+        set: &CompletedSet,
+        recorded_at: f64,
+    ) -> Result<i64, DatabaseError> {
+        let (weight, is_bodyweight) = match set.set_type {
+            SetType::Weighted { weight } => (Some(weight), false),
+            SetType::Bodyweight => (None, true),
+        };
 
-        if array.length() == 0 {
-            return Err(DatabaseError::QueryError("No rows returned".to_string()));
-        }
+        let sql = r#"
+            INSERT INTO completed_sets (exercise_id, set_number, reps, rpe, weight, is_bodyweight, recorded_at)
+            VALUES (?, ?, ?, ?, ?, ?, ?)
+            RETURNING id
+        "#;
 
-        let first_row = array.get(0);
-        let id = js_sys::Reflect::get(&first_row, &JsValue::from_str("id"))?
-            .as_f64()
-            .ok_or_else(|| DatabaseError::QueryError("Failed to get set id".to_string()))?
-            as i64;
+        let params = vec![
+            JsValue::from_f64(exercise_id as f64),
+            JsValue::from_f64(set.set_number as f64),
+            JsValue::from_f64(set.reps as f64),
+            JsValue::from_f64(set.rpe as f64),
+            weight
+                .map(|w| JsValue::from_f64(w as f64))
+                .unwrap_or(JsValue::NULL),
+            JsValue::from_bool(is_bodyweight),
+            JsValue::from_f64(recorded_at),
+        ];
 
-        Ok(id)
+        let result = self.execute(sql, &params).await?;
+        self.extract_id(&result, "set")
+    }
+
+    /// Returns sets for one exercise in reverse-chronological order with pagination.
+    pub async fn get_sets_for_exercise(
+        &self,
+        exercise_id: i64,
+        limit: i64,
+        offset: i64,
+    ) -> Result<Vec<HistorySet>, DatabaseError> {
+        let sql = r#"
+            SELECT cs.id, cs.exercise_id, e.name AS exercise_name,
+                   cs.set_number, cs.reps, cs.rpe, cs.weight, cs.is_bodyweight, cs.recorded_at
+            FROM completed_sets cs
+            JOIN exercises e ON cs.exercise_id = e.id
+            WHERE cs.exercise_id = ?
+            ORDER BY cs.recorded_at DESC, cs.id DESC
+            LIMIT ? OFFSET ?
+        "#;
+
+        let params = vec![
+            JsValue::from_f64(exercise_id as f64),
+            JsValue::from_f64(limit as f64),
+            JsValue::from_f64(offset as f64),
+        ];
+
+        let result = self.execute(sql, &params).await?;
+        self.parse_history_sets(&result)
+    }
+
+    /// Returns sets for one exercise recorded **before** `before_ms` (Unix ms),
+    /// in reverse-chronological order with pagination.
+    ///
+    /// Used by the "Previous Sessions" panel so that sets logged during the
+    /// current (today's) session are not shown alongside historical data.
+    pub async fn get_sets_for_exercise_before(
+        &self,
+        exercise_id: i64,
+        before_ms: f64,
+        limit: i64,
+        offset: i64,
+    ) -> Result<Vec<HistorySet>, DatabaseError> {
+        let sql = r#"
+            SELECT cs.id, cs.exercise_id, e.name AS exercise_name,
+                   cs.set_number, cs.reps, cs.rpe, cs.weight, cs.is_bodyweight, cs.recorded_at
+            FROM completed_sets cs
+            JOIN exercises e ON cs.exercise_id = e.id
+            WHERE cs.exercise_id = ? AND cs.recorded_at < ?
+            ORDER BY cs.recorded_at DESC, cs.id DESC
+            LIMIT ? OFFSET ?
+        "#;
+
+        let params = vec![
+            JsValue::from_f64(exercise_id as f64),
+            JsValue::from_f64(before_ms),
+            JsValue::from_f64(limit as f64),
+            JsValue::from_f64(offset as f64),
+        ];
+
+        let result = self.execute(sql, &params).await?;
+        self.parse_history_sets(&result)
+    }
+
+    /// Returns sets across all exercises in reverse-chronological order with pagination.
+    pub async fn get_all_sets_paginated(
+        &self,
+        limit: i64,
+        offset: i64,
+    ) -> Result<Vec<HistorySet>, DatabaseError> {
+        let sql = r#"
+            SELECT cs.id, cs.exercise_id, e.name AS exercise_name,
+                   cs.set_number, cs.reps, cs.rpe, cs.weight, cs.is_bodyweight, cs.recorded_at
+            FROM completed_sets cs
+            JOIN exercises e ON cs.exercise_id = e.id
+            ORDER BY cs.recorded_at DESC, cs.id DESC
+            LIMIT ? OFFSET ?
+        "#;
+
+        let params = vec![
+            JsValue::from_f64(limit as f64),
+            JsValue::from_f64(offset as f64),
+        ];
+
+        let result = self.execute(sql, &params).await?;
+        self.parse_history_sets(&result)
+    }
+
+    /// Updates reps, rpe, weight, and recorded_at for an existing set.
+    pub async fn update_set(
+        &self,
+        set_id: i64,
+        reps: u32,
+        rpe: f32,
+        weight: Option<f32>,
+        recorded_at: f64,
+    ) -> Result<(), DatabaseError> {
+        let (weight_val, is_bodyweight) = match weight {
+            Some(w) => (JsValue::from_f64(w as f64), false),
+            None => (JsValue::NULL, true),
+        };
+
+        let sql = r#"
+            UPDATE completed_sets
+            SET reps = ?, rpe = ?, weight = ?, is_bodyweight = ?, recorded_at = ?
+            WHERE id = ?
+        "#;
+
+        let params = vec![
+            JsValue::from_f64(reps as f64),
+            JsValue::from_f64(rpe as f64),
+            weight_val,
+            JsValue::from_bool(is_bodyweight),
+            JsValue::from_f64(recorded_at),
+            JsValue::from_f64(set_id as f64),
+        ];
+
+        self.execute(sql, &params).await?;
+        Ok(())
+    }
+
+    /// Deletes a set by its ID.
+    pub async fn delete_set(&self, set_id: i64) -> Result<(), DatabaseError> {
+        let sql = "DELETE FROM completed_sets WHERE id = ?";
+        let params = vec![JsValue::from_f64(set_id as f64)];
+        self.execute(sql, &params).await?;
+        Ok(())
     }
 
     pub async fn save_exercise(&self, exercise: &ExerciseMetadata) -> Result<i64, DatabaseError> {
@@ -356,21 +502,16 @@ impl Database {
         Ok(exercises)
     }
 
+    /// Returns the most recent set for the given exercise (used for predictions).
     pub async fn get_last_set_for_exercise(
         &self,
         exercise_id: i64,
     ) -> Result<Option<crate::models::CompletedSet>, DatabaseError> {
-        // TODO: Joining on exercise_name is fragile if an exercise is renamed.
-        // If a user renames "Bench Press" to "Barbell Bench Press", get_last_set_for_exercise
-        // will silently return None for all prior sessions and suggestions will fall back to min_weight: 0.0.
-        // Sessions table should ideally store exercise_id directly for better integrity (requires schema migration).
         let sql = r#"
-            SELECT cs.set_number, cs.reps, cs.rpe, cs.weight, cs.is_bodyweight
-            FROM completed_sets cs
-            JOIN sessions s ON cs.session_id = s.id
-            JOIN exercises e ON s.exercise_name = e.name
-            WHERE e.id = ?
-            ORDER BY s.started_at DESC, s.id DESC, cs.set_number DESC
+            SELECT set_number, reps, rpe, weight, is_bodyweight
+            FROM completed_sets
+            WHERE exercise_id = ?
+            ORDER BY recorded_at DESC, id DESC
             LIMIT 1
         "#;
 
@@ -401,16 +542,7 @@ impl Database {
             .ok_or_else(|| DatabaseError::QueryError("Failed to get rpe".to_string()))?
             as f32;
 
-        let is_bodyweight_val = js_sys::Reflect::get(&row, &JsValue::from_str("is_bodyweight"))?;
-        let is_bodyweight = if let Some(b) = is_bodyweight_val.as_bool() {
-            b
-        } else if let Some(f) = is_bodyweight_val.as_f64() {
-            f == 1.0
-        } else {
-            return Err(DatabaseError::QueryError(
-                "Failed to get is_bodyweight as bool or number".to_string(),
-            ));
-        };
+        let is_bodyweight = self.parse_bool_field(&row, "is_bodyweight")?;
 
         let set_type = if is_bodyweight {
             crate::models::SetType::Bodyweight
@@ -442,6 +574,113 @@ impl Database {
         uint8_array.copy_to(&mut buffer);
 
         Ok(buffer)
+    }
+
+    // ── Private helpers ───────────────────────────────────────────────────────
+
+    fn extract_id(&self, result: &JsValue, label: &str) -> Result<i64, DatabaseError> {
+        let array = result
+            .dyn_ref::<js_sys::Array>()
+            .ok_or_else(|| DatabaseError::QueryError("Expected array result".to_string()))?;
+
+        if array.length() == 0 {
+            return Err(DatabaseError::QueryError("No rows returned".to_string()));
+        }
+
+        let first_row = array.get(0);
+        let id = js_sys::Reflect::get(&first_row, &JsValue::from_str("id"))?
+            .as_f64()
+            .ok_or_else(|| DatabaseError::QueryError(format!("Failed to get {} id", label)))?
+            as i64;
+
+        Ok(id)
+    }
+
+    fn parse_bool_field(&self, row: &JsValue, field: &str) -> Result<bool, DatabaseError> {
+        let val = js_sys::Reflect::get(row, &JsValue::from_str(field))?;
+        if let Some(b) = val.as_bool() {
+            Ok(b)
+        } else if let Some(f) = val.as_f64() {
+            Ok(f == 1.0)
+        } else {
+            Err(DatabaseError::QueryError(format!(
+                "Failed to get {} as bool or number",
+                field
+            )))
+        }
+    }
+
+    fn parse_history_sets(&self, result: &JsValue) -> Result<Vec<HistorySet>, DatabaseError> {
+        let array = result
+            .dyn_ref::<js_sys::Array>()
+            .ok_or_else(|| DatabaseError::QueryError("Expected array result".to_string()))?;
+
+        let mut sets = Vec::new();
+        for i in 0..array.length() {
+            let row = array.get(i);
+
+            let id = js_sys::Reflect::get(&row, &JsValue::from_str("id"))?
+                .as_f64()
+                .ok_or_else(|| DatabaseError::QueryError("Failed to get id".to_string()))?
+                as i64;
+
+            let exercise_id = js_sys::Reflect::get(&row, &JsValue::from_str("exercise_id"))?
+                .as_f64()
+                .ok_or_else(|| DatabaseError::QueryError("Failed to get exercise_id".to_string()))?
+                as i64;
+
+            let exercise_name = js_sys::Reflect::get(&row, &JsValue::from_str("exercise_name"))?
+                .as_string()
+                .ok_or_else(|| {
+                    DatabaseError::QueryError("Failed to get exercise_name".to_string())
+                })?;
+
+            let set_number = js_sys::Reflect::get(&row, &JsValue::from_str("set_number"))?
+                .as_f64()
+                .ok_or_else(|| DatabaseError::QueryError("Failed to get set_number".to_string()))?
+                as u32;
+
+            let reps = js_sys::Reflect::get(&row, &JsValue::from_str("reps"))?
+                .as_f64()
+                .ok_or_else(|| DatabaseError::QueryError("Failed to get reps".to_string()))?
+                as u32;
+
+            let rpe = js_sys::Reflect::get(&row, &JsValue::from_str("rpe"))?
+                .as_f64()
+                .ok_or_else(|| DatabaseError::QueryError("Failed to get rpe".to_string()))?
+                as f32;
+
+            let recorded_at = js_sys::Reflect::get(&row, &JsValue::from_str("recorded_at"))?
+                .as_f64()
+                .ok_or_else(|| {
+                    DatabaseError::QueryError("Failed to get recorded_at".to_string())
+                })?;
+
+            let is_bodyweight = self.parse_bool_field(&row, "is_bodyweight")?;
+
+            let set_type = if is_bodyweight {
+                SetType::Bodyweight
+            } else {
+                let weight = js_sys::Reflect::get(&row, &JsValue::from_str("weight"))?
+                    .as_f64()
+                    .ok_or_else(|| DatabaseError::QueryError("Failed to get weight".to_string()))?
+                    as f32;
+                SetType::Weighted { weight }
+            };
+
+            sets.push(HistorySet {
+                id,
+                exercise_id,
+                exercise_name,
+                set_number,
+                reps,
+                rpe,
+                set_type,
+                recorded_at,
+            });
+        }
+
+        Ok(sets)
     }
 }
 

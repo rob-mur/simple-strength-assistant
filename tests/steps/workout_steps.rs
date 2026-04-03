@@ -1,7 +1,8 @@
 use cucumber::{World, given, then, when};
 use dioxus::prelude::*;
+use dioxus_history::MemoryHistory;
+use simple_strength_assistant::app::{Route, TabNavigationState};
 use simple_strength_assistant::components::tab_bar::Tab;
-use simple_strength_assistant::components::workout_view::WorkoutView;
 use simple_strength_assistant::models::{ExerciseMetadata, SetTypeConfig};
 use simple_strength_assistant::state::{PredictedParameters, WorkoutSession, WorkoutState};
 
@@ -23,10 +24,17 @@ fn TestWrapper(props: WrapperProps) -> Element {
     let state = WorkoutState::new();
     state.set_current_session(props.session.clone());
     use_context_provider(|| state);
-    use_context_provider(|| Signal::new(props.active_tab));
+    use_context_provider(|| TabNavigationState {
+        last_workout_route: Signal::new(Route::WorkoutTab),
+        last_library_route: Signal::new(Route::LibraryTab),
+    });
+    provide_context(
+        std::rc::Rc::new(MemoryHistory::with_initial_path("/workout"))
+            as std::rc::Rc<dyn dioxus_history::History>,
+    );
 
     rsx! {
-        WorkoutView { state: state }
+        Router::<Route> {}
     }
 }
 

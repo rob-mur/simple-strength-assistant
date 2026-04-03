@@ -1,14 +1,10 @@
-use crate::app::ActiveSession;
-use crate::components::tab_bar::Tab;
+use crate::app::{ActiveSession, Route};
 use crate::state::WorkoutState;
 use dioxus::prelude::*;
 
 #[component]
 pub fn WorkoutView(state: WorkoutState) -> Element {
     let current_session = state.current_session();
-    let mut active_tab = consume_context::<Signal<Tab>>();
-    // Note: active_tab is implicitly coupled via context. Consider passing on_navigate
-    // as a prop in the future to improve component isolation and testability.
 
     if let Some(session) = current_session {
         log::debug!(
@@ -20,9 +16,11 @@ pub fn WorkoutView(state: WorkoutState) -> Element {
         }
     } else {
         log::debug!("[WorkoutView] No current_session, rendering empty state");
+        let navigator = use_navigator();
         rsx! {
             div {
                 class: "max-w-md mx-auto py-12 text-center",
+                "data-testid": "workout-empty-state",
                 div {
                     class: "card bg-base-100 shadow-xl py-8 items-center",
                     div {
@@ -49,13 +47,17 @@ pub fn WorkoutView(state: WorkoutState) -> Element {
                             "Go to the library to choose an exercise and start your workout."
                         }
                         div {
-                            class: "card-actions mt-8",
+                            class: "card-actions mt-6 flex-col items-center gap-3",
                             button {
                                 class: "btn btn-primary btn-lg px-8 shadow-lg font-bold",
-                                onclick: move |_| {
-                                    active_tab.set(Tab::Library);
-                                },
+                                onclick: move |_| { navigator.push(Route::LibraryTab); },
                                 "Go to Library"
+                            }
+                            button {
+                                class: "btn btn-ghost btn-sm",
+                                "data-testid": "view-history-btn",
+                                onclick: move |_| { navigator.push(Route::WorkoutHistory); },
+                                "View workout history"
                             }
                         }
                     }

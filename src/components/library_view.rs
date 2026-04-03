@@ -1,5 +1,5 @@
+use crate::app::Route;
 use crate::components::exercise_form::ExerciseForm;
-use crate::components::tab_bar::Tab;
 use crate::models::{ExerciseMetadata, SetTypeConfig};
 use crate::state::{WorkoutState, WorkoutStateManager};
 use dioxus::prelude::*;
@@ -17,9 +17,7 @@ pub enum FormState {
 #[component]
 pub fn LibraryView() -> Element {
     let workout_state = consume_context::<WorkoutState>();
-    // Note: active_tab is implicitly coupled via context. Consider passing on_navigate
-    // as a prop in the future to improve component isolation and testability.
-    let mut active_tab = consume_context::<Signal<Tab>>();
+    let navigator = use_navigator();
     // Allow injecting a search query context for easier unit testing
     let test_query = try_consume_context::<TestSearchQuery>();
     let mut search_query = use_signal(|| test_query.map(|t| t.0).unwrap_or_default());
@@ -67,11 +65,12 @@ pub fn LibraryView() -> Element {
     rsx! {
         div {
             class: "max-w-2xl mx-auto p-4",
+            "data-testid": "library-view",
             div {
                 class: "flex justify-between items-center mb-6",
                 h2 {
-                    class: "text-3xl font-black text-base-content uppercase tracking-tighter",
-                    "Library"
+                    class: "text-3xl font-black text-base-content tracking-tighter min-h-8",
+                    "LIBRARY"
                 }
                 button {
                     class: "btn btn-primary btn-circle shadow-lg",
@@ -166,13 +165,20 @@ pub fn LibraryView() -> Element {
                     for exercise in filtered_exercises() {
                         div {
                             key: "{exercise.id.unwrap_or(0)}",
-                            class: "card bg-base-100 shadow-md hover:shadow-lg transition-all border border-base-200",
+                            class: "card bg-base-100 shadow-md hover:shadow-lg transition-all border border-base-200 cursor-pointer",
+                            onclick: {
+                                let id = exercise.id.unwrap_or(0);
+                                move |_| { navigator.push(Route::LibraryExercise { exercise_id: id }); }
+                            },
                             div {
                                 class: "card-body p-4",
                                 div {
                                     class: "flex justify-between items-start",
                                     div {
-                                        h3 { class: "font-black text-xl uppercase tracking-tight", "{exercise.name}" }
+                                        h3 {
+                                    class: "font-black text-xl text-base-content tracking-tight min-h-6",
+                                    "{exercise.name.to_uppercase()}"
+                                }
                                         div {
                                             class: "flex gap-2 mt-1 items-center",
                                             match exercise.set_type_config {
@@ -194,7 +200,10 @@ pub fn LibraryView() -> Element {
                                                 let e = exercise.clone();
                                                 // Note: e must be cloned again here because the onclick handler is an FnMut
                                                 // and FormState::Edit takes ownership of the value.
-                                                move |_| show_form.set(FormState::Edit(e.clone()))
+                                                move |evt| {
+                                                    evt.stop_propagation();
+                                                    show_form.set(FormState::Edit(e.clone()));
+                                                }
                                             },
                                             svg {
                                                 xmlns: "http://www.w3.org/2000/svg",
@@ -214,13 +223,14 @@ pub fn LibraryView() -> Element {
                                             class: "btn btn-primary btn-sm px-4 font-bold shadow-sm",
                                             onclick: {
                                                 let e = exercise.clone();
-                                                move |_| {
+                                                move |evt| {
+                                                    evt.stop_propagation();
                                                     let e_clone = e.clone();
                                                     spawn(async move {
                                                         if let Err(err) = WorkoutStateManager::start_session(&workout_state, e_clone).await {
                                                             WorkoutStateManager::handle_error(&workout_state, err);
                                                         } else {
-                                                            active_tab.set(Tab::Workout);
+                                                            navigator.push(Route::WorkoutTab);
                                                         }
                                                     });
                                                 }
