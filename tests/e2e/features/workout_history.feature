@@ -86,6 +86,23 @@ Feature: Full workout history view
     When I click the history icon in the session header
     Then the exercise toggle should be active
 
+  # Bug fix: "All Exercises" toggle works when navigating from active session
+  Scenario: Clicking All Exercises from exercise-specific history view shows all exercises
+    Given I start a test session with "Squat"
+    And I log a set in the current session
+    And I finish any active session
+    And I start a test session with "Bench Press"
+    And I log a set in the current session
+    And I finish any active session
+    And I start a test session with "Squat"
+    And I log a set in the current session
+    When I click the history icon in the session header
+    Then I should be on the history page
+    And the exercise toggle should be active
+    When I click the "All Exercises" toggle
+    Then the "All Exercises" toggle should be active
+    And I should see "Bench Press" in the history feed
+
   # AC #11: Exercise filter dropdown on idle history view
   Scenario: Idle history view has exercise filter dropdown that can filter by exercise
     Given I start a test session with "Squat"

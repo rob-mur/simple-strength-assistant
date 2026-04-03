@@ -128,19 +128,19 @@ pub fn HistoryView(
     // Available exercises for the filter dropdown
     let mut available_exercises = use_signal(Vec::<crate::models::ExerciseMetadata>::new);
 
-    // Reset scope if exercise_id changes
+    // Reset scope when the exercise_id prop changes (navigation), not on user button clicks.
+    // Intentionally only subscribes to eid_signal, not user_filter_eid, so that
+    // clicking "All Exercises" while viewing a specific exercise doesn't get reverted.
     use_effect(move || {
         let eid = eid_signal();
-        let user_eid = user_filter_eid();
-        let effective_eid = eid.or(user_eid);
         let current_scope = *scope.peek();
 
-        // If we just navigated to a specific exercise, default to that exercise view
-        if effective_eid.is_some() && current_scope == HistoryScope::All {
+        // Navigated to a specific exercise: default to exercise scope
+        if eid.is_some() && current_scope == HistoryScope::All {
             scope.set(HistoryScope::Exercise);
         }
-        // If we navigated to all exercises (None), we MUST use All scope
-        if effective_eid.is_none() && current_scope == HistoryScope::Exercise {
+        // Navigated away from a specific exercise: switch to all scope
+        if eid.is_none() && current_scope == HistoryScope::Exercise {
             scope.set(HistoryScope::All);
         }
     });

@@ -130,6 +130,11 @@ Then("the exercise filter selector should be visible", async ({ page }) => {
   ).toBeVisible();
 });
 
+When('I click the "All Exercises" toggle', async ({ page }) => {
+  await page.locator('[data-testid="toggle-all"]').click();
+  await page.waitForTimeout(300);
+});
+
 When(
   "I select {string} from the exercise filter",
   async ({ page }, exerciseName: string) => {
