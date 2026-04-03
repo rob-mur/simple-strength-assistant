@@ -111,6 +111,16 @@ Feature: Full workout history view
     When I click the back button on the history page
     Then I should be on the Workout tab
 
+  Scenario: Back button from exercise-specific history navigates to all-exercises history
+    Given I start a test session with "Squat"
+    And I log a set in the current session
+    When I click the history icon in the session header
+    Then I should be on the history page
+    And the exercise toggle should be active
+    When I click the back button on the history page
+    Then I should be on the history page
+    And the "All Exercises" toggle should be active
+
   # AC #11: Exercise filter dropdown on idle history view
   Scenario: Idle history view has exercise filter dropdown that can filter by exercise
     Given I start a test session with "Squat"

@@ -233,13 +233,15 @@ fn WorkoutTab() -> Element {
 #[component]
 fn WorkoutHistory() -> Element {
     let state = consume_context::<WorkoutState>();
-    rsx! { HistoryView { state, exercise_id: None } }
+    let navigator = use_navigator();
+    rsx! { HistoryView { state, exercise_id: None, on_back: move |_| { navigator.push(Route::WorkoutTab); } } }
 }
 
 #[component]
 fn WorkoutHistoryExercise(exercise_id: i64) -> Element {
     let state = consume_context::<WorkoutState>();
-    rsx! { HistoryView { state, exercise_id: Some(exercise_id) } }
+    let navigator = use_navigator();
+    rsx! { HistoryView { state, exercise_id: Some(exercise_id), on_back: move |_| { navigator.push(Route::WorkoutHistory); } } }
 }
 
 #[component]
@@ -306,7 +308,7 @@ fn LibraryExercise(exercise_id: i64) -> Element {
                     button {
                         class: "btn btn-ghost btn-sm btn-circle",
                         "data-testid": "back-button",
-                        onclick: move |_| { navigator.go_back(); },
+                        onclick: move |_| { navigator.push(Route::LibraryTab); },
                         svg {
                             xmlns: "http://www.w3.org/2000/svg",
                             fill: "none",
