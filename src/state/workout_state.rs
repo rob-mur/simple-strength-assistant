@@ -484,6 +484,30 @@ impl WorkoutStateManager {
         }
     }
 
+    /// Shared post-initialization helper called by both file-selection UI paths
+    /// ("Create New Database" and "Open Existing Database").
+    ///
+    /// Sets the database, sets the file manager, syncs the exercise list from the
+    /// database into the reactive state signal, and transitions to `Ready`.  The
+    /// exercise sync is non-fatal: if it fails we log a warning but still reach
+    /// `Ready`, matching the behaviour of `setup_database`.
+    pub async fn complete_file_initialization(
+        state: &WorkoutState,
+        database: Database,
+        file_manager: Storage,
+    ) {
+        state.set_database(database);
+        state.set_file_manager(file_manager);
+
+        if let Err(e) = Self::sync_exercises(state).await {
+            log::warn!("Failed to sync exercises after file initialization: {}", e);
+        }
+
+        state.set_initialization_state(InitializationState::Ready);
+
+        log::debug!("[UI] Setup complete! State is now Ready");
+    }
+
     pub fn handle_error(state: &WorkoutState, error: WorkoutError) {
         log::error!("Workout state error: {}", error);
         state.set_error(Some(error));

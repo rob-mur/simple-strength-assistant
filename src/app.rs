@@ -574,13 +574,8 @@ pub fn App() -> Element {
                                                                     workout_state.set_current_session(None);
                                                                     log::debug!("[UI] current_session cleared, should show StartSessionView");
 
-                                                                    // Store database and file manager in state
-                                                                    workout_state.set_database(database);
-                                                                    workout_state.set_file_manager(file_manager);
-
-                                                                    workout_state.set_initialization_state(InitializationState::Ready);
-
-                                                                    log::debug!("[UI] Setup complete! State is now Ready");
+                                                                    // Store database and file manager in state, sync exercises, transition to Ready
+                                                                    WorkoutStateManager::complete_file_initialization(&workout_state, database, file_manager).await;
                                                                 }
                                                                 Err(e) => {
                                                                     log::error!("Database initialization failed: {}", e);
@@ -680,13 +675,8 @@ pub fn App() -> Element {
                                                                 Ok(_) => {
                                                                     log::debug!("[UI] Database initialized successfully");
 
-                                                                    // Store database and file manager in state
-                                                                    workout_state.set_database(database);
-                                                                    workout_state.set_file_manager(file_manager);
-
-                                                                    workout_state.set_initialization_state(InitializationState::Ready);
-
-                                                                    log::debug!("[UI] Setup complete! State is now Ready");
+                                                                    // Store database and file manager in state, sync exercises, transition to Ready
+                                                                    WorkoutStateManager::complete_file_initialization(&workout_state, database, file_manager).await;
                                                                 }
                                                                 Err(e) => {
                                                                     log::error!("Database initialization failed: {}", e);
