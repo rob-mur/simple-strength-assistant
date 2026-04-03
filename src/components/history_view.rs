@@ -27,7 +27,9 @@ pub struct DayGroup {
 /// `utc_offset_minutes` is the device's UTC offset in **minutes** (e.g. −300 for UTC−5).
 /// Positive values are east of UTC.
 ///
-/// The function preserves the reverse-chronological ordering within each day.
+/// Day groups are ordered reverse-chronologically (most recent day first).
+/// Sets within each exercise sub-group are ordered chronologically (oldest first),
+/// so a session's natural progression reads top-to-bottom.
 pub fn group_sets_by_day(sets: &[HistorySet], utc_offset_minutes: i32) -> Vec<DayGroup> {
     let mut days: Vec<DayGroup> = Vec::new();
 
@@ -58,6 +60,14 @@ pub fn group_sets_by_day(sets: &[HistorySet], utc_offset_minutes: i32) -> Vec<Da
                 exercise_name: set.exercise_name.clone(),
                 sets: vec![set.clone()],
             }),
+        }
+    }
+
+    // Sets arrived in reverse-chronological order from the DB (DESC query).
+    // Reverse each exercise sub-group so sets display oldest-first within a group.
+    for day in &mut days {
+        for eg in &mut day.exercises {
+            eg.sets.reverse();
         }
     }
 
@@ -706,5 +716,64 @@ mod tests {
         // DAY2_START = 2025-01-02 00:00:00 UTC
         assert_eq!(ms_to_date_label(DAY1_START, 0), "2025-01-01");
         assert_eq!(ms_to_date_label(DAY2_START, 0), "2025-01-02");
+    }
+
+    // ── Issue #75: sets within a group should be chronological ───────────────
+
+    /// Sets within an exercise group must be ordered oldest-first (ascending recorded_at).
+    /// Input arrives reverse-chronologically from the DB query (DESC order).
+    #[test]
+    fn test_sets_within_exercise_group_are_chronological() {
+        // DB returns newest first: set 3, 2, 1
+        let sets = vec![
+            make_set(3, 1, "Squat", 3, DAY1_START + 10_800_000.0), // 3 h
+            make_set(2, 1, "Squat", 2, DAY1_START + 7_200_000.0),  // 2 h
+            make_set(1, 1, "Squat", 1, DAY1_START + 3_600_000.0),  // 1 h
+        ];
+        let groups = group_sets_by_day(&sets, 0);
+        assert_eq!(groups.len(), 1);
+        let exercise_sets = &groups[0].exercises[0].sets;
+        assert_eq!(exercise_sets.len(), 3);
+        // Expect oldest first: set_number 1, 2, 3
+        assert_eq!(
+            exercise_sets[0].set_number, 1,
+            "first rendered set should be oldest"
+        );
+        assert_eq!(exercise_sets[1].set_number, 2);
+        assert_eq!(
+            exercise_sets[2].set_number, 3,
+            "last rendered set should be newest"
+        );
+    }
+
+    /// Day groups must remain reverse-chronological (newest day first) while sets
+    /// within each day's exercise group are chronological (oldest set first).
+    #[test]
+    fn test_day_groups_reverse_chrono_sets_within_group_chrono() {
+        // Two days; within each day two sets arrive newest-first from DB
+        let sets = vec![
+            make_set(4, 1, "Squat", 2, DAY2_START + 7_200_000.0), // day2 set2 (newer)
+            make_set(3, 1, "Squat", 1, DAY2_START + 3_600_000.0), // day2 set1 (older)
+            make_set(2, 1, "Squat", 2, DAY1_START + 7_200_000.0), // day1 set2 (newer)
+            make_set(1, 1, "Squat", 1, DAY1_START + 3_600_000.0), // day1 set1 (older)
+        ];
+        let groups = group_sets_by_day(&sets, 0);
+        assert_eq!(groups.len(), 2);
+
+        // Day groups: newest day first
+        assert_eq!(
+            groups[0].date_label, "2025-01-02",
+            "most recent day should be first"
+        );
+        assert_eq!(groups[1].date_label, "2025-01-01");
+
+        // Sets within each day: oldest first
+        let day2_sets = &groups[0].exercises[0].sets;
+        assert_eq!(day2_sets[0].set_number, 1, "oldest set first in day2");
+        assert_eq!(day2_sets[1].set_number, 2);
+
+        let day1_sets = &groups[1].exercises[0].sets;
+        assert_eq!(day1_sets[0].set_number, 1, "oldest set first in day1");
+        assert_eq!(day1_sets[1].set_number, 2);
     }
 }

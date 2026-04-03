@@ -1076,7 +1076,7 @@ pub fn ActiveSession(state: WorkoutState, session: crate::state::WorkoutSession)
                                     }
                                 }
                                 tbody {
-                                    for set in session_for_display.completed_sets.iter().rev() {
+                                    for set in session_for_display.completed_sets.iter() {
                                         tr {
                                             td { class: "font-bold", "{set.set_number}" }
                                             if let SetType::Weighted { weight } = set.set_type {
