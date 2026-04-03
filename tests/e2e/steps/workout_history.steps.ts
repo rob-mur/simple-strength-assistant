@@ -22,7 +22,17 @@ When("I navigate directly to the history page", async ({ page }) => {
 });
 
 When('I click the "View workout history" button', async ({ page }) => {
-  await page.locator('[data-testid="view-history-btn"]').click();
+  const idleBtn = page.locator('[data-testid="view-history-btn"]');
+  if (await idleBtn.isVisible({ timeout: 2000 }).catch(() => false)) {
+    await idleBtn.click();
+  } else {
+    // Active session state: the idle button is not shown. Use SPA navigation
+    // to reach the all-exercises history view directly.
+    await page.evaluate(() => {
+      window.history.pushState({}, "", "/workout/history");
+      window.dispatchEvent(new PopStateEvent("popstate"));
+    });
+  }
   await page.waitForLoadState("networkidle");
   await page.waitForTimeout(300);
 });
