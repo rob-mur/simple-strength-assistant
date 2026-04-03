@@ -85,3 +85,18 @@ Feature: Full workout history view
     And I log a set in the current session
     When I click the history icon in the session header
     Then the exercise toggle should be active
+
+  # AC #11: Exercise filter dropdown on idle history view
+  Scenario: Idle history view has exercise filter dropdown that can filter by exercise
+    Given I start a test session with "Squat"
+    And I log a set in the current session
+    And I finish any active session
+    And I start a test session with "Bench Press"
+    And I log a set in the current session
+    And I finish any active session
+    When I click the "View workout history" button
+    Then the exercise filter selector should be visible
+    And I should see "Squat" in the history feed
+    And I should see "Bench Press" in the history feed
+    When I select "Squat" from the exercise filter
+    Then the history feed should show only "Squat" sets

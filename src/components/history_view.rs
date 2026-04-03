@@ -123,17 +123,24 @@ pub fn HistoryView(
     };
 
     let mut scope = use_signal(|| initial_scope);
+    // User-selected exercise filter (only used when exercise_id prop is None)
+    let mut user_filter_eid = use_signal(|| None::<i64>);
+    // Available exercises for the filter dropdown
+    let mut available_exercises = use_signal(Vec::<crate::models::ExerciseMetadata>::new);
+
     // Reset scope if exercise_id changes
     use_effect(move || {
         let eid = eid_signal();
+        let user_eid = user_filter_eid();
+        let effective_eid = eid.or(user_eid);
         let current_scope = *scope.peek();
 
         // If we just navigated to a specific exercise, default to that exercise view
-        if eid.is_some() && current_scope == HistoryScope::All {
+        if effective_eid.is_some() && current_scope == HistoryScope::All {
             scope.set(HistoryScope::Exercise);
         }
         // If we navigated to all exercises (None), we MUST use All scope
-        if eid.is_none() && current_scope == HistoryScope::Exercise {
+        if effective_eid.is_none() && current_scope == HistoryScope::Exercise {
             scope.set(HistoryScope::All);
         }
     });
@@ -151,7 +158,9 @@ pub fn HistoryView(
         let state_ref = state;
         use_effect(move || {
             let eid = eid_signal();
-            if let Some(id) = eid {
+            let user_eid = user_filter_eid();
+            let effective_eid = eid.or(user_eid);
+            if let Some(id) = effective_eid {
                 let state_ref = state_ref;
                 spawn(async move {
                     if let Some(db) = state_ref.database()
@@ -165,12 +174,31 @@ pub fn HistoryView(
         });
     }
 
+    // Load available exercises for the filter dropdown (only when no prop exercise_id)
+    {
+        let state_ref = state;
+        use_effect(move || {
+            let _ = eid_signal(); // track changes
+            if exercise_id.is_none() {
+                spawn(async move {
+                    if let Some(db) = state_ref.database()
+                        && let Ok(exercises) = db.get_exercises().await
+                    {
+                        available_exercises.set(exercises);
+                    }
+                });
+            }
+        });
+    }
+
     // Load the first page whenever scope, exercise_id, or active session sets change (AC #9)
     {
         let state_ref = state;
         use_effect(move || {
             let current_scope = scope();
             let eid = eid_signal();
+            let user_eid = user_filter_eid();
+            let effective_eid = eid.or(user_eid);
 
             // Subscribe to current session's completed sets count to refresh on log (AC #9)
             let _log_trigger = state_ref
@@ -184,7 +212,7 @@ pub fn HistoryView(
             spawn(async move {
                 loading.set(true);
                 if let Some(db) = state_ref.database() {
-                    let page = fetch_page(&db, current_scope, eid, PAGE_SIZE, 0).await;
+                    let page = fetch_page(&db, current_scope, effective_eid, PAGE_SIZE, 0).await;
                     match page {
                         Ok(new_sets) => {
                             has_more.set(new_sets.len() as i64 == PAGE_SIZE);
@@ -205,7 +233,7 @@ pub fn HistoryView(
                 return;
             }
             let current_scope = scope();
-            let eid = *eid_signal.peek();
+            let eid = eid_signal.peek().or(*user_filter_eid.peek());
             let offset = sets.read().len() as i64;
             spawn(async move {
                 loading.set(true);
@@ -258,6 +286,33 @@ pub fn HistoryView(
                     }
                 }
 
+                if exercise_id.is_none() {
+                    select {
+                        class: "flex-1 py-2 text-sm font-semibold bg-base-100 border-0 outline-none cursor-pointer",
+                        "data-testid": "exercise-filter-select",
+                        onchange: move |evt| {
+                            let val = evt.value();
+                            if val.is_empty() {
+                                user_filter_eid.set(None);
+                                scope.set(HistoryScope::All);
+                            } else if let Ok(id) = val.parse::<i64>() {
+                                user_filter_eid.set(Some(id));
+                                scope.set(HistoryScope::Exercise);
+                            }
+                        },
+                        option { value: "", "Filter by exercise" }
+                        for ex in available_exercises.read().iter() {
+                            if let Some(id) = ex.id {
+                                option {
+                                    value: "{id}",
+                                    selected: user_filter_eid() == Some(id),
+                                    "{ex.name}"
+                                }
+                            }
+                        }
+                    }
+                }
+
                 button {
                     class: if scope() == HistoryScope::All {
                         "flex-1 py-2 text-sm font-semibold bg-primary text-primary-content"
@@ -265,7 +320,10 @@ pub fn HistoryView(
                         "flex-1 py-2 text-sm font-semibold"
                     },
                     "data-testid": "toggle-all",
-                    onclick: move |_| scope.set(HistoryScope::All),
+                    onclick: move |_| {
+                        scope.set(HistoryScope::All);
+                        user_filter_eid.set(None);
+                    },
                     "All Exercises"
                 }
             }

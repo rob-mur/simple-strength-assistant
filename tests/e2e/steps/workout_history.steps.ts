@@ -124,6 +124,34 @@ Then(
   },
 );
 
+Then("the exercise filter selector should be visible", async ({ page }) => {
+  await expect(
+    page.locator('[data-testid="exercise-filter-select"]'),
+  ).toBeVisible();
+});
+
+When(
+  "I select {string} from the exercise filter",
+  async ({ page }, exerciseName: string) => {
+    await page
+      .locator('[data-testid="exercise-filter-select"]')
+      .selectOption({ label: exerciseName });
+    await page.waitForTimeout(300);
+  },
+);
+
+Then(
+  "the history feed should show only {string} sets",
+  async ({ page }, exerciseName: string) => {
+    const feed = page.locator('[data-testid="history-feed"]');
+    await expect(feed).toContainText(exerciseName);
+    const exerciseGroups = page.locator(
+      '[data-testid="history-exercise-group"]',
+    );
+    await expect(exerciseGroups).toHaveCount(1);
+  },
+);
+
 When("I scroll to the bottom of the history feed", async ({ page }) => {
   const sentinel = page.locator('[id="history-view-sentinel"]');
   // If sentinel is present, scroll it into view to trigger IntersectionObserver
