@@ -331,13 +331,14 @@ impl Database {
         self.parse_history_sets(&result)
     }
 
-    /// Updates reps, rpe, and weight for an existing set.
+    /// Updates reps, rpe, weight, and recorded_at for an existing set.
     pub async fn update_set(
         &self,
         set_id: i64,
         reps: u32,
         rpe: f32,
         weight: Option<f32>,
+        recorded_at: f64,
     ) -> Result<(), DatabaseError> {
         let (weight_val, is_bodyweight) = match weight {
             Some(w) => (JsValue::from_f64(w as f64), false),
@@ -346,7 +347,7 @@ impl Database {
 
         let sql = r#"
             UPDATE completed_sets
-            SET reps = ?, rpe = ?, weight = ?, is_bodyweight = ?
+            SET reps = ?, rpe = ?, weight = ?, is_bodyweight = ?, recorded_at = ?
             WHERE id = ?
         "#;
 
@@ -355,6 +356,7 @@ impl Database {
             JsValue::from_f64(rpe as f64),
             weight_val,
             JsValue::from_bool(is_bodyweight),
+            JsValue::from_f64(recorded_at),
             JsValue::from_f64(set_id as f64),
         ];
 

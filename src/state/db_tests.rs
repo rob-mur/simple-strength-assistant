@@ -372,8 +372,9 @@ async fn test_update_set() {
     };
     let set_id = db.log_set(exercise_id, &set).await.expect("log_set failed");
 
-    // Update: change reps to 10, rpe to 8.0, weight to 55.0
-    db.update_set(set_id, 10, 8.0, Some(55.0))
+    // Update: change reps to 10, rpe to 8.0, weight to 55.0 (keep same recorded_at)
+    let original_recorded_at = 1_700_000_000_000.0_f64;
+    db.update_set(set_id, 10, 8.0, Some(55.0), original_recorded_at)
         .await
         .expect("update_set failed");
 
@@ -389,6 +390,56 @@ async fn test_update_set() {
         updated[0].set_type,
         SetType::Weighted { weight: 55.0 },
         "weight should be updated to 55.0"
+    );
+}
+
+/// RED: update_set can change recorded_at; subsequent reads reflect the new timestamp.
+#[wasm_bindgen_test]
+async fn test_update_set_recorded_at() {
+    let mut db = Database::new();
+    db.init(None).await.expect("Database init failed");
+
+    let exercise = ExerciseMetadata {
+        id: None,
+        name: "Squat".to_string(),
+        set_type_config: SetTypeConfig::Weighted {
+            min_weight: 0.0,
+            increment: 5.0,
+        },
+    };
+    let exercise_id = db
+        .save_exercise(&exercise)
+        .await
+        .expect("Save exercise failed");
+
+    // Log a set with a known timestamp (yesterday: 24h ago in ms)
+    let yesterday_ms = 1_000_000_000.0_f64; // arbitrary past timestamp
+    let set = CompletedSet {
+        set_number: 1,
+        reps: 5,
+        rpe: 7.0,
+        set_type: SetType::Weighted { weight: 100.0 },
+    };
+    let set_id = db
+        .log_set_at(exercise_id, &set, yesterday_ms)
+        .await
+        .expect("log_set_at failed");
+
+    // Update recorded_at to a different timestamp (two days ago)
+    let two_days_ago_ms = 500_000_000.0_f64;
+    db.update_set(set_id, 5, 7.0, Some(100.0), two_days_ago_ms)
+        .await
+        .expect("update_set failed");
+
+    let updated = db
+        .get_sets_for_exercise(exercise_id, 1, 0)
+        .await
+        .expect("read after update failed");
+
+    assert_eq!(updated.len(), 1);
+    assert_eq!(
+        updated[0].recorded_at, two_days_ago_ms,
+        "recorded_at should be updated to two_days_ago_ms"
     );
 }
 

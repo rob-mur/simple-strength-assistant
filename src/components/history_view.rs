@@ -435,18 +435,19 @@ pub fn HistoryView(
                 },
                 on_save: {
                     let state_ref = state;
-                    move |(reps, rpe, weight)| {
+                    move |(reps, rpe, weight, recorded_at)| {
                         let state_ref = state_ref;
                         let set_id = set.id;
                         spawn(async move {
                             if let Some(db) = state_ref.database()
-                                && db.update_set(set_id, reps, rpe, weight).await.is_ok()
+                                && db.update_set(set_id, reps, rpe, weight, recorded_at).await.is_ok()
                             {
                                 // Update the set in the local signal to refresh the UI in place
                                 sets.with_mut(|s| {
                                     if let Some(item) = s.iter_mut().find(|item| item.id == set_id) {
                                         item.reps = reps;
                                         item.rpe = rpe;
+                                        item.recorded_at = recorded_at;
                                         if let Some(w) = weight {
                                             item.set_type = crate::models::SetType::Weighted { weight: w };
                                         } else {

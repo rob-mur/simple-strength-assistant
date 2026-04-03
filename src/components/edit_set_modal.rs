@@ -3,12 +3,29 @@ use crate::components::step_controls::StepControls;
 use crate::components::tape_measure::TapeMeasure;
 use crate::models::{ExerciseMetadata, HistorySet, SetType, SetTypeConfig};
 use dioxus::prelude::*;
+use wasm_bindgen::JsValue;
+
+fn ms_to_date_string(ms: f64) -> String {
+    let date = js_sys::Date::new(&JsValue::from_f64(ms));
+    format!(
+        "{:04}-{:02}-{:02}",
+        date.get_full_year(),
+        date.get_month() + 1,
+        date.get_date()
+    )
+}
+
+fn date_string_to_ms(date_str: &str) -> f64 {
+    // Parse as local noon to avoid DST boundary issues
+    let datetime_str = format!("{}T12:00:00", date_str);
+    js_sys::Date::new(&JsValue::from_str(&datetime_str)).get_time()
+}
 
 #[component]
 pub fn EditSetModal(
     set: HistorySet,
     exercise: ExerciseMetadata,
-    on_save: EventHandler<(u32, f32, Option<f32>)>,
+    on_save: EventHandler<(u32, f32, Option<f32>, f64)>,
     on_delete: EventHandler<i64>,
     on_cancel: EventHandler<()>,
 ) -> Element {
@@ -21,6 +38,7 @@ pub fn EditSetModal(
             None
         }
     });
+    let mut recorded_at = use_signal(|| set.recorded_at);
 
     let is_weighted = matches!(exercise.set_type_config, SetTypeConfig::Weighted { .. });
     let (min_weight, increment) = match exercise.set_type_config {
@@ -105,6 +123,23 @@ pub fn EditSetModal(
                             on_change: move |val| rpe.set(val)
                         }
                     }
+
+                    div {
+                        class: "mb-8",
+                        label { class: "label font-bold", "Date" }
+                        input {
+                            r#type: "date",
+                            class: "input input-bordered w-full",
+                            "data-testid": "recorded-at-date-input",
+                            value: ms_to_date_string(recorded_at()),
+                            oninput: move |evt| {
+                                let val = evt.value();
+                                if !val.is_empty() {
+                                    recorded_at.set(date_string_to_ms(&val));
+                                }
+                            }
+                        }
+                    }
                 }
                 div {
                     class: "p-4 border-t border-base-200 flex flex-col gap-3",
@@ -112,7 +147,7 @@ pub fn EditSetModal(
                         class: "btn btn-primary btn-block shadow-lg",
                         "data-testid": "save-set-button",
                         onclick: move |_| {
-                            on_save.call((reps(), rpe() as f32, weight().map(|w| w as f32)));
+                            on_save.call((reps(), rpe() as f32, weight().map(|w| w as f32), recorded_at()));
                         },
                         "Save Changes"
                     }
