@@ -134,3 +134,80 @@ async fn step_check_message(world: &mut WorkoutWorld, message: String) {
 async fn step_check_button(world: &mut WorkoutWorld, button_text: String) {
     assert!(world.rendered_html.contains(&button_text));
 }
+
+#[then(expr = "I should not see a button that says {string}")]
+async fn step_check_button_absent(world: &mut WorkoutWorld, button_text: String) {
+    assert!(
+        !world.rendered_html.contains(&button_text),
+        "Expected HTML to NOT contain button text: {}",
+        button_text
+    );
+}
+
+#[given(expr = "an active session for {string} with completed sets")]
+async fn step_active_session_with_sets(world: &mut WorkoutWorld, exercise_name: String) {
+    world.current_session = Some(WorkoutSession {
+        session_id: Some(1),
+        exercise: ExerciseMetadata {
+            id: Some(1),
+            name: exercise_name,
+            set_type_config: SetTypeConfig::Weighted {
+                min_weight: 0.0,
+                increment: 5.0,
+            },
+        },
+        completed_sets: vec![simple_strength_assistant::models::CompletedSet {
+            set_number: 1,
+            reps: 5,
+            rpe: 7.0,
+            set_type: simple_strength_assistant::models::SetType::Weighted { weight: 100.0 },
+        }],
+        predicted: PredictedParameters {
+            weight: Some(100.0),
+            reps: 8,
+            rpe: 7.0,
+        },
+    });
+}
+
+#[when(expr = "I switch to exercise {string}")]
+async fn step_switch_exercise(world: &mut WorkoutWorld, exercise_name: String) {
+    // Simulate the UI starting a new session, which implicitly clears the old one.
+    world.current_session = Some(WorkoutSession {
+        session_id: Some(2),
+        exercise: ExerciseMetadata {
+            id: Some(2),
+            name: exercise_name,
+            set_type_config: SetTypeConfig::Weighted {
+                min_weight: 0.0,
+                increment: 2.5,
+            },
+        },
+        completed_sets: Vec::new(),
+        predicted: PredictedParameters {
+            weight: Some(0.0),
+            reps: 8,
+            rpe: 7.0,
+        },
+    });
+    world.active_tab = Tab::Workout;
+    world.render_component();
+}
+
+#[then(expr = "the new session for {string} should have zero completed sets")]
+async fn step_new_session_zero_sets(world: &mut WorkoutWorld, exercise_name: String) {
+    let session = world
+        .current_session
+        .as_ref()
+        .expect("Expected an active session");
+    assert_eq!(
+        session.exercise.name, exercise_name,
+        "Expected session for {}",
+        exercise_name
+    );
+    assert_eq!(
+        session.completed_sets.len(),
+        0,
+        "Expected zero completed sets in new session"
+    );
+}

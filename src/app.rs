@@ -891,16 +891,6 @@ pub fn ActiveSession(state: WorkoutState, session: crate::state::WorkoutSession)
         });
     };
 
-    let state_for_complete = state;
-    let complete_session = move |_| {
-        let state_clone = state_for_complete;
-        spawn(async move {
-            if let Err(e) = WorkoutStateManager::complete_session(&state_clone).await {
-                WorkoutStateManager::handle_error(&state_clone, e);
-            }
-        });
-    };
-
     let navigator = use_navigator();
     let history_exercise_id = session_for_display.exercise.id.unwrap_or(0);
 
@@ -1103,15 +1093,6 @@ pub fn ActiveSession(state: WorkoutState, session: crate::state::WorkoutSession)
                 }
             }
 
-            // Finish Session Button
-            div {
-                class: "flex justify-center pt-4",
-                button {
-                    class: "btn btn-ghost btn-sm opacity-50 hover:opacity-100",
-                    onclick: complete_session,
-                    "Finish Workout Session"
-                }
-            }
         }
     }
 }
