@@ -262,11 +262,32 @@ pub fn HistoryView(
     // Get local UTC offset from the browser
     let utc_offset = get_utc_offset_minutes();
     let grouped = group_sets_by_day(&sets.read(), utc_offset);
+    let navigator = use_navigator();
 
     rsx! {
         div {
             class: "max-w-md mx-auto pb-10",
             "data-testid": "history-view",
+
+            // Back button
+            button {
+                class: "btn btn-ghost btn-sm btn-circle mb-2",
+                "data-testid": "back-button",
+                onclick: move |_| { navigator.go_back(); },
+                svg {
+                    xmlns: "http://www.w3.org/2000/svg",
+                    fill: "none",
+                    view_box: "0 0 24 24",
+                    stroke_width: "2.5",
+                    stroke: "currentColor",
+                    class: "w-6 h-6",
+                    path {
+                        stroke_linecap: "round",
+                        stroke_linejoin: "round",
+                        d: "M15.75 19.5L8.25 12l7.5-7.5"
+                    }
+                }
+            }
 
             // Toggle bar
             div {

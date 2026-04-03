@@ -103,6 +103,14 @@ Feature: Full workout history view
     Then the "All Exercises" toggle should be active
     And I should see "Bench Press" in the history feed
 
+  # Back button navigation
+  Scenario: History view has a back button that navigates back
+    When I click the "View workout history" button
+    Then I should be on the history page
+    And the back button should be visible on the history page
+    When I click the back button on the history page
+    Then I should be on the Workout tab
+
   # AC #11: Exercise filter dropdown on idle history view
   Scenario: Idle history view has exercise filter dropdown that can filter by exercise
     Given I start a test session with "Squat"

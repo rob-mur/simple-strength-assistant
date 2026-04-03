@@ -157,6 +157,26 @@ Then(
   },
 );
 
+Then(
+  "the back button should be visible on the history page",
+  async ({ page }) => {
+    await expect(
+      page.locator('[data-testid="history-view"] [data-testid="back-button"]'),
+    ).toBeVisible();
+  },
+);
+
+When("I click the back button on the history page", async ({ page }) => {
+  await page
+    .locator('[data-testid="history-view"] [data-testid="back-button"]')
+    .click();
+  await page.waitForTimeout(300);
+});
+
+Then("I should be on the Workout tab", async ({ page }) => {
+  await expect(page.locator('[data-testid="view-history-btn"]')).toBeVisible();
+});
+
 When("I scroll to the bottom of the history feed", async ({ page }) => {
   const sentinel = page.locator('[id="history-view-sentinel"]');
   // If sentinel is present, scroll it into view to trigger IntersectionObserver
