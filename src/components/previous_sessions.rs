@@ -5,6 +5,9 @@ use dioxus::prelude::*;
 use wasm_bindgen::prelude::*;
 use web_sys::{IntersectionObserver, IntersectionObserverEntry, IntersectionObserverInit};
 
+// Include all sets regardless of date (finished sessions from today are still "previous").
+const ALL_SETS_CUTOFF_MS: f64 = f64::MAX;
+
 const PAGE_SIZE: i64 = 20;
 
 /// Collapsible "Previous Sessions" panel shown inside the active workout view.
@@ -44,7 +47,7 @@ pub fn PreviousSessions(
             loading.set(true);
             if let Some(db) = state.database() {
                 match db
-                    .get_sets_for_exercise_before(eid, start_of_today_utc_ms(), PAGE_SIZE, offset)
+                    .get_sets_for_exercise_before(eid, ALL_SETS_CUTOFF_MS, PAGE_SIZE, offset)
                     .await
                 {
                     Ok(mut new_sets) => {
@@ -83,7 +86,7 @@ pub fn PreviousSessions(
             loading.set(true);
             if let Some(db) = state.database() {
                 match db
-                    .get_sets_for_exercise_before(eid, start_of_today_utc_ms(), PAGE_SIZE, 0)
+                    .get_sets_for_exercise_before(eid, ALL_SETS_CUTOFF_MS, PAGE_SIZE, 0)
                     .await
                 {
                     Ok(new_sets) => {
@@ -246,15 +249,4 @@ pub fn PreviousSessions(
 fn get_utc_offset_minutes() -> i32 {
     let offset = js_sys::Date::new_0().get_timezone_offset();
     -(offset as i32)
-}
-
-/// Returns the Unix ms timestamp for midnight at the start of today in the
-/// device's local timezone. Sets recorded on or after this value are from
-/// the current calendar day and must not appear in "Previous Sessions".
-fn start_of_today_utc_ms() -> f64 {
-    let now_ms = js_sys::Date::now();
-    let offset_ms = get_utc_offset_minutes() as f64 * 60_000.0;
-    let local_now_ms = now_ms + offset_ms;
-    let start_of_local_day_ms = (local_now_ms / 86_400_000.0).floor() * 86_400_000.0;
-    start_of_local_day_ms - offset_ms
 }
