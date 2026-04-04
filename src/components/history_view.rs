@@ -337,18 +337,20 @@ pub fn HistoryView(
                     }
                 }
 
-                button {
-                    class: if scope() == HistoryScope::All {
-                        "flex-1 py-2 text-sm font-semibold bg-primary text-primary-content"
-                    } else {
-                        "flex-1 py-2 text-sm font-semibold"
-                    },
-                    "data-testid": "toggle-all",
-                    onclick: move |_| {
-                        scope.set(HistoryScope::All);
-                        user_filter_eid.set(None);
-                    },
-                    "All Exercises"
+                if exercise_id.is_some() {
+                    button {
+                        class: if scope() == HistoryScope::All {
+                            "flex-1 py-2 text-sm font-semibold bg-primary text-primary-content"
+                        } else {
+                            "flex-1 py-2 text-sm font-semibold"
+                        },
+                        "data-testid": "toggle-all",
+                        onclick: move |_| {
+                            scope.set(HistoryScope::All);
+                            user_filter_eid.set(None);
+                        },
+                        "All Exercises"
+                    }
                 }
             }
 
