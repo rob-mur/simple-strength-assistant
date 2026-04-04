@@ -1050,14 +1050,19 @@ pub fn ActiveSession(state: WorkoutState, session: crate::state::WorkoutSession)
                 }
             }
 
-            // History Section
+            // Today's Sets Section
             if !session_for_display.completed_sets.is_empty() {
                 div {
                     class: "collapse collapse-arrow bg-base-100 shadow-lg border border-base-300",
+                    "data-testid": "todays-sets-section",
                     input { r#type: "checkbox", checked: true },
                     div {
                         class: "collapse-title text-xl font-bold",
-                        "History ({session_for_display.completed_sets.len()} sets)"
+                        {
+                            let n = session_for_display.completed_sets.len();
+                            let unit = if n == 1 { "set" } else { "sets" };
+                            format!("Today's Sets ({n} {unit})")
+                        }
                     }
                     div {
                         class: "collapse-content p-0",
