@@ -1,4 +1,4 @@
-import { Given, When, Then, expect } from "./fixtures";
+import { When, Then, expect } from "./fixtures";
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
