@@ -491,7 +491,7 @@ impl WorkoutStateManager {
     /// database into the reactive state signal, and transitions to `Ready`.  The
     /// exercise sync is non-fatal: if it fails we log a warning but still reach
     /// `Ready`, matching the behaviour of `setup_database`.
-    pub async fn complete_file_initialization(
+    pub(crate) async fn complete_file_initialization(
         state: &WorkoutState,
         database: Database,
         file_manager: Storage,
