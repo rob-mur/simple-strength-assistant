@@ -1,4 +1,4 @@
-import { Given, When, Then, expect } from "./fixtures";
+import { When, Then, expect } from "./fixtures";
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
@@ -154,6 +154,17 @@ Then(
       '[data-testid="history-exercise-group"]',
     );
     await expect(exerciseGroups).toHaveCount(1);
+  },
+);
+
+Then(
+  "the exercise filter selector default option should read {string}",
+  async ({ page }, expectedText: string) => {
+    const select = page.locator('[data-testid="exercise-filter-select"]');
+    await expect(select).toBeVisible();
+    // The default option (value="") should have the expected label text
+    const defaultOption = select.locator('option[value=""]');
+    await expect(defaultOption).toHaveText(expectedText);
   },
 );
 

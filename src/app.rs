@@ -574,13 +574,8 @@ pub fn App() -> Element {
                                                                     workout_state.set_current_session(None);
                                                                     log::debug!("[UI] current_session cleared, should show StartSessionView");
 
-                                                                    // Store database and file manager in state
-                                                                    workout_state.set_database(database);
-                                                                    workout_state.set_file_manager(file_manager);
-
-                                                                    workout_state.set_initialization_state(InitializationState::Ready);
-
-                                                                    log::debug!("[UI] Setup complete! State is now Ready");
+                                                                    // Store database and file manager in state, sync exercises, transition to Ready
+                                                                    WorkoutStateManager::complete_file_initialization(&workout_state, database, file_manager).await;
                                                                 }
                                                                 Err(e) => {
                                                                     log::error!("Database initialization failed: {}", e);
@@ -680,13 +675,8 @@ pub fn App() -> Element {
                                                                 Ok(_) => {
                                                                     log::debug!("[UI] Database initialized successfully");
 
-                                                                    // Store database and file manager in state
-                                                                    workout_state.set_database(database);
-                                                                    workout_state.set_file_manager(file_manager);
-
-                                                                    workout_state.set_initialization_state(InitializationState::Ready);
-
-                                                                    log::debug!("[UI] Setup complete! State is now Ready");
+                                                                    // Store database and file manager in state, sync exercises, transition to Ready
+                                                                    WorkoutStateManager::complete_file_initialization(&workout_state, database, file_manager).await;
                                                                 }
                                                                 Err(e) => {
                                                                     log::error!("Database initialization failed: {}", e);
@@ -1050,14 +1040,19 @@ pub fn ActiveSession(state: WorkoutState, session: crate::state::WorkoutSession)
                 }
             }
 
-            // History Section
+            // Today's Sets Section
             if !session_for_display.completed_sets.is_empty() {
                 div {
                     class: "collapse collapse-arrow bg-base-100 shadow-lg border border-base-300",
+                    "data-testid": "todays-sets-section",
                     input { r#type: "checkbox", checked: true },
                     div {
                         class: "collapse-title text-xl font-bold",
-                        "History ({session_for_display.completed_sets.len()} sets)"
+                        {
+                            let n = session_for_display.completed_sets.len();
+                            let unit = if n == 1 { "set" } else { "sets" };
+                            format!("Today's Sets ({n} {unit})")
+                        }
                     }
                     div {
                         class: "collapse-content p-0",

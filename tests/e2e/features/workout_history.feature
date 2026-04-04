@@ -12,13 +12,13 @@ Feature: Full workout history view
     Then I should see the "View workout history" button on the idle Workout tab
     When I click the "View workout history" button
     Then I should be on the history page
-    And the "All Exercises" toggle should be active
+    And the exercise filter selector should be visible
 
   # AC #1: /workout/history renders all-exercises feed by default
   Scenario: /workout/history defaults to All Exercises scope
     When I navigate directly to the history page
     Then I should be on the history page
-    And the "All Exercises" toggle should be active
+    And the exercise filter selector should be visible
 
   # AC #2: /workout/history/:exercise_id defaults to the exercise tab
   Scenario: /workout/history/:exercise_id defaults to per-exercise scope
@@ -42,7 +42,7 @@ Feature: Full workout history view
     And I log a set in the current session
     And I finish any active session
     When I navigate directly to the history page
-    Then the "All Exercises" toggle should be active
+    Then the exercise filter selector should be visible
     And I should see "Squat" in the history feed
     And I should see "Bench Press" in the history feed
 
@@ -78,7 +78,7 @@ Feature: Full workout history view
   # AC #10 (combined): Correct default scope from each entry point
   Scenario: Accessing history from idle tab defaults to All Exercises
     When I click the "View workout history" button
-    Then the "All Exercises" toggle should be active
+    Then the exercise filter selector should be visible
 
   Scenario: Accessing history from active session defaults to current exercise
     Given I start a test session with "Squat"
@@ -119,7 +119,7 @@ Feature: Full workout history view
     And the exercise toggle should be active
     When I click the back button on the history page
     Then I should be on the history page
-    And the "All Exercises" toggle should be active
+    And the exercise filter selector should be visible
 
   # AC #11: Exercise filter dropdown on idle history view
   Scenario: Idle history view has exercise filter dropdown that can filter by exercise
@@ -135,3 +135,17 @@ Feature: Full workout history view
     And I should see "Bench Press" in the history feed
     When I select "Squat" from the exercise filter
     Then the history feed should show only "Squat" sets
+
+  # Issue #72: Exercise filter dropdown default label
+  Scenario: Exercise filter dropdown shows "All exercises" when no filter is active
+    When I navigate directly to the history page
+    Then the exercise filter selector default option should read "All exercises"
+
+  Scenario: Clearing the exercise filter resets the dropdown label to "All exercises"
+    Given I start a test session with "Squat"
+    And I log a set in the current session
+    And I finish any active session
+    When I click the "View workout history" button
+    And I select "Squat" from the exercise filter
+    And I select "All exercises" from the exercise filter
+    Then the exercise filter selector default option should read "All exercises"

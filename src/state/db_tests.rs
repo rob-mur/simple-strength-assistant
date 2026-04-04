@@ -755,3 +755,148 @@ async fn test_export_import_round_trip() {
         "Should be able to log a set in imported database"
     );
 }
+
+// ── Issue 71: exercises not restored after clearing site data and reselecting database file ──
+
+/// RED: Opening an existing database file restores exercises.
+///
+/// Simulates the "open existing database" path: create a DB with exercises,
+/// export it, then re-import it (as if the user reselected their file after
+/// clearing site data). After re-import, `get_exercises` must return all
+/// exercises that were present before the export.
+#[wasm_bindgen_test]
+async fn test_exercises_restored_after_open_existing_database() {
+    // Create a database with custom exercises
+    let mut db1 = Database::new();
+    db1.init(None).await.expect("Initial db init failed");
+
+    let exercise1 = ExerciseMetadata {
+        id: None,
+        name: "Squat".to_string(),
+        set_type_config: SetTypeConfig::Weighted {
+            min_weight: 20.0,
+            increment: 2.5,
+        },
+    };
+    let exercise2 = ExerciseMetadata {
+        id: None,
+        name: "Pull-ups".to_string(),
+        set_type_config: SetTypeConfig::Bodyweight,
+    };
+
+    db1.save_exercise(&exercise1)
+        .await
+        .expect("Save exercise1 failed");
+    db1.save_exercise(&exercise2)
+        .await
+        .expect("Save exercise2 failed");
+
+    // Verify exercises exist before export
+    let exercises_before = db1
+        .get_exercises()
+        .await
+        .expect("get_exercises before export failed");
+    assert_eq!(
+        exercises_before.len(),
+        2,
+        "Should have 2 exercises before export"
+    );
+
+    // Simulate "clear site data": export the database bytes
+    let exported_data = db1.export().await.expect("Export failed");
+
+    // Simulate "reopen the same file": re-import the exported bytes into a fresh DB instance
+    let mut db2 = Database::new();
+    db2.init(Some(exported_data))
+        .await
+        .expect("Re-import failed");
+
+    // Assert: exercises are restored
+    let exercises_after = db2
+        .get_exercises()
+        .await
+        .expect("get_exercises after re-import failed");
+    assert_eq!(
+        exercises_after.len(),
+        2,
+        "Exercises should be restored after opening existing database file"
+    );
+
+    let names: Vec<&str> = exercises_after.iter().map(|e| e.name.as_str()).collect();
+    assert!(
+        names.contains(&"Squat"),
+        "Squat exercise should be restored"
+    );
+    assert!(
+        names.contains(&"Pull-ups"),
+        "Pull-ups exercise should be restored"
+    );
+}
+
+/// RED: Opening an existing database with no exercises returns empty list (not an error).
+#[wasm_bindgen_test]
+async fn test_empty_exercise_list_after_open_existing_database_with_no_exercises() {
+    // Create a database with no exercises (only workout history)
+    let mut db1 = Database::new();
+    db1.init(None).await.expect("Initial db init failed");
+
+    let exported_data = db1.export().await.expect("Export failed");
+
+    // Re-import into fresh DB
+    let mut db2 = Database::new();
+    db2.init(Some(exported_data))
+        .await
+        .expect("Re-import failed");
+
+    // Assert: empty list, not an error
+    let exercises = db2
+        .get_exercises()
+        .await
+        .expect("get_exercises should succeed even when list is empty");
+    assert!(
+        exercises.is_empty(),
+        "Exercise list should be empty when none were saved"
+    );
+}
+
+/// RED: Creating a new database and reopening the same file restores exercises.
+///
+/// Simulates the "create new database" path: create a DB, add exercises, export,
+/// then re-import. Exercises must survive the round-trip.
+#[wasm_bindgen_test]
+async fn test_exercises_restored_after_create_new_then_reopen() {
+    // "Create new database" path
+    let mut db1 = Database::new();
+    db1.init(None).await.expect("New database init failed");
+
+    // User adds exercises after creation
+    let exercise = ExerciseMetadata {
+        id: None,
+        name: "Deadlift".to_string(),
+        set_type_config: SetTypeConfig::Weighted {
+            min_weight: 60.0,
+            increment: 5.0,
+        },
+    };
+    db1.save_exercise(&exercise)
+        .await
+        .expect("Save exercise failed");
+
+    // App is closed / site data cleared — export simulates the persisted file
+    let exported_data = db1.export().await.expect("Export failed");
+
+    // User reopens the same file
+    let mut db2 = Database::new();
+    db2.init(Some(exported_data)).await.expect("Reopen failed");
+
+    let exercises = db2
+        .get_exercises()
+        .await
+        .expect("get_exercises after reopen failed");
+    assert_eq!(
+        exercises.len(),
+        1,
+        "Deadlift should be restored after reopening"
+    );
+    assert_eq!(exercises[0].name, "Deadlift");
+}
