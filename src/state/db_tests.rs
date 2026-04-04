@@ -4,6 +4,166 @@ use wasm_bindgen_test::*;
 
 wasm_bindgen_test_configure!(run_in_browser);
 
+// ── WorkoutStateManager integration tests (test-mode only) ───────────────────
+//
+// These tests exercise `WorkoutStateManager::start_session` end-to-end.  They
+// require the `test-mode` Cargo feature so that the in-memory storage backend
+// is available (avoiding OPFS file-picker interactions).
+// Run with: wasm-pack test --headless --chrome --features test-mode
+#[cfg(feature = "test-mode")]
+mod workout_state_manager_tests {
+    use super::*;
+    use crate::state::{InitializationState, StorageBackend, WorkoutState, WorkoutStateManager};
+
+    /// Helper: creates a fully initialised `WorkoutState` with a real in-memory
+    /// SQLite database and an `InMemoryStorage` file backend.
+    async fn make_ready_state() -> WorkoutState {
+        let state = WorkoutState::new();
+
+        // Initialise the SQLite database.
+        let mut db = Database::new();
+        db.init(None).await.expect("Database init failed");
+        state.set_database(db);
+
+        // Wire up an in-memory storage backend so save_database succeeds.
+        let mut storage = super::storage::InMemoryStorage::new();
+        storage
+            .create_new_file()
+            .await
+            .expect("create_new_file failed");
+        state.set_file_manager(storage);
+
+        state.set_initialization_state(crate::state::InitializationState::Ready);
+
+        state
+    }
+
+    /// When `start_session` is called while a session with logged sets is already
+    /// active, those sets must be visible in the database *before* the new session
+    /// begins.  This is the core contract of implicit session completion.
+    #[wasm_bindgen_test]
+    async fn test_start_session_persists_previous_session_sets_to_db() {
+        let state = make_ready_state().await;
+
+        // ── Session A: Bench Press ────────────────────────────────────────────
+        let exercise_a = ExerciseMetadata {
+            id: None,
+            name: "Bench Press".to_string(),
+            set_type_config: SetTypeConfig::Weighted {
+                min_weight: 0.0,
+                increment: 5.0,
+            },
+        };
+        WorkoutStateManager::start_session(&state, exercise_a)
+            .await
+            .expect("start_session A failed");
+
+        // Log two sets for session A.
+        let set1 = CompletedSet {
+            set_number: 1,
+            reps: 8,
+            rpe: 7.0,
+            set_type: SetType::Weighted { weight: 100.0 },
+        };
+        let set2 = CompletedSet {
+            set_number: 2,
+            reps: 6,
+            rpe: 7.5,
+            set_type: SetType::Weighted { weight: 105.0 },
+        };
+        WorkoutStateManager::log_set(&state, set1)
+            .await
+            .expect("log_set 1 failed");
+        WorkoutStateManager::log_set(&state, set2)
+            .await
+            .expect("log_set 2 failed");
+
+        // Confirm the sets are tracked in the in-memory session state.
+        assert_eq!(
+            state.current_session().unwrap().completed_sets.len(),
+            2,
+            "Session A should have 2 completed sets before switch"
+        );
+
+        // ── Session B: Deadlift (triggers implicit completion of A) ───────────
+        let exercise_b = ExerciseMetadata {
+            id: None,
+            name: "Deadlift".to_string(),
+            set_type_config: SetTypeConfig::Weighted {
+                min_weight: 0.0,
+                increment: 5.0,
+            },
+        };
+        WorkoutStateManager::start_session(&state, exercise_b)
+            .await
+            .expect("start_session B failed");
+
+        // Session A must now be cleared and session B active.
+        let active = state.current_session().expect("Session B should be active");
+        assert_eq!(active.exercise.name, "Deadlift");
+        assert_eq!(
+            active.completed_sets.len(),
+            0,
+            "Session B should start with zero completed sets"
+        );
+
+        // The two sets that were logged for Bench Press must now be queryable
+        // from the database (they were persisted when session A was implicitly completed).
+        let db = state.database().expect("Database should be present");
+
+        // Retrieve the Bench Press exercise id via the exercise list.
+        let exercises = db.get_exercises().await.expect("get_exercises failed");
+        let bench = exercises
+            .iter()
+            .find(|e| e.name == "Bench Press")
+            .expect("Bench Press exercise must exist in DB");
+        let bench_id = bench.id.expect("Bench Press must have an id");
+
+        let persisted_sets = db
+            .get_sets_for_exercise(bench_id, 10, 0)
+            .await
+            .expect("get_sets_for_exercise failed");
+
+        assert_eq!(
+            persisted_sets.len(),
+            2,
+            "Both Bench Press sets must appear in history after implicit session completion"
+        );
+    }
+
+    /// Starting a fresh session when there is no previous active session must
+    /// not error and must leave the new session with zero completed sets.
+    #[wasm_bindgen_test]
+    async fn test_start_session_with_no_prior_session() {
+        let state = make_ready_state().await;
+
+        assert!(
+            state.current_session().is_none(),
+            "No session should be active before start"
+        );
+
+        let exercise = ExerciseMetadata {
+            id: None,
+            name: "Squat".to_string(),
+            set_type_config: SetTypeConfig::Weighted {
+                min_weight: 20.0,
+                increment: 2.5,
+            },
+        };
+        WorkoutStateManager::start_session(&state, exercise)
+            .await
+            .expect("start_session failed");
+
+        let session = state.current_session().expect("Session should be active");
+        assert_eq!(session.exercise.name, "Squat");
+        assert_eq!(
+            session.completed_sets.len(),
+            0,
+            "New session should have zero completed sets"
+        );
+    }
+}
+
 // These tests require a proper WASM test environment with sql.js loaded
 // To run these tests:
 // 1. wasm-pack test --headless --chrome

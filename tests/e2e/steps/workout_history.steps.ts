@@ -11,13 +11,13 @@ function historySetRows(page: import("@playwright/test").Page) {
 // ── Navigation steps ──────────────────────────────────────────────────────────
 
 When("I navigate directly to the history page", async ({ page }) => {
-  // Use in-SPA navigation to avoid a full page reload, which would destroy the
-  // in-memory database used in test mode. Pushing the URL and dispatching a
-  // popstate event causes the Dioxus router to re-render without reloading.
-  await page.evaluate(() => {
-    window.history.pushState({}, "", "/workout/history");
-    window.dispatchEvent(new PopStateEvent("popstate"));
-  });
+  // Navigate to history via the real UI button on the idle Workout tab.
+  // All scenarios that use this step run without an active session, so the
+  // "View workout history" button should always be present.
+  await page.locator('[data-testid="tab-workout"]').click();
+  await page.waitForTimeout(200);
+  await page.locator('[data-testid="view-history-btn"]').click();
+  await page.waitForLoadState("networkidle");
   await page.waitForTimeout(300);
 });
 
@@ -26,12 +26,14 @@ When('I click the "View workout history" button', async ({ page }) => {
   if (await idleBtn.isVisible({ timeout: 2000 }).catch(() => false)) {
     await idleBtn.click();
   } else {
-    // Active session state: the idle button is not shown. Use SPA navigation
-    // to reach the all-exercises history view directly.
-    await page.evaluate(() => {
-      window.history.pushState({}, "", "/workout/history");
-      window.dispatchEvent(new PopStateEvent("popstate"));
-    });
+    // Active session state: the idle "View workout history" button is not shown.
+    // Navigate to the Library tab to implicitly complete the session, then return
+    // to the Workout tab and click the now-visible history button.
+    await page.locator('[data-testid="tab-library"]').click();
+    await page.waitForTimeout(300);
+    await page.locator('[data-testid="tab-workout"]').click();
+    await page.waitForTimeout(300);
+    await page.locator('[data-testid="view-history-btn"]').click();
   }
   await page.waitForLoadState("networkidle");
   await page.waitForTimeout(300);
