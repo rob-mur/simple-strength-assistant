@@ -11,14 +11,9 @@ Feature: Today's Sets section label in active session
   Scenario: In-progress sets section is labelled "Today's Sets" after logging a set
     Given I start a test session with "Squat"
     When I log a set in the current session
-    Then the in-progress sets section should show "Today's Sets"
+    Then the in-progress sets section should show "Today's Sets (1 set)"
 
   Scenario: The label "History" does not appear for the current-session sets section
     Given I start a test session with "Squat"
     When I log a set in the current session
     Then the in-progress sets heading should not contain "History"
-
-  Scenario: The set count appears correctly in the Today's Sets heading
-    Given I start a test session with "Squat"
-    When I log a set in the current session
-    Then the in-progress sets section should show "Today's Sets (1 sets)"

@@ -1058,7 +1058,11 @@ pub fn ActiveSession(state: WorkoutState, session: crate::state::WorkoutSession)
                     input { r#type: "checkbox", checked: true },
                     div {
                         class: "collapse-title text-xl font-bold",
-                        "Today's Sets ({session_for_display.completed_sets.len()} sets)"
+                        {
+                            let n = session_for_display.completed_sets.len();
+                            let unit = if n == 1 { "set" } else { "sets" };
+                            format!("Today's Sets ({n} {unit})")
+                        }
                     }
                     div {
                         class: "collapse-content p-0",
