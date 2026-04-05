@@ -1,12 +1,10 @@
 use crate::components::history_view::group_sets_by_day;
 use crate::models::{HistorySet, SetType};
 use crate::state::WorkoutState;
+use crate::state::db::start_of_today_utc_ms;
 use dioxus::prelude::*;
 use wasm_bindgen::prelude::*;
 use web_sys::{IntersectionObserver, IntersectionObserverEntry, IntersectionObserverInit};
-
-// Include all sets regardless of date (finished sessions from today are still "previous").
-const ALL_SETS_CUTOFF_MS: f64 = f64::MAX;
 
 const PAGE_SIZE: i64 = 20;
 
@@ -47,7 +45,7 @@ pub fn PreviousSessions(
             loading.set(true);
             if let Some(db) = state.database() {
                 match db
-                    .get_sets_for_exercise_before(eid, ALL_SETS_CUTOFF_MS, PAGE_SIZE, offset)
+                    .get_sets_for_exercise_before(eid, start_of_today_utc_ms(), PAGE_SIZE, offset)
                     .await
                 {
                     Ok(mut new_sets) => {
@@ -86,7 +84,7 @@ pub fn PreviousSessions(
             loading.set(true);
             if let Some(db) = state.database() {
                 match db
-                    .get_sets_for_exercise_before(eid, ALL_SETS_CUTOFF_MS, PAGE_SIZE, 0)
+                    .get_sets_for_exercise_before(eid, start_of_today_utc_ms(), PAGE_SIZE, 0)
                     .await
                 {
                     Ok(new_sets) => {

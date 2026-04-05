@@ -13,7 +13,8 @@ wasm_bindgen_test_configure!(run_in_browser);
 #[cfg(feature = "test-mode")]
 mod workout_state_manager_tests {
     use super::*;
-    use crate::state::{InitializationState, StorageBackend, WorkoutState, WorkoutStateManager};
+    use crate::state::storage::InMemoryStorage;
+    use crate::state::{StorageBackend, WorkoutState, WorkoutStateManager};
 
     /// Helper: creates a fully initialised `WorkoutState` with a real in-memory
     /// SQLite database and an `InMemoryStorage` file backend.
@@ -26,7 +27,7 @@ mod workout_state_manager_tests {
         state.set_database(db);
 
         // Wire up an in-memory storage backend so save_database succeeds.
-        let mut storage = super::storage::InMemoryStorage::new();
+        let mut storage: InMemoryStorage = InMemoryStorage::new();
         storage
             .create_new_file()
             .await
@@ -1059,4 +1060,112 @@ async fn test_exercises_restored_after_create_new_then_reopen() {
         "Deadlift should be restored after reopening"
     );
     assert_eq!(exercises[0].name, "Deadlift");
+}
+
+// ── Issue #82: start_of_today_utc_ms helper tests ────────────────────────────
+
+/// RED: Using start_of_today_utc_ms() as the cutoff must exclude sets logged
+/// earlier today. This is the core fix for the "clear site data" bug: after
+/// reopening the database, today's sets must not appear in Previous Sessions.
+#[wasm_bindgen_test]
+async fn test_start_of_today_excludes_todays_sets() {
+    use crate::state::db::start_of_today_utc_ms;
+
+    let mut db = Database::new();
+    db.init(None).await.expect("Database init failed");
+
+    let exercise = ExerciseMetadata {
+        id: None,
+        name: "Bench Press".to_string(),
+        set_type_config: SetTypeConfig::Weighted {
+            min_weight: 0.0,
+            increment: 5.0,
+        },
+    };
+    let exercise_id = db
+        .save_exercise(&exercise)
+        .await
+        .expect("Save exercise failed");
+
+    // Log a set right now (today).
+    let today_set = CompletedSet {
+        set_number: 1,
+        reps: 5,
+        rpe: 7.0,
+        set_type: SetType::Weighted { weight: 100.0 },
+    };
+    db.log_set(exercise_id, &today_set)
+        .await
+        .expect("log today set failed");
+
+    let cutoff = start_of_today_utc_ms();
+    let results = db
+        .get_sets_for_exercise_before(exercise_id, cutoff, 10, 0)
+        .await
+        .expect("query failed");
+
+    assert_eq!(
+        results.len(),
+        0,
+        "Today's set must not appear when cutoff is start_of_today_utc_ms()"
+    );
+}
+
+/// RED: Using start_of_today_utc_ms() as the cutoff must still return sets from
+/// previous calendar days. Guards against off-by-one errors in the midnight calculation.
+#[wasm_bindgen_test]
+async fn test_start_of_today_includes_yesterdays_sets() {
+    use crate::state::db::start_of_today_utc_ms;
+
+    let mut db = Database::new();
+    db.init(None).await.expect("Database init failed");
+
+    let exercise = ExerciseMetadata {
+        id: None,
+        name: "Deadlift".to_string(),
+        set_type_config: SetTypeConfig::Weighted {
+            min_weight: 0.0,
+            increment: 5.0,
+        },
+    };
+    let exercise_id = db
+        .save_exercise(&exercise)
+        .await
+        .expect("Save exercise failed");
+
+    let cutoff = start_of_today_utc_ms();
+    // Yesterday: one millisecond before start of today.
+    let yesterday_ms = cutoff - 1.0;
+
+    let yesterday_set = CompletedSet {
+        set_number: 1,
+        reps: 3,
+        rpe: 8.0,
+        set_type: SetType::Weighted { weight: 150.0 },
+    };
+    db.log_set_at(exercise_id, &yesterday_set, yesterday_ms)
+        .await
+        .expect("log yesterday set failed");
+
+    // Also log one set today — it must be excluded.
+    let today_set = CompletedSet {
+        set_number: 2,
+        reps: 5,
+        rpe: 7.0,
+        set_type: SetType::Weighted { weight: 160.0 },
+    };
+    db.log_set(exercise_id, &today_set)
+        .await
+        .expect("log today set failed");
+
+    let results = db
+        .get_sets_for_exercise_before(exercise_id, cutoff, 10, 0)
+        .await
+        .expect("query failed");
+
+    assert_eq!(results.len(), 1, "Only yesterday's set should be returned");
+    assert_eq!(
+        results[0].reps, 3,
+        "The returned set should be yesterday's (3 reps)"
+    );
 }

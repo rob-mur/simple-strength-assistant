@@ -3,6 +3,21 @@ use thiserror::Error;
 use wasm_bindgen::prelude::*;
 use web_sys::js_sys;
 
+/// Returns the Unix timestamp (ms) at the start of the current local calendar
+/// day expressed in UTC. Used as the cutoff for "Previous Sessions" queries so
+/// that sets recorded today are never shown alongside historical data.
+///
+/// Algorithm: shift `now` into local time, floor to midnight, shift back to UTC.
+pub fn start_of_today_utc_ms() -> f64 {
+    let now_ms = js_sys::Date::now();
+    // `getTimezoneOffset()` returns minutes *behind* UTC, so negate it to get
+    // the offset to add in order to convert UTC → local time.
+    let offset_ms = -js_sys::Date::new_0().get_timezone_offset() * 60_000.0;
+    let local_now_ms = now_ms + offset_ms;
+    // Truncate to the start of the local calendar day, then convert back to UTC.
+    (local_now_ms / 86_400_000.0).floor() * 86_400_000.0 - offset_ms
+}
+
 #[derive(Error, Debug, Clone)]
 pub enum DatabaseError {
     #[error("Failed to initialize database: {0}")]

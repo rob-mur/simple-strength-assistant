@@ -1,6 +1,9 @@
-mod db;
+pub mod db;
 mod error;
 mod file_system;
+#[cfg(feature = "test-mode")]
+pub mod storage;
+#[cfg(not(feature = "test-mode"))]
 mod storage;
 mod workout_state;
 
