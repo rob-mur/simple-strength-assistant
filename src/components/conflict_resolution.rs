@@ -21,7 +21,12 @@ pub struct ConflictResolutionProps {
 /// resolved database.
 #[component]
 pub fn ConflictResolution(props: ConflictResolutionProps) -> Element {
+    // use_memo re-evaluates whenever props.conflicts changes, ensuring the
+    // local signal stays in sync if the parent re-renders with a new list.
     let mut conflicts = use_signal(|| props.conflicts.clone());
+    use_effect(use_reactive!(|props| {
+        conflicts.set(props.conflicts.clone());
+    }));
 
     // If there are no conflicts, render nothing.
     if conflicts.read().is_empty() {
@@ -137,9 +142,7 @@ pub fn ConflictResolution(props: ConflictResolutionProps) -> Element {
                     },
                     disabled: !all_resolved,
                     onclick: move |_| {
-                        if all_resolved {
-                            props.on_resolve.call(conflicts.read().clone());
-                        }
+                        props.on_resolve.call(conflicts.read().clone());
                     },
                     "Resolve Conflicts"
                 }

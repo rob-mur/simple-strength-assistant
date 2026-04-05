@@ -15,7 +15,8 @@ use dioxus::prelude::*;
 /// | Error      | badge-error     | Sync error          |
 #[component]
 pub fn SyncStatusIndicator(status: SyncStatus) -> Element {
-    let (badge_class, label) = match status {
+    let sync_attr = sync_status_attr(&status);
+    let (badge_class, label) = match &status {
         SyncStatus::Idle => ("badge badge-ghost badge-sm", "No sync"),
         SyncStatus::NeverSynced => ("badge badge-warning badge-sm", "Never synced"),
         SyncStatus::Syncing => ("badge badge-info badge-sm", "Syncing…"),
@@ -28,13 +29,13 @@ pub fn SyncStatusIndicator(status: SyncStatus) -> Element {
         span {
             class: "{badge_class}",
             "data-testid": "sync-status-indicator",
-            "data-sync-status": sync_status_attr(status),
+            "data-sync-status": sync_attr,
             "{label}"
         }
     }
 }
 
-fn sync_status_attr(status: SyncStatus) -> &'static str {
+fn sync_status_attr(status: &SyncStatus) -> &'static str {
     match status {
         SyncStatus::Idle => "idle",
         SyncStatus::NeverSynced => "never-synced",
