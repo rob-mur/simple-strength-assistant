@@ -5,6 +5,7 @@ use crate::components::library_view::LibraryView;
 use crate::components::previous_sessions::PreviousSessions;
 use crate::components::rpe_slider::RPESlider;
 use crate::components::step_controls::StepControls;
+use crate::components::sync_status_indicator::SyncStatusIndicator;
 use crate::components::tab_bar::{Tab, TabBar};
 use crate::components::tape_measure::TapeMeasure;
 use crate::components::workout_view::WorkoutView;
@@ -470,6 +471,12 @@ pub fn App() -> Element {
                     h1 {
                         class: "text-2xl font-bold px-4",
                         "Simple Strength Assistant"
+                    }
+                }
+                div {
+                    class: "navbar-end pr-4",
+                    SyncStatusIndicator {
+                        status: workout_state.sync_status()
                     }
                 }
             }
