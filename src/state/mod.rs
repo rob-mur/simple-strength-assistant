@@ -17,8 +17,8 @@ pub use file_system::FileSystemError;
 pub use file_system::FileSystemManager;
 pub use vector_clock::{ClockRelationship, VectorClock, compare_vector_clocks};
 pub use workout_state::{
-    InitializationState, PredictedParameters, SyncStatus, WorkoutSession, WorkoutState,
-    WorkoutStateManager,
+    ConflictChoice, ConflictRecord, InitializationState, PredictedParameters, SyncStatus,
+    WorkoutSession, WorkoutState, WorkoutStateManager,
 };
 
 #[cfg(feature = "test-mode")]

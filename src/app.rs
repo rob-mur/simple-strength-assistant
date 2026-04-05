@@ -1,3 +1,4 @@
+use crate::components::conflict_resolution::ConflictResolution;
 use crate::components::data_management::DataManagementPanel;
 #[cfg(any(debug_assertions, feature = "test-mode"))]
 use crate::components::debug_panel::DebugPanel;
@@ -14,7 +15,10 @@ use crate::components::workout_view::WorkoutView;
 use crate::models::{CompletedSet, SetType, SetTypeConfig};
 #[cfg(feature = "test-mode")]
 use crate::state::StorageBackend;
-use crate::state::{InitializationState, WorkoutError, WorkoutState, WorkoutStateManager};
+use crate::state::{
+    ConflictRecord, InitializationState, SyncStatus, WorkoutError, WorkoutState,
+    WorkoutStateManager,
+};
 use dioxus::prelude::*;
 use wasm_bindgen::JsCast;
 
@@ -765,10 +769,35 @@ pub fn App() -> Element {
                     }
                 }
                 InitializationState::Ready => {
-                    rsx! {
-                        main {
-                            class: "flex-1 flex flex-col min-h-0 w-full",
-                            Router::<Route> {}
+                    // If the sync client has detected conflicts, show the resolution
+                    // screen instead of the normal workout UI.
+                    if let SyncStatus::ConflictsDetected(conflicts) = workout_state.sync_status() {
+                        rsx! {
+                            main {
+                                class: "flex-1 flex flex-col min-h-0 w-full",
+                                ConflictResolution {
+                                    conflicts,
+                                    on_resolve: move |resolved: Vec<ConflictRecord>| {
+                                        // Apply choices: keep the winning version.
+                                        // The actual merge write and server push will be
+                                        // wired by the sync client (issue #91).
+                                        // For now we clear the conflict state so the
+                                        // app returns to normal operation.
+                                        log::info!(
+                                            "[ConflictResolution] Resolved {} conflicts",
+                                            resolved.len()
+                                        );
+                                        workout_state.set_sync_status(SyncStatus::UpToDate);
+                                    },
+                                }
+                            }
+                        }
+                    } else {
+                        rsx! {
+                            main {
+                                class: "flex-1 flex flex-col min-h-0 w-full",
+                                Router::<Route> {}
+                            }
                         }
                     }
                 }

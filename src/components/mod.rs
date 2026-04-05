@@ -1,3 +1,4 @@
+pub mod conflict_resolution;
 pub mod data_management;
 #[cfg(any(debug_assertions, feature = "test-mode"))]
 pub mod debug_panel;
