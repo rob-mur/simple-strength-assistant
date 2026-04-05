@@ -19,7 +19,7 @@ const PAGE_SIZE: i64 = 20;
 fn start_of_today_utc_ms() -> f64 {
     let now_ms = js_sys::Date::now();
     // getTimezoneOffset() returns minutes *west* of UTC, so negate to get east.
-    let offset_ms = -(js_sys::Date::new_0().get_timezone_offset() as f64) * 60_000.0;
+    let offset_ms = -js_sys::Date::new_0().get_timezone_offset() * 60_000.0;
     let local_now_ms = now_ms + offset_ms;
     (local_now_ms / 86_400_000.0).floor() * 86_400_000.0 - offset_ms
 }
