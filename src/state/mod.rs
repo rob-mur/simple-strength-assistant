@@ -2,6 +2,7 @@ mod db;
 mod error;
 mod file_system;
 mod storage;
+mod vector_clock;
 mod workout_state;
 
 #[cfg(test)]
@@ -10,6 +11,7 @@ mod db_tests;
 mod file_system_tests;
 
 pub use db::{Database, DatabaseError};
+pub use vector_clock::{ClockRelationship, VectorClock, compare_vector_clocks};
 pub use error::WorkoutError;
 pub use file_system::FileSystemError;
 #[cfg(not(feature = "test-mode"))]
