@@ -38,6 +38,49 @@ pub enum InitializationState {
     Error,
 }
 
+/// Which version of a conflicting record the user has chosen to keep.
+#[derive(Clone, Copy, PartialEq, Debug)]
+pub enum ConflictChoice {
+    VersionA,
+    VersionB,
+}
+
+/// A single record that has a true conflict: same UUID, same `updated_at`,
+/// but different field values on the two devices.
+///
+/// `uuid`       - stable record identifier used to apply the resolution.
+/// `field_label`- human-readable description of the record (e.g. exercise name).
+/// `version_a`  - string representation of the value on device A.
+/// `version_b`  - string representation of the value on device B.
+/// `choice`     - `None` until the user selects a version.
+#[derive(Clone, Debug, PartialEq)]
+pub struct ConflictRecord {
+    pub uuid: String,
+    pub field_label: String,
+    pub version_a: String,
+    pub version_b: String,
+    pub choice: Option<ConflictChoice>,
+}
+
+/// Represents the current sync state of the application.
+///
+/// `NeverSynced`        - no sync has ever completed (distinguishes from a sync failure).
+/// `Idle`               - no sync is configured (default before any sync setup).
+/// `Syncing`            - a sync cycle is currently in progress.
+/// `UpToDate`           - the last sync completed successfully.
+/// `Error`              - the last sync failed or the server was unreachable.
+/// `ConflictsDetected`  - the merge found true conflicts that require user resolution.
+#[derive(Clone, PartialEq, Debug, Default)]
+pub enum SyncStatus {
+    #[default]
+    Idle,
+    NeverSynced,
+    Syncing,
+    UpToDate,
+    Error,
+    ConflictsDetected(Vec<ConflictRecord>),
+}
+
 #[derive(Clone, Copy, PartialEq)]
 pub struct WorkoutState {
     initialization_state: Signal<InitializationState>,
@@ -48,6 +91,7 @@ pub struct WorkoutState {
     file_manager: Signal<Option<Storage>>,
     last_save_time: Signal<f64>,
     exercises: Signal<Vec<ExerciseMetadata>>,
+    sync_status: Signal<SyncStatus>,
 }
 
 impl Default for WorkoutState {
@@ -67,6 +111,7 @@ impl WorkoutState {
             file_manager: Signal::new(None),
             last_save_time: Signal::new(0.0),
             exercises: Signal::new(Vec::new()),
+            sync_status: Signal::new(SyncStatus::Idle),
         }
     }
 
@@ -140,6 +185,15 @@ impl WorkoutState {
     pub fn set_exercises(&self, exercises: Vec<ExerciseMetadata>) {
         let mut sig = self.exercises;
         sig.set(exercises);
+    }
+
+    pub fn sync_status(&self) -> SyncStatus {
+        (self.sync_status)()
+    }
+
+    pub fn set_sync_status(&self, status: SyncStatus) {
+        let mut sig = self.sync_status;
+        sig.set(status);
     }
 }
 

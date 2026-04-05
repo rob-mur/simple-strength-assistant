@@ -15,7 +15,8 @@ pub use file_system::FileSystemError;
 #[cfg(not(feature = "test-mode"))]
 pub use file_system::FileSystemManager;
 pub use workout_state::{
-    InitializationState, PredictedParameters, WorkoutSession, WorkoutState, WorkoutStateManager,
+    ConflictChoice, ConflictRecord, InitializationState, PredictedParameters, SyncStatus,
+    WorkoutSession, WorkoutState, WorkoutStateManager,
 };
 
 #[cfg(feature = "test-mode")]
