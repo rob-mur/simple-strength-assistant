@@ -272,6 +272,13 @@ impl WorkoutStateManager {
         state: &WorkoutState,
         mut exercise: ExerciseMetadata,
     ) -> Result<(), WorkoutError> {
+        // Implicitly complete any in-progress session before starting a new one.
+        // This ensures sets from the previous exercise are persisted to disk
+        // and removes the need for an explicit "Finish Workout Session" action.
+        if state.current_session().is_some() {
+            Self::complete_session(state).await?;
+        }
+
         let db = state.database().ok_or(WorkoutError::NotInitialized)?;
 
         let id = db

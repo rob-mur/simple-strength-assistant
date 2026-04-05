@@ -127,11 +127,9 @@ Given(
       await page.waitForTimeout(100);
     }
 
-    // Finish the session so all sets become "previous" history
-    await page.locator('button:has-text("Finish Workout Session")').click();
-    await page.waitForLoadState("networkidle");
-    await page.waitForTimeout(200);
-
+    // Navigate to Library and re-start the same exercise.
+    // Starting a new session implicitly completes the current one (saving all
+    // logged sets as history), replacing the removed "Finish Workout Session" button.
     // Re-start a fresh session for the same exercise
     await page.click(
       'button[role="tab"]:has-text("Library"), button:has-text("Library")',

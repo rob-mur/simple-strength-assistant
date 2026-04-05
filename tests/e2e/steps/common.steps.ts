@@ -18,11 +18,14 @@ Given("I create a new database", async ({ page }) => {
 });
 
 Given("I finish any active session", async ({ page }) => {
-  const finishButton = page.locator("text=Finish Workout Session");
-  if (await finishButton.isVisible({ timeout: 3000 }).catch(() => false)) {
-    await finishButton.click();
-    await page.waitForLoadState("networkidle");
-  }
+  // The "Finish Workout Session" button was removed in issue #74.
+  // Sessions now complete implicitly only when start_session is called for a
+  // new exercise (via the Library → START flow). There is no standalone
+  // "finish" action in the UI. Sets logged via log_set are saved to the
+  // database immediately, so they appear in history regardless of whether
+  // complete_session has been called. This step is intentionally a no-op;
+  // test scenarios that need a completed session use "I start a test session"
+  // for a different exercise, which triggers implicit completion.
 });
 
 Given(

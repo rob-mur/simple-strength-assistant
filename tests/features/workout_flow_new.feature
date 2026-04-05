@@ -28,3 +28,16 @@ Feature: Streamlined Workout Flow
     When I select the "Bench Press" exercise
     And I click the "Start Session" button
     Then I should see a message saying "View exercise history"
+
+  # Issue 74: Finish Workout Session button must be removed
+  Scenario: Active workout page does not show Finish Workout Session button
+    Given the Library tab is open
+    When I select the "Bench Press" exercise
+    And I click the "Start Session" button
+    Then I should not see a button that says "Finish Workout Session"
+
+  # Issue 74: Switching exercise starts a fresh session with zero completed sets
+  Scenario: Switching to a new exercise starts fresh with zero completed sets
+    Given an active session for "Bench Press" with completed sets
+    When I switch to exercise "Squat"
+    Then the new session for "Squat" should have zero completed sets
