@@ -96,3 +96,23 @@ export async function exportDatabase() {
     throw error;
   }
 }
+
+/**
+ * Triggers a browser download of the given bytes as a .sqlite file.
+ * Works on iOS Safari, Chrome Android, and any browser supporting Blob URLs.
+ *
+ * @param {Uint8Array} data - The raw bytes of the SQLite database.
+ * @param {string} filename - The suggested download filename (e.g. "workout-data.sqlite").
+ */
+export function triggerSqliteDownload(data, filename) {
+  const blob = new Blob([data], { type: "application/x-sqlite3" });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = filename;
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  // Revoke the object URL after a short delay to free memory
+  setTimeout(() => URL.revokeObjectURL(url), 10000);
+}

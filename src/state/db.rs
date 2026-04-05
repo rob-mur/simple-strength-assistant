@@ -37,6 +37,9 @@ extern "C" {
 
     #[wasm_bindgen(js_name = exportDatabase)]
     async fn export_database() -> JsValue;
+
+    #[wasm_bindgen(js_name = triggerSqliteDownload)]
+    fn trigger_sqlite_download(data: &[u8], filename: &str);
 }
 
 /// Current schema version. Bump this when the schema changes.
@@ -574,6 +577,14 @@ impl Database {
         uint8_array.copy_to(&mut buffer);
 
         Ok(buffer)
+    }
+
+    /// Exports the database and triggers a browser download of the `.sqlite` file.
+    /// Works on iOS Safari, Chrome Android, and any browser supporting Blob URLs.
+    pub async fn download(&self, filename: &str) -> Result<(), DatabaseError> {
+        let data = self.export().await?;
+        trigger_sqlite_download(&data, filename);
+        Ok(())
     }
 
     // ── Private helpers ───────────────────────────────────────────────────────
