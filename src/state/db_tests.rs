@@ -1360,7 +1360,256 @@ async fn test_uuids_are_unique_across_records() {
     assert_ne!(uuid1, uuid2, "Each set should have a unique UUID");
 }
 
-/// RED: Creating a new database and reopening the same file restores exercises.
+// ── Issue #89: Client-Side Union Merge ───────────────────────────────────────
+
+/// Helper: build a minimal initialised Database with one exercise row.
+/// Returns (db, exported_bytes, exercise_uuid).
+async fn make_db_with_exercise(name: &str, updated_at: f64) -> (Database, Vec<u8>, String) {
+    let mut db = Database::new();
+    db.init(None).await.expect("db init failed");
+    let ex_uuid = db
+        .insert_exercise_for_test(name, updated_at, None)
+        .await
+        .expect("insert_exercise_for_test failed");
+    let bytes = db.export().await.expect("export failed");
+    (db, bytes, ex_uuid)
+}
+
+/// Helper: build a minimal initialised Database with one exercise row that is
+/// soft-deleted (deleted_at set).
+async fn make_db_with_tombstone(
+    name: &str,
+    updated_at: f64,
+    deleted_at: f64,
+) -> (Database, Vec<u8>, String) {
+    let mut db = Database::new();
+    db.init(None).await.expect("db init failed");
+    let ex_uuid = db
+        .insert_exercise_for_test(name, updated_at, Some(deleted_at))
+        .await
+        .expect("insert_exercise_for_test failed");
+    let bytes = db.export().await.expect("export failed");
+    (db, bytes, ex_uuid)
+}
+
+/// RED → GREEN: Merge of two databases with no overlapping UUIDs returns a
+/// merged database whose row count equals the sum of both inputs.
+#[wasm_bindgen_test]
+async fn test_merge_disjoint_sets_returns_full_union() {
+    let (_, bytes_a, _) = make_db_with_exercise("Squat", 1000.0).await;
+    let (_, bytes_b, _) = make_db_with_exercise("Deadlift", 1000.0).await;
+
+    let result = Database::merge_databases(bytes_a, bytes_b)
+        .await
+        .expect("merge_databases failed");
+
+    assert!(
+        result.conflicts.is_empty(),
+        "Disjoint databases should produce no conflicts"
+    );
+
+    // Load merged blob and count exercises.
+    let mut merged_db = Database::new();
+    merged_db
+        .init(Some(result.merged))
+        .await
+        .expect("init merged db failed");
+    let exercises = merged_db
+        .get_exercises()
+        .await
+        .expect("get_exercises failed");
+    assert_eq!(
+        exercises.len(),
+        2,
+        "Merged database should contain both exercises"
+    );
+}
+
+/// RED → GREEN: When two databases share a UUID but have different updated_at,
+/// the row with the higher updated_at wins (all fields).
+#[wasm_bindgen_test]
+async fn test_merge_newer_updated_at_wins() {
+    // DB A: Squat at t=1000
+    let (_, bytes_a, uuid) = make_db_with_exercise("Squat", 1000.0).await;
+
+    // DB B: same UUID, name "Squat Variant", updated_at=2000 (newer).
+    let mut db_b = Database::new();
+    db_b.init(None).await.expect("db init failed");
+    db_b.insert_exercise_with_uuid_for_test(&uuid, "Squat Variant", 2000.0, None)
+        .await
+        .expect("insert_exercise_with_uuid failed");
+    let bytes_b = db_b.export().await.expect("export failed");
+
+    let result = Database::merge_databases(bytes_a, bytes_b)
+        .await
+        .expect("merge_databases failed");
+
+    assert!(
+        result.conflicts.is_empty(),
+        "Different updated_at should not produce a conflict"
+    );
+
+    let mut merged_db = Database::new();
+    merged_db
+        .init(Some(result.merged))
+        .await
+        .expect("init merged db failed");
+    let exercises = merged_db
+        .get_exercises()
+        .await
+        .expect("get_exercises failed");
+    assert_eq!(exercises.len(), 1, "Only one row for the shared UUID");
+    assert_eq!(
+        exercises[0].name, "Squat Variant",
+        "Newer (t=2000) row name should win"
+    );
+}
+
+/// RED → GREEN: Same UUID, same updated_at, different field values → conflict
+/// reported; merged database is still returned.
+#[wasm_bindgen_test]
+async fn test_merge_same_updated_at_different_values_yields_conflict() {
+    let ts = 1000.0_f64;
+    let (_, bytes_a, uuid) = make_db_with_exercise("Squat", ts).await;
+
+    let mut db_b = Database::new();
+    db_b.init(None).await.expect("db init failed");
+    db_b.insert_exercise_with_uuid_for_test(&uuid, "Squat (variant)", ts, None)
+        .await
+        .expect("insert failed");
+    let bytes_b = db_b.export().await.expect("export failed");
+
+    let result = Database::merge_databases(bytes_a, bytes_b)
+        .await
+        .expect("merge_databases failed");
+
+    assert_eq!(
+        result.conflicts.len(),
+        1,
+        "Exactly one conflict expected for the shared UUID with identical updated_at"
+    );
+    assert_eq!(
+        result.conflicts[0].uuid, uuid,
+        "Conflict UUID should match the shared exercise UUID"
+    );
+    // The merged blob must still be present (not empty).
+    assert!(
+        !result.merged.is_empty(),
+        "Merged blob must be non-empty even when conflicts exist"
+    );
+}
+
+/// RED → GREEN: One database has a tombstone (deleted_at set), the other has a
+/// live row for the same UUID → the merged database treats that record as deleted.
+#[wasm_bindgen_test]
+async fn test_merge_tombstone_in_one_propagates_to_merged() {
+    let ts = 1000.0_f64;
+    let (_, bytes_a, uuid) = make_db_with_exercise("Bench Press", ts).await;
+
+    // DB B: same UUID but with deleted_at set (tombstone).
+    let mut db_b = Database::new();
+    db_b.init(None).await.expect("db init failed");
+    db_b.insert_exercise_with_uuid_for_test(&uuid, "Bench Press", ts, Some(2000.0))
+        .await
+        .expect("insert tombstone failed");
+    let bytes_b = db_b.export().await.expect("export failed");
+
+    let result = Database::merge_databases(bytes_a, bytes_b)
+        .await
+        .expect("merge_databases failed");
+
+    assert!(
+        result.conflicts.is_empty(),
+        "Tombstone vs live should not produce a conflict"
+    );
+
+    let mut merged_db = Database::new();
+    merged_db
+        .init(Some(result.merged))
+        .await
+        .expect("init merged db failed");
+    // get_exercises filters out deleted rows; row should not appear.
+    let exercises = merged_db
+        .get_exercises()
+        .await
+        .expect("get_exercises failed");
+    assert!(
+        exercises.is_empty(),
+        "Tombstone should propagate: exercise must not appear in live query"
+    );
+}
+
+/// RED → GREEN: Both databases have a tombstone for the same UUID → the merged
+/// database carries the tombstone with the more recent deleted_at value.
+#[wasm_bindgen_test]
+async fn test_merge_two_tombstones_keeps_most_recent_deleted_at() {
+    let ts = 1000.0_f64;
+    let (_, bytes_a, uuid) = make_db_with_tombstone("Pull-ups", ts, 3000.0).await;
+
+    let mut db_b = Database::new();
+    db_b.init(None).await.expect("db init failed");
+    db_b.insert_exercise_with_uuid_for_test(&uuid, "Pull-ups", ts, Some(5000.0))
+        .await
+        .expect("insert tombstone 2 failed");
+    let bytes_b = db_b.export().await.expect("export failed");
+
+    let result = Database::merge_databases(bytes_a, bytes_b)
+        .await
+        .expect("merge_databases failed");
+
+    assert!(
+        result.conflicts.is_empty(),
+        "Two tombstones should not conflict"
+    );
+    // The row should be deleted in the merged database.
+    let mut merged_db = Database::new();
+    merged_db
+        .init(Some(result.merged))
+        .await
+        .expect("init merged db failed");
+    let exercises = merged_db
+        .get_exercises()
+        .await
+        .expect("get_exercises failed");
+    assert!(
+        exercises.is_empty(),
+        "Both tombstones: row must remain deleted in the merged database"
+    );
+}
+
+/// RED → GREEN: The merge function is pure — calling it twice with the same
+/// inputs produces identical results (byte-for-byte deterministic).
+#[wasm_bindgen_test]
+async fn test_merge_is_pure_function() {
+    let (_, bytes_a, _) = make_db_with_exercise("Overhead Press", 1000.0).await;
+    let (_, bytes_b, _) = make_db_with_exercise("Row", 1000.0).await;
+
+    let result1 = Database::merge_databases(bytes_a.clone(), bytes_b.clone())
+        .await
+        .expect("first merge failed");
+    let result2 = Database::merge_databases(bytes_a, bytes_b)
+        .await
+        .expect("second merge failed");
+
+    // Both calls must agree on conflicts and must not error.
+    assert_eq!(
+        result1.conflicts.len(),
+        result2.conflicts.len(),
+        "Conflict counts must match across two identical calls"
+    );
+    // Both merged blobs must be non-empty; sizes should match.
+    assert!(
+        !result1.merged.is_empty(),
+        "First merged blob must not be empty"
+    );
+    assert_eq!(
+        result1.merged.len(),
+        result2.merged.len(),
+        "Merged blob sizes must be equal for identical inputs"
+    );
+}
+
+/// RED → GREEN: Creating a new database and reopening the same file restores exercises.
 ///
 /// Simulates the "create new database" path: create a DB, add exercises, export,
 /// then re-import. Exercises must survive the round-trip.

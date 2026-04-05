@@ -10,7 +10,7 @@ mod db_tests;
 #[cfg(all(test, not(feature = "test-mode")))]
 mod file_system_tests;
 
-pub use db::{Database, DatabaseError};
+pub use db::{Database, DatabaseError, MergeConflict, MergeResult};
 pub use error::WorkoutError;
 pub use file_system::FileSystemError;
 #[cfg(not(feature = "test-mode"))]

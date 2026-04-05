@@ -37,6 +37,36 @@ extern "C" {
 
     #[wasm_bindgen(js_name = exportDatabase)]
     async fn export_database() -> JsValue;
+
+    #[wasm_bindgen(js_name = triggerSqliteDownload)]
+    fn trigger_sqlite_download(data: &[u8], filename: &str);
+
+    /// Pure merge of two SQLite blobs. Returns a JS object:
+    /// `{ merged: Uint8Array, conflicts: Array<{ uuid, table_name, version_a, version_b }> }`
+    #[wasm_bindgen(js_name = mergeDatabases)]
+    async fn merge_databases_js(data_a: Vec<u8>, data_b: Vec<u8>) -> JsValue;
+}
+
+/// The result of a client-side union merge.
+#[derive(Clone, Debug, PartialEq)]
+pub struct MergeResult {
+    /// The merged SQLite database as raw bytes.
+    pub merged: Vec<u8>,
+    /// True conflicts: same UUID, same `updated_at`, different field values.
+    pub conflicts: Vec<MergeConflict>,
+}
+
+/// A single conflict record surfaced by the merge function.
+#[derive(Clone, Debug, PartialEq)]
+pub struct MergeConflict {
+    /// The stable UUID of the conflicting record.
+    pub uuid: String,
+    /// The table in which the conflict was found.
+    pub table_name: String,
+    /// String representation of the row from database A.
+    pub version_a: String,
+    /// String representation of the row from database B.
+    pub version_b: String,
 }
 
 /// Current schema version. Bump this when the schema changes.
@@ -757,6 +787,14 @@ impl Database {
         Ok(buffer)
     }
 
+    /// Exports the database and triggers a browser download of the `.sqlite` file.
+    /// Works on iOS Safari, Chrome Android, and any browser supporting Blob URLs.
+    pub async fn download(&self, filename: &str) -> Result<(), DatabaseError> {
+        let data = self.export().await?;
+        trigger_sqlite_download(&data, filename);
+        Ok(())
+    }
+
     // ── Private helpers ───────────────────────────────────────────────────────
 
     fn extract_id(&self, result: &JsValue, label: &str) -> Result<i64, DatabaseError> {
@@ -862,6 +900,151 @@ impl Database {
         }
 
         Ok(sets)
+    }
+
+    // ── Merge ─────────────────────────────────────────────────────────────────
+
+    /// Pure union-merge of two SQLite database blobs.
+    ///
+    /// Strategy per UUID:
+    /// - UUID in only one database → insert into the other
+    /// - UUID in both, different `updated_at` → higher `updated_at` wins (all fields)
+    /// - UUID in both, same `updated_at`, different values → true conflict (caller must
+    ///   resolve); the record from database A is kept in the merged output as a placeholder
+    /// - Soft-deleted records (tombstones) are treated as normal rows — `deleted_at` is
+    ///   subject to last-write-wins when it differs
+    /// - Both databases have a tombstone for the same UUID → merged carries the tombstone
+    ///   with the more recent `deleted_at`
+    ///
+    /// This function does **not** write to OPFS or call any backend.
+    pub async fn merge_databases(
+        data_a: Vec<u8>,
+        data_b: Vec<u8>,
+    ) -> Result<MergeResult, DatabaseError> {
+        let js_result = merge_databases_js(data_a, data_b).await;
+
+        // Check for JS-level error (the JS function throws on failure).
+        if let Some(err) = js_result.dyn_ref::<js_sys::Error>() {
+            return Err(DatabaseError::QueryError(
+                err.message().as_string().unwrap_or_default(),
+            ));
+        }
+
+        // Extract `merged` field (Uint8Array).
+        let merged_js = js_sys::Reflect::get(&js_result, &JsValue::from_str("merged"))
+            .map_err(|e| DatabaseError::JsError(format!("missing 'merged' field: {:?}", e)))?;
+
+        let uint8_array = js_sys::Uint8Array::new(&merged_js);
+        let mut merged_bytes = vec![0u8; uint8_array.length() as usize];
+        uint8_array.copy_to(&mut merged_bytes);
+
+        // Extract `conflicts` field (Array).
+        let conflicts_js = js_sys::Reflect::get(&js_result, &JsValue::from_str("conflicts"))
+            .map_err(|e| DatabaseError::JsError(format!("missing 'conflicts' field: {:?}", e)))?;
+
+        let conflicts_array = conflicts_js
+            .dyn_ref::<js_sys::Array>()
+            .ok_or_else(|| DatabaseError::QueryError("'conflicts' is not an array".to_string()))?;
+
+        let mut conflicts = Vec::new();
+        for i in 0..conflicts_array.length() {
+            let item = conflicts_array.get(i);
+
+            let uuid = js_sys::Reflect::get(&item, &JsValue::from_str("uuid"))
+                .ok()
+                .and_then(|v| v.as_string())
+                .unwrap_or_default();
+
+            let table_name = js_sys::Reflect::get(&item, &JsValue::from_str("table_name"))
+                .ok()
+                .and_then(|v| v.as_string())
+                .unwrap_or_default();
+
+            let version_a = js_sys::Reflect::get(&item, &JsValue::from_str("version_a"))
+                .ok()
+                .and_then(|v| v.as_string())
+                .unwrap_or_default();
+
+            let version_b = js_sys::Reflect::get(&item, &JsValue::from_str("version_b"))
+                .ok()
+                .and_then(|v| v.as_string())
+                .unwrap_or_default();
+
+            conflicts.push(MergeConflict {
+                uuid,
+                table_name,
+                version_a,
+                version_b,
+            });
+        }
+
+        Ok(MergeResult {
+            merged: merged_bytes,
+            conflicts,
+        })
+    }
+
+    // ── Test-only helpers ─────────────────────────────────────────────────────
+    //
+    // These methods expose surgical INSERT paths for merge tests, letting tests
+    // inject rows with explicit UUIDs and timestamps without going through the
+    // normal `save_exercise` path (which auto-assigns UUIDs and uses `NOW()`).
+
+    /// Inserts a single exercise row with an explicit UUID, name, updated_at,
+    /// and optional deleted_at. Returns the generated UUID.
+    ///
+    /// For use in unit/integration tests only; not part of the public API.
+    #[cfg(test)]
+    pub async fn insert_exercise_for_test(
+        &self,
+        name: &str,
+        updated_at: f64,
+        deleted_at: Option<f64>,
+    ) -> Result<String, DatabaseError> {
+        let uuid = Uuid::new_v4().to_string();
+        self.insert_exercise_with_uuid_for_test(&uuid, name, updated_at, deleted_at)
+            .await?;
+        Ok(uuid)
+    }
+
+    /// Inserts a single exercise row with a *caller-supplied* UUID.
+    ///
+    /// This is the lowest-level helper; use it when you need the same UUID to
+    /// appear in two different databases (to exercise the merge collision logic).
+    ///
+    /// For use in unit/integration tests only; not part of the public API.
+    #[cfg(test)]
+    pub async fn insert_exercise_with_uuid_for_test(
+        &self,
+        uuid: &str,
+        name: &str,
+        updated_at: f64,
+        deleted_at: Option<f64>,
+    ) -> Result<(), DatabaseError> {
+        let sql = if deleted_at.is_some() {
+            r#"
+                INSERT INTO exercises (uuid, name, is_weighted, updated_at, deleted_at)
+                VALUES (?, ?, 0, ?, ?)
+            "#
+        } else {
+            r#"
+                INSERT INTO exercises (uuid, name, is_weighted, updated_at)
+                VALUES (?, ?, 0, ?)
+            "#
+        };
+
+        let mut params: Vec<JsValue> = vec![
+            JsValue::from_str(uuid),
+            JsValue::from_str(name),
+            JsValue::from_f64(updated_at),
+        ];
+
+        if let Some(da) = deleted_at {
+            params.push(JsValue::from_f64(da));
+        }
+
+        self.execute(sql, &params).await?;
+        Ok(())
     }
 }
 
