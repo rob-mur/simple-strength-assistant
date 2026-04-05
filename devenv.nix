@@ -1,6 +1,4 @@
-{pkgs, ...}: let
-  backlog-md = pkgs.callPackage ./nix/backlog-md.nix {};
-in {
+{pkgs, ...}: {
   devcontainer.enable = true;
   devcontainer.settings.updateContentCommand = "direnv allow ; devenv shell -- true";
   packages = with pkgs; [
@@ -12,7 +10,6 @@ in {
     devcontainer
     chromium
     bats
-    backlog-md
   ];
 
   languages.rust = {
