@@ -72,8 +72,8 @@ impl From<JsValue> for FileSystemError {
     }
 }
 
-/// Manages file system operations, supporting both the File System Access API
-/// and a fallback storage mechanism (IndexedDB/LocalStorage).
+/// Manages file system operations using OPFS (Origin Private File System).
+/// Falls back to LocalStorage on browsers that do not support OPFS (iOS Safari < 16.4).
 #[derive(Clone)]
 pub struct FileSystemManager {
     handle: Option<JsValue>,
@@ -87,46 +87,49 @@ impl PartialEq for FileSystemManager {
 }
 
 impl FileSystemManager {
-    /// Creates a new FileSystemManager, automatically detecting if the
-    /// File System Access API is supported by the browser.
+    /// Creates a new FileSystemManager, automatically detecting whether OPFS is
+    /// available. Browsers without OPFS (iOS Safari < 16.4) use LocalStorage as a
+    /// graceful fallback: the app loads but data does not persist across sessions.
     pub fn new() -> Self {
         Self {
             handle: None,
-            use_fallback: !Self::is_file_system_api_supported(),
+            use_fallback: !Self::is_opfs_supported(),
         }
     }
 
-    fn is_file_system_api_supported() -> bool {
-        if let Some(window) = window()
-            && let Ok(show_open_file_picker) =
-                js_sys::Reflect::get(&window, &JsValue::from_str("showOpenFilePicker"))
-        {
-            return !show_open_file_picker.is_undefined();
+    fn is_opfs_supported() -> bool {
+        if let Some(nav) = window().and_then(|w| w.navigator().into()) {
+            if let Ok(storage) = js_sys::Reflect::get(&nav, &JsValue::from_str("storage")) {
+                if let Ok(get_dir) =
+                    js_sys::Reflect::get(&storage, &JsValue::from_str("getDirectory"))
+                {
+                    return get_dir.is_function();
+                }
+            }
         }
         false
     }
 
-    /// Checks if there is a previously used file handle stored in the browser's IndexedDB.
+    /// Checks whether the OPFS database file already exists from a prior session.
     /// Returns true if a valid handle was retrieved and stored in this manager.
+    /// On the fallback path (no OPFS), always returns true so the app proceeds.
     pub async fn check_cached_handle(&mut self) -> Result<bool, FileSystemError> {
         if self.use_fallback {
-            log::debug!("[FileSystem] Using fallback storage (IndexedDB/LocalStorage)");
+            log::debug!("[FileSystem] Using fallback storage (LocalStorage)");
             // Fallback storage doesn't need handle caching
             return Ok(true);
         }
 
-        log::debug!("[FileSystem] Checking for cached file handle...");
+        log::debug!("[FileSystem] Checking for existing OPFS database file...");
         let handle = retrieve_file_handle().await;
 
         if !handle.is_null() && !handle.is_undefined() {
-            log::debug!("[FileSystem] Cached handle retrieved with valid permissions");
+            log::debug!("[FileSystem] Existing OPFS database file found");
             self.handle = Some(handle);
             Ok(true)
         } else {
-            // Could be: (1) no handle in IndexedDB, or (2) handle exists but permission denied/requires gesture
-            // Both cases require user to select file via button click
-            log::debug!("[FileSystem] No cached handle or permissions not granted");
-            log::debug!("[FileSystem] User will need to select file location");
+            // No prior OPFS file — user needs to create or open a database
+            log::debug!("[FileSystem] No existing OPFS database file found");
             Ok(false)
         }
     }
@@ -206,128 +209,65 @@ impl FileSystemManager {
         Ok(())
     }
 
-    /// Prompts the user to select an existing SQLite database file.
-    /// Validates the file and persists the handle for future sessions.
+    /// Opens the existing OPFS database file, or creates a new one if none exists.
+    /// With OPFS no user gesture or file picker is required.
     pub async fn prompt_for_file(&mut self) -> Result<(), FileSystemError> {
         if self.use_fallback {
             log::debug!("[FileSystem] Using fallback storage for file operations");
             return self.use_fallback_storage();
         }
 
-        log::debug!("[FileSystem] Opening file picker dialog...");
-        let window = window().ok_or(FileSystemError::NotSupported)?;
+        log::debug!("[FileSystem] Opening OPFS database file...");
 
-        let show_open_file_picker =
-            js_sys::Reflect::get(&window, &JsValue::from_str("showOpenFilePicker"))
-                .map_err(|_| FileSystemError::NotSupported)?;
+        // Use createNewDatabaseFile which creates-or-opens the OPFS file
+        let result = create_new_database_file().await;
 
-        let picker_fn = show_open_file_picker
-            .dyn_ref::<js_sys::Function>()
-            .ok_or(FileSystemError::NotSupported)?;
+        let success = js_sys::Reflect::get(&result, &JsValue::from_str("success"))
+            .map(|v| v.as_bool().unwrap_or(false))
+            .unwrap_or(false);
 
-        let options = js_sys::Object::new();
+        if !success {
+            let error_name = js_sys::Reflect::get(&result, &JsValue::from_str("error"))
+                .ok()
+                .and_then(|v| v.as_string())
+                .unwrap_or_else(|| "Unknown".to_string());
 
-        // Set mode to 'readwrite' so we can both read existing data AND write to it
-        js_sys::Reflect::set(
-            &options,
-            &JsValue::from_str("mode"),
-            &JsValue::from_str("readwrite"),
-        )?;
+            let error_message = js_sys::Reflect::get(&result, &JsValue::from_str("message"))
+                .ok()
+                .and_then(|v| v.as_string())
+                .unwrap_or_else(|| "Unknown error".to_string());
 
-        let types_array = js_sys::Array::new();
-        let type_obj = js_sys::Object::new();
+            log::error!(
+                "[FileSystem] OPFS file open failed: {} - {}",
+                error_name,
+                error_message
+            );
 
-        js_sys::Reflect::set(
-            &type_obj,
-            &JsValue::from_str("description"),
-            &JsValue::from_str("SQLite Database"),
-        )?;
-
-        let accept_obj = js_sys::Object::new();
-        let extensions_array = js_sys::Array::new();
-        extensions_array.push(&JsValue::from_str(".sqlite"));
-        extensions_array.push(&JsValue::from_str(".db"));
-
-        js_sys::Reflect::set(
-            &accept_obj,
-            &JsValue::from_str("application/x-sqlite3"),
-            &extensions_array,
-        )?;
-
-        js_sys::Reflect::set(&type_obj, &JsValue::from_str("accept"), &accept_obj)?;
-        types_array.push(&type_obj);
-
-        js_sys::Reflect::set(&options, &JsValue::from_str("types"), &types_array)?;
-
-        let promise = picker_fn.call1(&window, &options).map_err(|e| {
-            let error_string = format!("{:?}", e);
-            log::error!("[FileSystem] showOpenFilePicker call failed");
-            log::error!("[FileSystem] Error details: {}", error_string);
-
-            let error_lower = error_string.to_lowercase();
-
-            if error_lower.contains("securityerror") || error_lower.contains("user gesture") {
-                log::error!("[FileSystem] CAUSE: File picker requires user gesture (must be called from button click)");
-                FileSystemError::SecurityError
-            } else if error_lower.contains("notallowederror") || error_lower.contains("permission") {
-                log::error!("[FileSystem] CAUSE: User denied permission");
-                FileSystemError::PermissionDenied
-            } else if error_lower.contains("abort") {
-                log::debug!("[FileSystem] User cancelled file picker dialog");
-                FileSystemError::UserCancelled
-            } else {
-                FileSystemError::JsError(error_string)
-            }
-        })?;
-
-        let handle_array = JsFuture::from(js_sys::Promise::from(promise))
-            .await
-            .map_err(|e| {
-                let error_string = format!("{:?}", e);
-                log::error!("[FileSystem] File picker promise failed");
-                log::error!("[FileSystem] Error details: {}", error_string);
-
-                let error_lower = error_string.to_lowercase();
-
-                if error_lower.contains("securityerror") || error_lower.contains("user gesture") {
-                    log::error!("[FileSystem] CAUSE: File picker requires user gesture (must be called from button click)");
-                    FileSystemError::SecurityError
-                } else if error_lower.contains("notallowederror") || error_lower.contains("permission") {
-                    log::error!("[FileSystem] CAUSE: User denied permission");
-                    FileSystemError::PermissionDenied
-                } else if error_lower.contains("abort") {
-                    log::debug!("[FileSystem] User cancelled file picker dialog");
-                    FileSystemError::UserCancelled
-                } else {
-                    FileSystemError::JsError(error_string)
-                }
-            })?;
-
-        // showOpenFilePicker returns an array of file handles
-        // We only allow selecting a single file, so get the first element
-        let handle_array = js_sys::Array::from(&handle_array);
-        let handle = handle_array.get(0);
-
-        log::debug!("[FileSystem] File handle obtained, requesting readwrite permission...");
-
-        // Request readwrite permission and store handle (must be done during user gesture)
-        let store_result = request_write_permission_and_store(handle.clone()).await;
-        if !store_result.is_truthy() {
-            log::warn!("[FileSystem] Failed to get readwrite permission or persist handle");
-            // Even if storage fails, we can still use the handle in this session
-        } else {
-            log::debug!("[FileSystem] Readwrite permission granted and handle stored successfully");
+            return Err(FileSystemError::JsError(format!(
+                "{}: {}",
+                error_name, error_message
+            )));
         }
 
+        let handle = js_sys::Reflect::get(&result, &JsValue::from_str("handle"))
+            .map_err(|_| FileSystemError::JsError("No handle in response".to_string()))?;
+
+        if handle.is_undefined() || handle.is_null() {
+            return Err(FileSystemError::JsError(
+                "No handle in OPFS response".to_string(),
+            ));
+        }
+
+        log::debug!("[FileSystem] OPFS database file opened successfully");
         self.handle = Some(handle);
 
         Ok(())
     }
 
-    /// Switches the manager to use fallback storage (IndexedDB/LocalStorage).
-    /// Used when the File System Access API is not available or desired.
+    /// Switches the manager to use fallback storage (LocalStorage).
+    /// Used when OPFS is not available (iOS Safari < 16.4).
     pub fn use_fallback_storage(&mut self) -> Result<(), FileSystemError> {
-        log::info!("Using IndexedDB/OPFS fallback storage");
+        log::info!("Using LocalStorage fallback storage (OPFS not available)");
         self.use_fallback = true;
         Ok(())
     }

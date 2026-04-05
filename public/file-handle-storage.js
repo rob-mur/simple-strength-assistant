@@ -1,191 +1,142 @@
-// IndexedDB helper for persisting File System Access API handles
+// OPFS (Origin Private File System) storage backend.
+// Replaces the File System Access API + IndexedDB approach, making the app
+// functional on iOS Safari 16.4+ and Chrome Android without user gestures.
+//
+// On iOS Safari below 16.4, isOPFSAvailable() returns false and the app loads
+// but data does not persist (same as the previous iOS behaviour).
 
-const DB_NAME = "workout-file-handles";
-const DB_VERSION = 1;
-const STORE_NAME = "handles";
-const HANDLE_KEY = "workout-db-handle";
+const OPFS_FILENAME = "workout-data.sqlite";
 
-function openDB() {
-  return new Promise((resolve, reject) => {
-    const request = indexedDB.open(DB_NAME, DB_VERSION);
-
-    request.onerror = () => reject(request.error);
-    request.onsuccess = () => resolve(request.result);
-
-    request.onupgradeneeded = (event) => {
-      const db = event.target.result;
-      if (!db.objectStoreNames.contains(STORE_NAME)) {
-        db.createObjectStore(STORE_NAME);
-      }
-    };
-  });
+/**
+ * Returns true if OPFS is available in this browser.
+ * iOS Safari 16.4+ and Chrome Android both support it.
+ */
+function isOPFSAvailable() {
+  return (
+    typeof navigator !== "undefined" &&
+    typeof navigator.storage !== "undefined" &&
+    typeof navigator.storage.getDirectory === "function"
+  );
 }
 
-export async function storeFileHandle(handle) {
-  try {
-    const db = await openDB();
-    const transaction = db.transaction(STORE_NAME, "readwrite");
-    const store = transaction.objectStore(STORE_NAME);
-
-    await new Promise((resolve, reject) => {
-      const request = store.put(handle, HANDLE_KEY);
-      request.onsuccess = () => resolve();
-      request.onerror = () => reject(request.error);
-    });
-
-    db.close();
-    return true;
-  } catch (error) {
-    console.error("Failed to store file handle:", error);
-    return false;
+/**
+ * Opens (or optionally creates) the OPFS file handle for the workout database.
+ * Returns a FileSystemFileHandle on success, or null if OPFS is unavailable or
+ * the file does not exist yet (when create=false).
+ */
+async function getOPFSFileHandle(create = false) {
+  if (!isOPFSAvailable()) {
+    console.log("[OPFS] OPFS not available in this browser");
+    return null;
   }
-}
 
-// Request readwrite permission and store handle only if granted
-// MUST be called during a user gesture (immediately after showOpenFilePicker)
-export async function requestWritePermissionAndStore(handle) {
   try {
-    console.log("[FileHandleStorage] Requesting readwrite permission...");
-
-    // Request readwrite permission (must be done during user gesture)
-    const permission = await handle.requestPermission({ mode: "readwrite" });
-    console.log("[FileHandleStorage] Permission result:", permission);
-
-    if (permission === "granted") {
-      console.log(
-        "[FileHandleStorage] Write permission granted, storing handle...",
-      );
-      // Now store the handle with full readwrite permission
-      await storeFileHandle(handle);
-      return true;
-    } else {
-      console.warn(
-        "[FileHandleStorage] Write permission not granted:",
-        permission,
-      );
-      return false;
-    }
+    const root = await navigator.storage.getDirectory();
+    const fileHandle = await root.getFileHandle(OPFS_FILENAME, { create });
+    return fileHandle;
   } catch (error) {
-    console.error(
-      "[FileHandleStorage] Failed to request write permission:",
-      error,
-    );
-    return false;
-  }
-}
-
-export async function retrieveFileHandle() {
-  try {
-    console.log("[FileHandleStorage] Opening IndexedDB...");
-    const db = await openDB();
-    const transaction = db.transaction(STORE_NAME, "readonly");
-    const store = transaction.objectStore(STORE_NAME);
-
-    const handle = await new Promise((resolve, reject) => {
-      const request = store.get(HANDLE_KEY);
-      request.onsuccess = () => resolve(request.result);
-      request.onerror = () => reject(request.error);
-    });
-
-    db.close();
-
-    if (!handle) {
-      console.log("[FileHandleStorage] No handle in IndexedDB");
+    if (error.name === "NotFoundError") {
+      // File does not exist yet and create=false — expected on first run
       return null;
     }
-
-    console.log(
-      "[FileHandleStorage] Handle found in IndexedDB, checking permission state...",
-    );
-
-    try {
-      // Check current permission state
-      const state = await handle.queryPermission({ mode: "readwrite" });
-      console.log("[FileHandleStorage] Current permission state:", state);
-
-      // Return the handle regardless of state (granted or prompt).
-      // If prompt, we'll handle the NotAllowedError later and show a "Grant" button.
-      return handle;
-    } catch (error) {
-      // Handle is stale or invalid (e.g. file deleted or moved)
-      console.warn(
-        "[FileHandleStorage] Handle validation failed:",
-        error.name,
-        error.message,
-      );
-      await clearFileHandle();
-      return null;
-    }
-  } catch (error) {
-    console.error("[FileHandleStorage] Error retrieving handle:", error);
-    // Handle may be invalid (file deleted, drive disconnected, etc.)
-    await clearFileHandle();
+    console.error("[OPFS] Failed to get OPFS file handle:", error);
     return null;
   }
 }
 
+/**
+ * No-op: OPFS handles are always re-obtainable from the file system on demand;
+ * there is nothing to persist. Kept for interface compatibility with db-module.js.
+ */
+export async function storeFileHandle(_handle) {
+  return true;
+}
+
+/**
+ * Retrieves the OPFS file handle for the workout database.
+ * Returns null if the file does not exist yet or OPFS is unavailable.
+ * The returned FileSystemFileHandle supports getFile() and createWritable(),
+ * matching the interface previously provided by the File System Access API.
+ */
+export async function retrieveFileHandle() {
+  console.log("[OPFS] Retrieving OPFS file handle...");
+  const handle = await getOPFSFileHandle(false);
+
+  if (!handle) {
+    console.log("[OPFS] No existing OPFS database file found");
+    return null;
+  }
+
+  console.log("[OPFS] OPFS file handle retrieved successfully");
+  return handle;
+}
+
+/**
+ * Removes the OPFS workout database file so the app starts fresh.
+ */
 export async function clearFileHandle() {
+  if (!isOPFSAvailable()) {
+    return true;
+  }
+
   try {
-    const db = await openDB();
-    const transaction = db.transaction(STORE_NAME, "readwrite");
-    const store = transaction.objectStore(STORE_NAME);
-
-    await new Promise((resolve, reject) => {
-      const request = store.delete(HANDLE_KEY);
-      request.onsuccess = () => resolve();
-      request.onerror = () => reject(request.error);
-    });
-
-    db.close();
+    const root = await navigator.storage.getDirectory();
+    await root.removeEntry(OPFS_FILENAME);
+    console.log("[OPFS] Cleared OPFS database file");
     return true;
   } catch (error) {
-    console.error("Failed to clear file handle:", error);
+    if (error.name === "NotFoundError") {
+      // File did not exist — that is fine
+      return true;
+    }
+    console.error("[OPFS] Failed to clear OPFS file:", error);
     return false;
   }
 }
 
+/**
+ * No-op: OPFS files require no explicit permission grants.
+ * OPFS storage is always readable and writable without user gestures.
+ * Returns true to signal success, keeping the interface compatible.
+ */
+export async function requestWritePermissionAndStore(_handle) {
+  return true;
+}
+
+/**
+ * Creates a new (empty) OPFS database file and returns a handle to it.
+ * Returns { success: true, handle } on success,
+ * or { success: false, error, message } on failure.
+ */
 export async function createNewDatabaseFile() {
-  try {
-    console.log(
-      "[FileHandleStorage] Opening save file picker for new database...",
-    );
-
-    const options = {
-      types: [
-        {
-          description: "SQLite Database",
-          accept: { "application/x-sqlite3": [".sqlite", ".db"] },
-        },
-      ],
-      suggestedName: "workout-data.sqlite",
+  if (!isOPFSAvailable()) {
+    return {
+      success: false,
+      error: "NotSupportedError",
+      message: "OPFS is not available in this browser (iOS Safari < 16.4)",
     };
+  }
 
-    const handle = await window.showSaveFilePicker(options);
-    console.log("[FileHandleStorage] File handle created for new database");
+  try {
+    console.log("[OPFS] Creating new OPFS database file...");
+    const handle = await getOPFSFileHandle(true);
 
-    // Create empty file (write 0 bytes to initialize)
-    const writable = await handle.createWritable();
-    await writable.close();
-    console.log("[FileHandleStorage] Empty file created successfully");
-
-    // Request permission and store handle (reuse working pattern from open flow)
-    // CRITICAL: Must be called during user gesture to show permission prompt
-    const stored = await requestWritePermissionAndStore(handle);
-
-    if (!stored) {
-      throw new Error("Failed to request permission or store handle");
+    if (!handle) {
+      return {
+        success: false,
+        error: "Error",
+        message: "Failed to obtain OPFS file handle",
+      };
     }
 
-    console.log(
-      "[FileHandleStorage] Permission granted and handle stored successfully",
-    );
+    // Truncate to zero bytes so it is guaranteed to start empty
+    const writable = await handle.createWritable();
+    await writable.close();
 
+    console.log("[OPFS] New OPFS database file created successfully");
     return { success: true, handle };
   } catch (error) {
-    console.error(
-      "[FileHandleStorage] Failed to create new database file:",
-      error,
-    );
+    console.error("[OPFS] Failed to create new database file:", error);
     return {
       success: false,
       error: error.name || "Error",
