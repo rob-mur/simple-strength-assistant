@@ -739,15 +739,14 @@ pub fn App() -> Element {
                                 ConflictResolution {
                                     conflicts,
                                     on_resolve: move |resolved: Vec<ConflictRecord>| {
-                                        // Apply choices: keep the winning version.
-                                        // The actual merge write and server push will be
-                                        // wired by the sync client (issue #91).
-                                        // For now we clear the conflict state so the
-                                        // app returns to normal operation.
+                                        // Store the user's choices so the sync client
+                                        // (#91) can read them when performing the OPFS
+                                        // merge write and push to POST /sync/:sync_id.
                                         log::info!(
                                             "[ConflictResolution] Resolved {} conflicts",
                                             resolved.len()
                                         );
+                                        workout_state.set_resolved_conflicts(resolved);
                                         workout_state.set_sync_status(SyncStatus::UpToDate);
                                     },
                                 }

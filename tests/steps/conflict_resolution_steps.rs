@@ -144,8 +144,17 @@ async fn step_screen_visible(world: &mut ConflictResolutionWorld) {
 
 #[then("the main workout UI should not be visible")]
 async fn step_workout_ui_absent(world: &mut ConflictResolutionWorld) {
-    // The conflict resolution screen renders a standalone div; the workout UI
-    // (data-testid="shell-content") should not appear when it is shown.
+    // NOTE: This test renders only the `ConflictResolution` component in
+    // isolation via `TestWrapper`, so `data-testid="shell-content"` can never
+    // appear here regardless of the actual gating logic in `app.rs`.  The
+    // assertion is technically always true in this SSR-only context.
+    //
+    // The real safety guarantee comes from the `if let
+    // SyncStatus::ConflictsDetected` branch in `app.rs` which substitutes the
+    // conflict screen for the normal workout UI — that branch is not exercised
+    // by these unit-level BDD steps.  A future integration test that renders
+    // the full `App` with `SyncStatus::ConflictsDetected` set would close this
+    // gap properly.
     assert!(
         !world
             .rendered_html

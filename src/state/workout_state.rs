@@ -92,6 +92,10 @@ pub struct WorkoutState {
     last_save_time: Signal<f64>,
     exercises: Signal<Vec<ExerciseMetadata>>,
     sync_status: Signal<SyncStatus>,
+    /// Stores the user's resolved conflict choices after `ConflictResolution`
+    /// fires `on_resolve`.  The sync client (#91) reads this to perform the
+    /// OPFS merge write and push to `POST /sync/:sync_id`.
+    resolved_conflicts: Signal<Vec<ConflictRecord>>,
 }
 
 impl Default for WorkoutState {
@@ -112,6 +116,7 @@ impl WorkoutState {
             last_save_time: Signal::new(0.0),
             exercises: Signal::new(Vec::new()),
             sync_status: Signal::new(SyncStatus::Idle),
+            resolved_conflicts: Signal::new(Vec::new()),
         }
     }
 
@@ -194,6 +199,18 @@ impl WorkoutState {
     pub fn set_sync_status(&self, status: SyncStatus) {
         let mut sig = self.sync_status;
         sig.set(status);
+    }
+
+    /// Returns the conflict choices recorded by the last call to `set_resolved_conflicts`.
+    pub fn resolved_conflicts(&self) -> Vec<ConflictRecord> {
+        (self.resolved_conflicts)()
+    }
+
+    /// Stores the user's conflict resolution choices so the sync client (#91)
+    /// can read them when performing the OPFS merge write and server push.
+    pub fn set_resolved_conflicts(&self, conflicts: Vec<ConflictRecord>) {
+        let mut sig = self.resolved_conflicts;
+        sig.set(conflicts);
     }
 }
 
