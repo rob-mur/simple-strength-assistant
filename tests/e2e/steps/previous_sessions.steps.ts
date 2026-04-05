@@ -142,5 +142,22 @@ Given(
     await page.waitForSelector('body[data-hydrated="true"]', {
       timeout: 10000,
     });
+
+    // Backdate the persisted sets to yesterday so they appear before the
+    // start-of-today cutoff used by the Previous Sessions panel.
+    // The panel only shows sets with recorded_at < midnight(today, local tz).
+    await page.evaluate(async () => {
+      const mod = await import("/db-module.js");
+      const oneDayMs = 86_400_000;
+      const now = Date.now();
+      const offsetMs = -new Date().getTimezoneOffset() * 60_000;
+      const startOfTodayUtc =
+        Math.floor((now + offsetMs) / oneDayMs) * oneDayMs - offsetMs;
+      // Shift every set recorded today (>= start-of-today) back by one full day.
+      await mod.executeQuery(
+        "UPDATE completed_sets SET recorded_at = recorded_at - ? WHERE recorded_at >= ?",
+        [oneDayMs, startOfTodayUtc],
+      );
+    });
   },
 );
