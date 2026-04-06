@@ -9,7 +9,6 @@
     binaryen
     devcontainer
     chromium
-    bats
   ];
 
   languages.rust = {
@@ -40,7 +39,6 @@
     build-e2e.exec = "dx bundle --web --release --debug-symbols=false --features test-mode";
     format.exec = "cargo fmt && prettier --write .";
     lint.exec = "./scripts/lint.sh";
-    ralph.exec = "./scripts/ralph.sh \"$@\"";
   };
 
   processes = {
@@ -74,7 +72,6 @@
   enterTest = ''
     set -e
     cargo test
-    bats scripts/ralph.bats
     npm run test:e2e
   '';
 }

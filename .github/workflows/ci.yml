@@ -38,9 +38,6 @@ jobs:
       - name: Run Rust tests
         run: devenv shell cargo test
 
-      - name: Run bats tests
-        run: devenv shell bats scripts/ralph.bats
-
   build-and-deploy:
     permissions:
       contents: read

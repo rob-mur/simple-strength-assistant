@@ -29,7 +29,9 @@ web-sys = { version = "0.3", features = [
     "FileSystemWritableFileStream",
     "File",
     "Blob",
+    "BlobPropertyBag",
     "FileReader",
+    "HtmlAnchorElement",
     "PointerEvent",
     "Element",
     "HtmlElement",
@@ -37,6 +39,7 @@ web-sys = { version = "0.3", features = [
     "IntersectionObserver",
     "IntersectionObserverEntry",
     "IntersectionObserverInit",
+    "Url",
 ] }
 gloo-storage = "0.3"
 gloo-utils = "0.2"
