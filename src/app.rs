@@ -432,7 +432,7 @@ pub fn App() -> Element {
 
     rsx! {
         div {
-            class: "flex flex-col min-h-screen bg-base-200",
+            class: "flex flex-col h-screen bg-base-200",
             header {
                 class: "navbar bg-primary text-primary-content flex-none",
                 div {

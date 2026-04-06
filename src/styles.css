@@ -2,6 +2,15 @@
 @tailwind components;
 @tailwind utilities;
 
+@layer base {
+  html,
+  body,
+  #main {
+    height: 100%;
+    overflow: hidden;
+  }
+}
+
 @layer utilities {
   .pb-safe-nav {
     padding-bottom: calc(5rem + env(safe-area-inset-bottom));
