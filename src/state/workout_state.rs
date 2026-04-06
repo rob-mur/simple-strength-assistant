@@ -2,6 +2,9 @@ use crate::models::{CompletedSet, ExerciseMetadata, SetType};
 #[cfg(feature = "test-mode")]
 use crate::state::StorageBackend;
 use crate::state::{Database, Storage, error::WorkoutError};
+#[cfg(all(not(feature = "test-mode"), not(test)))]
+use crate::sync::{SyncCredentials, SyncOutcome, save_clock};
+use crate::sync::VectorClock;
 use dioxus::prelude::*;
 
 // Initial prediction constants
@@ -112,6 +115,8 @@ pub struct WorkoutState {
     /// fires `on_resolve`.  The sync client (#91) reads this to perform the
     /// OPFS merge write and push to `POST /sync/:sync_id`.
     resolved_conflicts: Signal<Vec<ConflictRecord>>,
+    /// Local vector clock, persisted across sync cycles
+    sync_clock: Signal<VectorClock>,
 }
 
 impl Default for WorkoutState {
@@ -133,6 +138,7 @@ impl WorkoutState {
             exercises: Signal::new(Vec::new()),
             sync_status: Signal::new(SyncStatus::Idle),
             resolved_conflicts: Signal::new(Vec::new()),
+            sync_clock: Signal::new(VectorClock::new()),
         }
     }
 
@@ -227,6 +233,15 @@ impl WorkoutState {
     pub fn set_resolved_conflicts(&self, conflicts: Vec<ConflictRecord>) {
         let mut sig = self.resolved_conflicts;
         sig.set(conflicts);
+    }
+
+    pub fn sync_clock(&self) -> VectorClock {
+        (self.sync_clock)()
+    }
+
+    pub fn set_sync_clock(&self, clock: VectorClock) {
+        let mut sig = self.sync_clock;
+        sig.set(clock);
     }
 }
 
@@ -606,6 +621,128 @@ impl WorkoutStateManager {
         log::error!("Workout state error: {}", error);
         state.set_error(Some(error));
         state.set_initialization_state(InitializationState::Error);
+    }
+
+    /// Trigger a background sync cycle.  Non-blocking: errors are swallowed
+    /// except for `ConflictDetected`, which updates the save_error banner so
+    /// the user is informed they need to resolve conflicts.
+    ///
+    /// This is a no-op when `sync_id` is not configured in LocalStorage
+    /// (i.e. the pairing flow has not been run yet).
+    #[cfg(all(not(feature = "test-mode"), not(test)))]
+    pub async fn trigger_background_sync(state: &WorkoutState) {
+        use crate::sync::client::SyncClient;
+        use crate::sync::http::wasm::FetchClient;
+        use crate::sync::stub_merge;
+
+        // Check credentials first to short-circuit before the expensive
+        // database export when sync is not configured.
+        let credentials = SyncCredentials::load();
+        if credentials.as_ref().map_or(true, |c| !c.is_valid()) {
+            log::debug!("[Sync] Skipped — no valid sync_id configured");
+            return;
+        }
+
+        let db = match state.database() {
+            Some(db) => db,
+            None => {
+                log::debug!("[Sync] Database not ready, skipping sync");
+                return;
+            }
+        };
+
+        let local_blob = match db.export().await {
+            Ok(b) => b,
+            Err(e) => {
+                log::warn!("[Sync] Failed to export database for sync: {}", e);
+                return;
+            }
+        };
+
+        let mut clock = state.sync_clock();
+
+        let client = SyncClient::new(FetchClient);
+        let outcome = client
+            .run(credentials.as_ref(), &local_blob, &mut clock, &stub_merge)
+            .await;
+
+        // Only persist the updated clock when the sync cycle actually reached
+        // the server.  Persisting after Offline would accumulate meaningless
+        // sequence numbers (the server never saw the increment).
+        let should_persist_clock = !matches!(
+            outcome,
+            SyncOutcome::Skipped | SyncOutcome::Offline
+        );
+        if should_persist_clock {
+            state.set_sync_clock(clock.clone());
+            if let Err(e) = save_clock(&clock) {
+                log::warn!(
+                    "[Sync] Failed to persist vector clock to LocalStorage: {}",
+                    e
+                );
+            }
+        }
+
+        match outcome {
+            SyncOutcome::Skipped => {
+                log::debug!("[Sync] Skipped — no sync_id configured");
+            }
+            SyncOutcome::Offline => {
+                log::debug!("[Sync] Server unreachable, continuing offline");
+            }
+            SyncOutcome::Pushed => {
+                log::debug!("[Sync] Push complete");
+            }
+            SyncOutcome::Pulled(blob) => {
+                log::info!("[Sync] Fast-forward pull complete, reloading database");
+                Self::apply_synced_blob(state, &blob, "pull").await;
+            }
+            SyncOutcome::Merged(blob) => {
+                log::info!("[Sync] Merge complete, reloading database");
+                Self::apply_synced_blob(state, &blob, "merge").await;
+            }
+            // TODO(#89): this arm is unreachable while `stub_merge` always
+            // reports a conflict.  Once the real union-merge lands, genuine
+            // conflict-free merges will flow through `Merged` above, and only
+            // true row-level conflicts will reach here.
+            SyncOutcome::ConflictDetected(_) => {
+                log::warn!("[Sync] Conflicts detected — user action required");
+                state.set_save_error(Some(
+                    "Sync conflicts detected. Your data has been preserved locally. Conflict resolution coming in a future update.".to_string(),
+                ));
+            }
+        }
+    }
+
+    /// Shared helper for `Pulled` and `Merged` sync outcomes: initialise a new
+    /// database from the given blob, persist it to OPFS, and sync exercises.
+    #[cfg(all(not(feature = "test-mode"), not(test)))]
+    async fn apply_synced_blob(state: &WorkoutState, blob: &[u8], label: &str) {
+        let mut new_db = Database::new();
+        match new_db.init(Some(blob.to_vec())).await {
+            Ok(_) => {
+                if let Some(fm) = state.file_manager() {
+                    if let Err(e) = fm.write_file(blob).await {
+                        log::warn!(
+                            "[Sync] Failed to persist {} blob to OPFS: {}",
+                            label,
+                            e
+                        );
+                    }
+                }
+                state.set_database(new_db);
+                if let Err(e) = Self::sync_exercises(state).await {
+                    log::warn!(
+                        "[Sync] Failed to sync exercises after {}: {}",
+                        label,
+                        e
+                    );
+                }
+            }
+            Err(e) => {
+                log::warn!("[Sync] Failed to init DB from {} blob: {}", label, e);
+            }
+        }
     }
 }
 

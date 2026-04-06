@@ -40,6 +40,11 @@ web-sys = { version = "0.3", features = [
     "IntersectionObserverEntry",
     "IntersectionObserverInit",
     "Url",
+    "Request",
+    "RequestInit",
+    "RequestMode",
+    "Response",
+    "Headers",
 ] }
 gloo-utils = "0.2"
 gloo-timers = { version = "0.3", features = ["futures"] }
