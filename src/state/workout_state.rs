@@ -2,9 +2,9 @@ use crate::models::{CompletedSet, ExerciseMetadata, SetType};
 #[cfg(feature = "test-mode")]
 use crate::state::StorageBackend;
 use crate::state::{Database, Storage, error::WorkoutError};
+use crate::sync::VectorClock;
 #[cfg(all(not(feature = "test-mode"), not(test)))]
 use crate::sync::{SyncCredentials, SyncOutcome};
-use crate::sync::VectorClock;
 use dioxus::prelude::*;
 
 // Initial prediction constants
@@ -593,10 +593,10 @@ impl WorkoutStateManager {
                 match new_db.init(Some(blob.clone())).await {
                     Ok(_) => {
                         // Persist merged blob to OPFS
-                        if let Some(fm) = state.file_manager() {
-                            if let Err(e) = fm.write_file(&blob).await {
-                                log::warn!("[Sync] Failed to persist pulled blob to OPFS: {}", e);
-                            }
+                        if let Some(fm) = state.file_manager()
+                            && let Err(e) = fm.write_file(&blob).await
+                        {
+                            log::warn!("[Sync] Failed to persist pulled blob to OPFS: {}", e);
                         }
                         state.set_database(new_db);
                         if let Err(e) = Self::sync_exercises(state).await {
@@ -613,10 +613,10 @@ impl WorkoutStateManager {
                 let mut new_db = Database::new();
                 match new_db.init(Some(blob.clone())).await {
                     Ok(_) => {
-                        if let Some(fm) = state.file_manager() {
-                            if let Err(e) = fm.write_file(&blob).await {
-                                log::warn!("[Sync] Failed to persist merged blob to OPFS: {}", e);
-                            }
+                        if let Some(fm) = state.file_manager()
+                            && let Err(e) = fm.write_file(&blob).await
+                        {
+                            log::warn!("[Sync] Failed to persist merged blob to OPFS: {}", e);
                         }
                         state.set_database(new_db);
                         if let Err(e) = Self::sync_exercises(state).await {

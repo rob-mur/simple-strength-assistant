@@ -7,7 +7,7 @@ pub mod wasm {
     use super::super::client::{HttpClient, PushRequest, SyncError, SyncMetadata};
     use wasm_bindgen::JsCast;
     use wasm_bindgen_futures::JsFuture;
-    use web_sys::{js_sys, Request, RequestInit, RequestMode, Response};
+    use web_sys::{Request, RequestInit, RequestMode, Response, js_sys};
 
     fn build_url(sync_id: &str, path: &str) -> String {
         // sync_id is the only path component; sync_secret is NEVER in the URL.
@@ -58,9 +58,8 @@ pub mod wasm {
                 .set("X-Sync-Secret", sync_secret)
                 .map_err(|e| SyncError::NetworkError(format!("{:?}", e)))?;
 
-            let window = web_sys::window().ok_or_else(|| {
-                SyncError::NetworkError("No window object".to_string())
-            })?;
+            let window = web_sys::window()
+                .ok_or_else(|| SyncError::NetworkError("No window object".to_string()))?;
 
             let resp_value = JsFuture::from(window.fetch_with_request(&request))
                 .await
@@ -95,9 +94,8 @@ pub mod wasm {
                 .set("X-Sync-Secret", sync_secret)
                 .map_err(|e| SyncError::NetworkError(format!("{:?}", e)))?;
 
-            let window = web_sys::window().ok_or_else(|| {
-                SyncError::NetworkError("No window object".to_string())
-            })?;
+            let window = web_sys::window()
+                .ok_or_else(|| SyncError::NetworkError("No window object".to_string()))?;
 
             let resp_value = JsFuture::from(window.fetch_with_request(&request))
                 .await
@@ -122,17 +120,15 @@ pub mod wasm {
             let json_str = js_sys::JSON::stringify(&json_val)
                 .map_err(|e| SyncError::SerializationError(format!("{:?}", e)))?
                 .as_string()
-                .ok_or_else(|| SyncError::SerializationError("JSON stringify failed".to_string()))?;
+                .ok_or_else(|| {
+                    SyncError::SerializationError("JSON stringify failed".to_string())
+                })?;
 
             serde_json::from_str(&json_str)
                 .map_err(|e| SyncError::SerializationError(e.to_string()))
         }
 
-        async fn pull_blob(
-            &self,
-            sync_id: &str,
-            sync_secret: &str,
-        ) -> Result<Vec<u8>, SyncError> {
+        async fn pull_blob(&self, sync_id: &str, sync_secret: &str) -> Result<Vec<u8>, SyncError> {
             let url = build_url(sync_id, "");
             let opts = RequestInit::new();
             opts.set_method("GET");
@@ -146,9 +142,8 @@ pub mod wasm {
                 .set("X-Sync-Secret", sync_secret)
                 .map_err(|e| SyncError::NetworkError(format!("{:?}", e)))?;
 
-            let window = web_sys::window().ok_or_else(|| {
-                SyncError::NetworkError("No window object".to_string())
-            })?;
+            let window = web_sys::window()
+                .ok_or_else(|| SyncError::NetworkError("No window object".to_string()))?;
 
             let resp_value = JsFuture::from(window.fetch_with_request(&request))
                 .await

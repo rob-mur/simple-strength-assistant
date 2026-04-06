@@ -59,11 +59,7 @@ pub trait HttpClient {
     ) -> Result<SyncMetadata, SyncError>;
 
     /// GET /sync/:sync_id  — download server blob
-    async fn pull_blob(
-        &self,
-        sync_id: &str,
-        sync_secret: &str,
-    ) -> Result<Vec<u8>, SyncError>;
+    async fn pull_blob(&self, sync_id: &str, sync_secret: &str) -> Result<Vec<u8>, SyncError>;
 }
 
 // ── Error type ────────────────────────────────────────────────────────────
@@ -247,11 +243,19 @@ pub struct ConflictRecord {
 /// `base64` crate to keep dependencies lean.
 pub fn base64_encode(data: &[u8]) -> String {
     const TABLE: &[u8] = b"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
-    let mut out = String::with_capacity((data.len() + 2) / 3 * 4);
+    let mut out = String::with_capacity(data.len().div_ceil(3) * 4);
     for chunk in data.chunks(3) {
         let b0 = chunk[0] as usize;
-        let b1 = if chunk.len() > 1 { chunk[1] as usize } else { 0 };
-        let b2 = if chunk.len() > 2 { chunk[2] as usize } else { 0 };
+        let b1 = if chunk.len() > 1 {
+            chunk[1] as usize
+        } else {
+            0
+        };
+        let b2 = if chunk.len() > 2 {
+            chunk[2] as usize
+        } else {
+            0
+        };
         out.push(TABLE[b0 >> 2] as char);
         out.push(TABLE[((b0 & 0x3) << 4) | (b1 >> 4)] as char);
         if chunk.len() > 1 {
@@ -389,9 +393,7 @@ mod tests {
         let http = MockHttp::new(VectorClock::new(), vec![]);
         let client = SyncClient::new(http);
         let mut clock = VectorClock::new();
-        let outcome = client
-            .run(None, b"local", &mut clock, &no_op_merge)
-            .await;
+        let outcome = client.run(None, b"local", &mut clock, &no_op_merge).await;
         assert_eq!(outcome, SyncOutcome::Skipped);
     }
 
