@@ -2,9 +2,9 @@ use crate::models::{CompletedSet, ExerciseMetadata, SetType};
 #[cfg(feature = "test-mode")]
 use crate::state::StorageBackend;
 use crate::state::{Database, Storage, error::WorkoutError};
+use crate::sync::VectorClock;
 #[cfg(all(not(feature = "test-mode"), not(test)))]
 use crate::sync::{SyncCredentials, SyncOutcome, save_clock};
-use crate::sync::VectorClock;
 use dioxus::prelude::*;
 
 // Initial prediction constants

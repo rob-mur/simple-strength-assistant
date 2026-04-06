@@ -35,8 +35,7 @@ impl SyncCredentials {
     #[cfg(not(test))]
     pub fn save(&self) -> Result<(), String> {
         use gloo_storage::{LocalStorage, Storage};
-        LocalStorage::set(CREDS_KEY, self)
-            .map_err(|e| e.to_string())
+        LocalStorage::set(CREDS_KEY, self).map_err(|e| e.to_string())
     }
 
     /// Validates that none of the credential fields are empty.
