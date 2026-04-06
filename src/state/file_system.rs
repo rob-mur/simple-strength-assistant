@@ -98,14 +98,11 @@ impl FileSystemManager {
     }
 
     fn is_opfs_supported() -> bool {
-        if let Some(nav) = window().and_then(|w| w.navigator().into()) {
-            if let Ok(storage) = js_sys::Reflect::get(&nav, &JsValue::from_str("storage")) {
-                if let Ok(get_dir) =
-                    js_sys::Reflect::get(&storage, &JsValue::from_str("getDirectory"))
-                {
-                    return get_dir.is_function();
-                }
-            }
+        if let Some(nav) = window().and_then(|w| w.navigator().into())
+            && let Ok(storage) = js_sys::Reflect::get(&nav, &JsValue::from_str("storage"))
+            && let Ok(get_dir) = js_sys::Reflect::get(&storage, &JsValue::from_str("getDirectory"))
+        {
+            return get_dir.is_function();
         }
         false
     }
