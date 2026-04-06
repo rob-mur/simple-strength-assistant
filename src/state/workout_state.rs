@@ -2,6 +2,9 @@ use crate::models::{CompletedSet, ExerciseMetadata, SetType};
 #[cfg(feature = "test-mode")]
 use crate::state::StorageBackend;
 use crate::state::{Database, Storage, error::WorkoutError};
+#[cfg(all(not(feature = "test-mode"), not(test)))]
+use crate::sync::{SyncCredentials, SyncOutcome};
+use crate::sync::VectorClock;
 use dioxus::prelude::*;
 
 // Initial prediction constants
@@ -48,6 +51,8 @@ pub struct WorkoutState {
     file_manager: Signal<Option<Storage>>,
     last_save_time: Signal<f64>,
     exercises: Signal<Vec<ExerciseMetadata>>,
+    /// Local vector clock, persisted across sync cycles
+    sync_clock: Signal<VectorClock>,
 }
 
 impl Default for WorkoutState {
@@ -67,6 +72,7 @@ impl WorkoutState {
             file_manager: Signal::new(None),
             last_save_time: Signal::new(0.0),
             exercises: Signal::new(Vec::new()),
+            sync_clock: Signal::new(VectorClock::new()),
         }
     }
 
@@ -140,6 +146,15 @@ impl WorkoutState {
     pub fn set_exercises(&self, exercises: Vec<ExerciseMetadata>) {
         let mut sig = self.exercises;
         sig.set(exercises);
+    }
+
+    pub fn sync_clock(&self) -> VectorClock {
+        (self.sync_clock)()
+    }
+
+    pub fn set_sync_clock(&self, clock: VectorClock) {
+        let mut sig = self.sync_clock;
+        sig.set(clock);
     }
 }
 
@@ -519,6 +534,107 @@ impl WorkoutStateManager {
         log::error!("Workout state error: {}", error);
         state.set_error(Some(error));
         state.set_initialization_state(InitializationState::Error);
+    }
+
+    /// Trigger a background sync cycle.  Non-blocking: errors are swallowed
+    /// except for `ConflictDetected`, which updates the save_error banner so
+    /// the user is informed they need to resolve conflicts.
+    ///
+    /// This is a no-op when `sync_id` is not configured in LocalStorage
+    /// (i.e. the pairing flow has not been run yet).
+    #[cfg(all(not(feature = "test-mode"), not(test)))]
+    pub async fn trigger_background_sync(state: &WorkoutState) {
+        use crate::sync::client::SyncClient;
+        use crate::sync::http::wasm::FetchClient;
+        use crate::sync::stub_merge;
+
+        let credentials = SyncCredentials::load();
+
+        let db = match state.database() {
+            Some(db) => db,
+            None => {
+                log::debug!("[Sync] Database not ready, skipping sync");
+                return;
+            }
+        };
+
+        let local_blob = match db.export().await {
+            Ok(b) => b,
+            Err(e) => {
+                log::warn!("[Sync] Failed to export database for sync: {}", e);
+                return;
+            }
+        };
+
+        let mut clock = state.sync_clock();
+
+        let client = SyncClient::new(FetchClient);
+        let outcome = client
+            .run(credentials.as_ref(), &local_blob, &mut clock, &stub_merge)
+            .await;
+
+        // Persist updated clock back to state
+        state.set_sync_clock(clock.clone());
+
+        match outcome {
+            SyncOutcome::Skipped => {
+                log::debug!("[Sync] Skipped — no sync_id configured");
+            }
+            SyncOutcome::Offline => {
+                log::debug!("[Sync] Server unreachable, continuing offline");
+            }
+            SyncOutcome::Pushed => {
+                log::debug!("[Sync] Push complete");
+            }
+            SyncOutcome::Pulled(blob) => {
+                log::info!("[Sync] Fast-forward pull complete, reloading database");
+                // Replace local database with the server blob
+                let mut new_db = Database::new();
+                match new_db.init(Some(blob.clone())).await {
+                    Ok(_) => {
+                        // Persist merged blob to OPFS
+                        if let Some(fm) = state.file_manager() {
+                            if let Err(e) = fm.write_file(&blob).await {
+                                log::warn!("[Sync] Failed to persist pulled blob to OPFS: {}", e);
+                            }
+                        }
+                        state.set_database(new_db);
+                        if let Err(e) = Self::sync_exercises(state).await {
+                            log::warn!("[Sync] Failed to sync exercises after pull: {}", e);
+                        }
+                    }
+                    Err(e) => {
+                        log::warn!("[Sync] Failed to init DB from pulled blob: {}", e);
+                    }
+                }
+            }
+            SyncOutcome::Merged(blob) => {
+                log::info!("[Sync] Merge complete, reloading database");
+                let mut new_db = Database::new();
+                match new_db.init(Some(blob.clone())).await {
+                    Ok(_) => {
+                        if let Some(fm) = state.file_manager() {
+                            if let Err(e) = fm.write_file(&blob).await {
+                                log::warn!("[Sync] Failed to persist merged blob to OPFS: {}", e);
+                            }
+                        }
+                        state.set_database(new_db);
+                        if let Err(e) = Self::sync_exercises(state).await {
+                            log::warn!("[Sync] Failed to sync exercises after merge: {}", e);
+                        }
+                    }
+                    Err(e) => {
+                        log::warn!("[Sync] Failed to init DB from merged blob: {}", e);
+                    }
+                }
+            }
+            SyncOutcome::ConflictDetected(_) => {
+                log::warn!("[Sync] Conflicts detected — user action required");
+                state.set_save_error(Some(
+                    "Sync conflicts detected. Your data has been preserved locally. Conflict resolution coming in a future update.".to_string(),
+                ));
+            }
+        }
     }
 }
 

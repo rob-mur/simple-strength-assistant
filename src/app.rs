@@ -430,6 +430,19 @@ pub fn App() -> Element {
         }
     });
 
+    // Trigger background sync once the database transitions to Ready.
+    // Sync is non-blocking: the app is fully usable while sync runs.
+    // In test-mode there is no real HTTP client, so we skip this.
+    #[cfg(all(not(feature = "test-mode"), not(test)))]
+    use_effect(move || {
+        if workout_state.initialization_state() == InitializationState::Ready {
+            spawn(async move {
+                log::debug!("[Sync] App ready — starting background sync");
+                WorkoutStateManager::trigger_background_sync(&workout_state).await;
+            });
+        }
+    });
+
     rsx! {
         div {
             class: "flex flex-col min-h-screen bg-base-200",
