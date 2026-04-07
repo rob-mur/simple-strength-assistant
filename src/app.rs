@@ -863,9 +863,7 @@ pub fn App() -> Element {
                     }
                 }
             }
-            if cfg!(debug_assertions) {
-                DebugPanel {}
-            }
+            DebugPanel {}
         }
     }
 }
