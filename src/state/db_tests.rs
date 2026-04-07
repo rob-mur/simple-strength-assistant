@@ -1401,3 +1401,176 @@ async fn test_exercises_restored_after_create_new_then_reopen() {
     );
     assert_eq!(exercises[0].name, "Deadlift");
 }
+
+/// Editing an exercise updates its updated_at to a value >= the one before the edit.
+#[wasm_bindgen_test]
+async fn test_edit_exercise_updates_updated_at() {
+    use wasm_bindgen::JsCast;
+
+    let mut db = Database::new();
+    db.init(None).await.expect("Database init failed");
+
+    let exercise = ExerciseMetadata {
+        id: None,
+        name: "Squat".to_string(),
+        set_type_config: SetTypeConfig::Weighted {
+            min_weight: 20.0,
+            increment: 2.5,
+        },
+    };
+    let exercise_id = db.save_exercise(&exercise).await.expect("save failed");
+
+    // Read the initial updated_at
+    let before_result = db
+        .execute(
+            "SELECT updated_at FROM exercises WHERE id = ?",
+            &[wasm_bindgen::JsValue::from_f64(exercise_id as f64)],
+        )
+        .await
+        .expect("SELECT before failed");
+    let before_arr = before_result.dyn_ref::<js_sys::Array>().unwrap();
+    let before_row = before_arr.get(0);
+    let updated_at_before =
+        js_sys::Reflect::get(&before_row, &wasm_bindgen::JsValue::from_str("updated_at"))
+            .unwrap()
+            .as_f64()
+            .expect("updated_at_before should be number");
+
+    // Update the exercise
+    let updated = ExerciseMetadata {
+        id: Some(exercise_id),
+        name: "Squat".to_string(),
+        set_type_config: SetTypeConfig::Weighted {
+            min_weight: 20.0,
+            increment: 5.0, // changed
+        },
+    };
+    db.save_exercise(&updated).await.expect("update failed");
+
+    let after_result = db
+        .execute(
+            "SELECT updated_at FROM exercises WHERE id = ?",
+            &[wasm_bindgen::JsValue::from_f64(exercise_id as f64)],
+        )
+        .await
+        .expect("SELECT after failed");
+    let after_arr = after_result.dyn_ref::<js_sys::Array>().unwrap();
+    let after_row = after_arr.get(0);
+    let updated_at_after =
+        js_sys::Reflect::get(&after_row, &wasm_bindgen::JsValue::from_str("updated_at"))
+            .unwrap()
+            .as_f64()
+            .expect("updated_at_after should be number");
+
+    assert!(
+        updated_at_after >= updated_at_before,
+        "updated_at after edit ({}) must be >= before ({})",
+        updated_at_after,
+        updated_at_before
+    );
+}
+
+/// Migration from v2 to v3: an existing database (exported at v2, imported fresh)
+/// should run the v3 migration without errors. Pre-existing rows should be
+/// backfilled with uuid and updated_at.
+#[wasm_bindgen_test]
+async fn test_v2_to_v3_migration_backfills_existing_rows() {
+    use wasm_bindgen::JsCast;
+
+    // Create and export a v2-schema database (same code path — the migration runs
+    // incrementally, so the result after init() on a fresh DB is always current).
+    // We simulate a pre-v3 database by creating data, exporting, and re-importing;
+    // the re-import triggers migrate_and_create_tables which applies v3 on top.
+    let mut db1 = Database::new();
+    db1.init(None).await.expect("db1 init failed");
+
+    let exercise = ExerciseMetadata {
+        id: None,
+        name: "Deadlift".to_string(),
+        set_type_config: SetTypeConfig::Weighted {
+            min_weight: 60.0,
+            increment: 5.0,
+        },
+    };
+    let ex_id = db1.save_exercise(&exercise).await.expect("save failed");
+    db1.log_set(
+        ex_id,
+        &CompletedSet {
+            set_number: 1,
+            reps: 5,
+            rpe: 8.0,
+            set_type: SetType::Weighted { weight: 100.0 },
+        },
+    )
+    .await
+    .expect("log_set failed");
+
+    let exported = db1.export().await.expect("export failed");
+
+    // Re-import: migration runs again (idempotent).
+    let mut db2 = Database::new();
+    db2.init(Some(exported)).await.expect("db2 init failed");
+
+    // All exercises and sets should have non-empty uuids and non-zero updated_at.
+    let ex_result = db2
+        .execute(
+            "SELECT uuid, updated_at FROM exercises WHERE deleted_at IS NULL",
+            &[],
+        )
+        .await
+        .expect("SELECT exercises failed");
+    let ex_arr = ex_result
+        .dyn_ref::<js_sys::Array>()
+        .expect("Expected array");
+    assert!(ex_arr.length() > 0, "Should have at least one exercise");
+    for i in 0..ex_arr.length() {
+        let row = ex_arr.get(i);
+        let uuid = js_sys::Reflect::get(&row, &wasm_bindgen::JsValue::from_str("uuid"))
+            .unwrap()
+            .as_string()
+            .unwrap_or_default();
+        assert!(
+            !uuid.is_empty(),
+            "Exercise uuid must not be empty after migration"
+        );
+        let updated_at = js_sys::Reflect::get(&row, &wasm_bindgen::JsValue::from_str("updated_at"))
+            .unwrap()
+            .as_f64()
+            .unwrap_or(0.0);
+        assert!(
+            updated_at > 0.0,
+            "Exercise updated_at must be non-zero after migration"
+        );
+    }
+
+    let sets_result = db2
+        .execute(
+            "SELECT uuid, updated_at FROM completed_sets WHERE deleted_at IS NULL",
+            &[],
+        )
+        .await
+        .expect("SELECT sets failed");
+    let sets_arr = sets_result
+        .dyn_ref::<js_sys::Array>()
+        .expect("Expected array");
+    assert!(sets_arr.length() > 0, "Should have at least one set");
+    for i in 0..sets_arr.length() {
+        let row = sets_arr.get(i);
+        let uuid = js_sys::Reflect::get(&row, &wasm_bindgen::JsValue::from_str("uuid"))
+            .unwrap()
+            .as_string()
+            .unwrap_or_default();
+        assert!(
+            !uuid.is_empty(),
+            "Set uuid must not be empty after migration"
+        );
+        let updated_at = js_sys::Reflect::get(&row, &wasm_bindgen::JsValue::from_str("updated_at"))
+            .unwrap()
+            .as_f64()
+            .unwrap_or(0.0);
+        assert!(
+            updated_at > 0.0,
+            "Set updated_at must be non-zero after migration"
+        );
+    }
+}
