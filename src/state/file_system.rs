@@ -22,6 +22,13 @@ extern "C" {
 
     #[wasm_bindgen(js_name = createNewDatabaseFile)]
     async fn create_new_database_file() -> JsValue;
+
+    /// Opens or creates the OPFS file **without** truncating existing content.
+    /// Use this when resuming a previously initialised database (i.e. from
+    /// `prompt_for_file`). Use `create_new_database_file` only when a genuinely
+    /// fresh, empty database is required.
+    #[wasm_bindgen(js_name = openExistingDatabaseFile)]
+    async fn open_existing_database_file() -> JsValue;
 }
 
 /// Maximum allowed size for the database file (100MB).
@@ -207,6 +214,8 @@ impl FileSystemManager {
 
     /// Opens the existing OPFS database file, or creates a new one if none exists.
     /// With OPFS no user gesture or file picker is required.
+    /// This method preserves existing file contents — use `create_new_file` when
+    /// a genuinely empty database is required.
     pub async fn prompt_for_file(&mut self) -> Result<(), FileSystemError> {
         if self.use_fallback {
             log::debug!("[FileSystem] Using fallback storage for file operations");
@@ -215,8 +224,9 @@ impl FileSystemManager {
 
         log::debug!("[FileSystem] Opening OPFS database file...");
 
-        // Use createNewDatabaseFile which creates-or-opens the OPFS file
-        let result = create_new_database_file().await;
+        // Use openExistingDatabaseFile which opens without truncating.
+        // This is safe to call even when a populated database already exists.
+        let result = open_existing_database_file().await;
 
         let success = js_sys::Reflect::get(&result, &JsValue::from_str("success"))
             .map(|v| v.as_bool().unwrap_or(false))

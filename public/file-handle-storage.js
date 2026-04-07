@@ -105,6 +105,8 @@ export async function requestWritePermissionAndStore(_handle) {
 
 /**
  * Creates a new (empty) OPFS database file and returns a handle to it.
+ * Always truncates any existing file to zero bytes — use this only when
+ * a genuinely fresh database is desired.
  * Returns { success: true, handle } on success,
  * or { success: false, error, message } on failure.
  */
@@ -129,7 +131,10 @@ export async function createNewDatabaseFile() {
       };
     }
 
-    // Truncate to zero bytes so it is guaranteed to start empty
+    // Truncate to zero bytes so it is guaranteed to start empty.
+    // createWritable() without { keepExistingData: true } opens a write
+    // stream that begins empty, so closing it immediately achieves the
+    // truncation we want for a fresh database.
     const writable = await handle.createWritable();
     await writable.close();
 
@@ -145,10 +150,67 @@ export async function createNewDatabaseFile() {
   }
 }
 
+/**
+ * Opens an existing OPFS database file without truncating it.
+ * If the file does not exist yet it is created as empty (same as a fresh
+ * database) — this mirrors the first-run case where there is nothing to lose.
+ * Unlike createNewDatabaseFile(), this function preserves any existing content.
+ *
+ * Returns { success: true, handle } on success,
+ * or { success: false, error, message } on failure.
+ */
+export async function openExistingDatabaseFile() {
+  if (!isOPFSAvailable()) {
+    return {
+      success: false,
+      error: "NotSupportedError",
+      message: "OPFS is not available in this browser (iOS Safari < 16.4)",
+    };
+  }
+
+  try {
+    console.log("[OPFS] Opening existing OPFS database file...");
+    // Try to open without creating first — if there is an existing file we
+    // want to keep its contents intact.
+    let handle = await getOPFSFileHandle(false);
+
+    if (!handle) {
+      // File does not exist yet — create it empty (first run).
+      console.log("[OPFS] No existing file found, creating empty database...");
+      handle = await getOPFSFileHandle(true);
+
+      if (!handle) {
+        return {
+          success: false,
+          error: "Error",
+          message: "Failed to obtain OPFS file handle",
+        };
+      }
+
+      // File was just created by getFileHandle({ create: true }).
+      // The OPFS spec guarantees a newly created file is zero bytes, so no
+      // explicit truncation writable is needed.
+      console.log("[OPFS] Empty database file created for first run");
+    } else {
+      console.log("[OPFS] Existing OPFS database file opened (contents preserved)");
+    }
+
+    return { success: true, handle };
+  } catch (error) {
+    console.error("[OPFS] Failed to open database file:", error);
+    return {
+      success: false,
+      error: error.name || "Error",
+      message: error.message || String(error),
+    };
+  }
+}
+
 window.fileHandleStorage = {
   storeFileHandle,
   retrieveFileHandle,
   clearFileHandle,
   requestWritePermissionAndStore,
   createNewDatabaseFile,
+  openExistingDatabaseFile,
 };

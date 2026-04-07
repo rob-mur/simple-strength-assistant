@@ -6,6 +6,7 @@ pub enum Tab {
     #[default]
     Workout,
     Library,
+    Settings,
 }
 
 /// Tab bar component. `active_tab` controls which tab appears selected.
@@ -41,6 +42,19 @@ pub fn TabBar(active_tab: Tab, on_change: EventHandler<Tab>) -> Element {
                 "data-testid": "tab-library",
                 onclick: move |_| on_change.call(Tab::Library),
                 "Library"
+            }
+
+            button {
+                role: "tab",
+                aria_selected: if active_tab == Tab::Settings { "true" } else { "false" },
+                class: if active_tab == Tab::Settings {
+                    "tab tab-active h-12"
+                } else {
+                    "tab h-12"
+                },
+                "data-testid": "tab-settings",
+                onclick: move |_| on_change.call(Tab::Settings),
+                "Settings"
             }
         }
     }

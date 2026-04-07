@@ -213,6 +213,87 @@ describe("OPFS storage backend — save / load / clear", () => {
   });
 });
 
+describe("openExistingDatabaseFile — open without truncation", () => {
+  let mock;
+  let createNewDatabaseFile;
+  let openExistingDatabaseFile;
+  let retrieveFileHandle;
+
+  beforeEach(async () => {
+    vi.resetModules();
+    mock = createMockOPFS();
+    const mod = await loadModule(mock);
+    createNewDatabaseFile = mod.createNewDatabaseFile;
+    openExistingDatabaseFile = mod.openExistingDatabaseFile;
+    retrieveFileHandle = mod.retrieveFileHandle;
+  });
+
+  // ── First run: creates an empty file ────────────────────────────────────────
+
+  it("returns a handle even when no file exists yet (first run)", async () => {
+    const result = await openExistingDatabaseFile();
+    expect(result.success).toBe(true);
+    expect(result.handle).toBeTruthy();
+  });
+
+  // ── Does not internally truncate the file on open ────────────────────────────
+  // The key invariant: calling openExistingDatabaseFile() on a file that
+  // already has content must not erase that content.  We seed data via the
+  // underlying mock's file map directly to simulate an already-populated OPFS
+  // file, then assert the handle still exposes that data after the open.
+
+  it("does not truncate an existing file — data is preserved across open calls", async () => {
+    const originalData = new Uint8Array([83, 81, 76, 105, 116, 101]); // "SQLite"
+
+    // Seed the mock's file store directly (simulates a populated OPFS file
+    // left by a previous session — no writable stream involved).
+    mock.files.set("workout-data.sqlite", originalData);
+
+    // Opening must not truncate — the handle should see the existing data.
+    const result = await openExistingDatabaseFile();
+    expect(result.success).toBe(true);
+
+    const file = await result.handle.getFile();
+    const buf = await file.arrayBuffer();
+    expect(new Uint8Array(buf)).toEqual(originalData);
+  });
+
+  // ── Contrast: createNewDatabaseFile DOES truncate ────────────────────────────
+  // This documents the intentional difference between the two functions.
+
+  it("createNewDatabaseFile truncates while openExistingDatabaseFile does not", async () => {
+    const originalData = new Uint8Array([1, 2, 3, 4, 5]);
+    mock.files.set("workout-data.sqlite", originalData);
+
+    // createNewDatabaseFile should wipe the file
+    const freshResult = await createNewDatabaseFile();
+    expect(freshResult.success).toBe(true);
+    const freshFile = await freshResult.handle.getFile();
+    const freshBuf = await freshFile.arrayBuffer();
+    expect(new Uint8Array(freshBuf).byteLength).toBe(0); // truncated
+
+    // Re-seed and verify openExistingDatabaseFile does NOT truncate
+    mock.files.set("workout-data.sqlite", originalData);
+    const openResult = await openExistingDatabaseFile();
+    expect(openResult.success).toBe(true);
+    const openFile = await openResult.handle.getFile();
+    const openBuf = await openFile.arrayBuffer();
+    expect(new Uint8Array(openBuf)).toEqual(originalData); // preserved
+  });
+
+  // ── Existing file is accessible via retrieveFileHandle after open ────────────
+
+  it("after opening a seeded file, the file is retrievable via retrieveFileHandle", async () => {
+    // Seed the mock so the file already exists (simulates a prior session)
+    mock.files.set("workout-data.sqlite", new Uint8Array([1, 2, 3]));
+
+    await openExistingDatabaseFile();
+
+    const retrieved = await retrieveFileHandle();
+    expect(retrieved).toBeTruthy();
+  });
+});
+
 describe("storeFileHandle / requestWritePermissionAndStore (no-op compatibility shims)", () => {
   let mock;
   let storeFileHandle;
