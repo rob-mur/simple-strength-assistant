@@ -36,11 +36,11 @@ async function seedLongHistory(page: import("@playwright/test").Page) {
     await page.waitForTimeout(100);
   }
 
-  // Navigate to history
-  const historyBtn = page.locator('[data-testid="view-history-btn"]');
-  if (await historyBtn.isVisible()) {
-    await historyBtn.click();
-  }
+  // Navigate to history via SPA navigation (works regardless of session state)
+  await page.evaluate(() => {
+    window.history.pushState({}, "", "/workout/history");
+    window.dispatchEvent(new PopStateEvent("popstate"));
+  });
   await page.waitForTimeout(500);
 }
 
