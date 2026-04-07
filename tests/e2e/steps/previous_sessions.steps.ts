@@ -2,13 +2,6 @@ import { Given, When, Then, expect } from "./fixtures";
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
-/** Returns the collapse content div inside the Previous Sessions panel. */
-function historyContent(page: import("@playwright/test").Page) {
-  return page.locator(
-    '[data-testid="previous-sessions"] [data-testid="previous-sessions-content"]',
-  );
-}
-
 /** Returns every set row in the expanded history feed. */
 function historyRows(page: import("@playwright/test").Page) {
   return page.locator('[data-testid="previous-sessions-content"] tbody tr');
