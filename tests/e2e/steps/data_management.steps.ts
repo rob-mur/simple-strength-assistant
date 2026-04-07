@@ -4,6 +4,14 @@ import * as os from "os";
 import { Given, When, Then, expect } from "./fixtures";
 import { setDioxusInput } from "./dioxus_helpers";
 
+// ── Navigation step ────────────────────────────────────────────────────────────
+
+Given("I navigate to the Settings tab", async ({ page }) => {
+  await page.click('[data-testid="tab-settings"]');
+  await page.waitForLoadState("networkidle");
+  await page.waitForTimeout(100);
+});
+
 // ── Export steps ───────────────────────────────────────────────────────────────
 
 Then("I should see the export button", async ({ page }) => {
@@ -50,8 +58,8 @@ Given(
     await page.click('button:has-text("Save Exercise")');
     await expect(page.locator("#exercise-name-input")).not.toBeVisible();
 
-    // Go back to workout tab to use the export button
-    await page.click('button[role="tab"]:has-text("Workout")');
+    // Go to Settings tab to use the export button
+    await page.click('[data-testid="tab-settings"]');
 
     // Export the database to a temporary file
     const downloadPromise = page.waitForEvent("download");
