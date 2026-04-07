@@ -40,7 +40,7 @@ extern "C" {
 }
 
 /// Current schema version. Bump this when the schema changes.
-const SCHEMA_VERSION: i64 = 2;
+const SCHEMA_VERSION: i64 = 3;
 
 #[derive(Clone, PartialEq)]
 pub struct Database {
@@ -74,13 +74,12 @@ impl Database {
         let current_version = self.get_schema_version().await.unwrap_or(0);
         log::debug!("[DB] Current schema version: {}", current_version);
 
-        if current_version < SCHEMA_VERSION {
+        if current_version < 2 {
             log::debug!(
-                "[DB] Migrating schema from v{} to v{}",
-                current_version,
-                SCHEMA_VERSION
+                "[DB] Migrating schema from v{} to v2: dropping incompatible tables",
+                current_version
             );
-            // Drop old tables that are incompatible with the new schema.
+            // Drop old tables that are incompatible with the v2 schema.
             // Exercises table is retained (compatible across versions).
             self.execute_internal("DROP TABLE IF EXISTS completed_sets", &[])
                 .await?;
@@ -88,6 +87,7 @@ impl Database {
                 .await?;
         }
 
+        // Create base tables (v2 schema) if they don't exist yet.
         let create_exercises = r#"
             CREATE TABLE IF NOT EXISTS exercises (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -124,11 +124,168 @@ impl Database {
         log::debug!("[DB] Creating index on exercise_id...");
         self.execute_internal(create_index, &[]).await?;
 
+        // ── v3 migration: add sync-readiness columns ──────────────────────────
+        if current_version < 3 {
+            log::debug!("[DB] Applying v3 migration: adding sync columns");
+            self.apply_v3_migration().await?;
+        }
+
         // Stamp the new version
         self.execute_internal(&format!("PRAGMA user_version = {}", SCHEMA_VERSION), &[])
             .await?;
 
         Ok(())
+    }
+
+    /// Adds `uuid`, `updated_at`, and `deleted_at` columns to both record tables,
+    /// then backfills existing rows.  Uses ADD COLUMN (non-destructive) so that
+    /// any pre-existing data is preserved.
+    async fn apply_v3_migration(&self) -> Result<(), DatabaseError> {
+        let now = js_sys::Date::now() as i64;
+
+        // ── exercises table ──────────────────────────────────────────────────
+        // ADD COLUMN is a no-op if the column already exists on repeated runs,
+        // but SQLite errors if you try to add a duplicate column.  We guard each
+        // with a separate statement so partial migrations don't stall.
+
+        // uuid column
+        let _ = self
+            .execute_internal(
+                "ALTER TABLE exercises ADD COLUMN uuid TEXT NOT NULL DEFAULT ''",
+                &[],
+            )
+            .await; // ignore "duplicate column" errors
+
+        // updated_at column
+        let _ = self
+            .execute_internal(
+                "ALTER TABLE exercises ADD COLUMN updated_at INTEGER NOT NULL DEFAULT 0",
+                &[],
+            )
+            .await;
+
+        // deleted_at column
+        let _ = self
+            .execute_internal("ALTER TABLE exercises ADD COLUMN deleted_at INTEGER", &[])
+            .await;
+
+        // Backfill existing exercises that still have an empty uuid.
+        let existing_exercises = self
+            .execute_internal(
+                "SELECT id FROM exercises WHERE uuid = '' OR uuid IS NULL",
+                &[],
+            )
+            .await?;
+
+        if let Some(arr) = existing_exercises.dyn_ref::<js_sys::Array>() {
+            for i in 0..arr.length() {
+                let row = arr.get(i);
+                let id_val = js_sys::Reflect::get(&row, &JsValue::from_str("id"))
+                    .unwrap_or(JsValue::NULL)
+                    .as_f64()
+                    .unwrap_or(0.0);
+                if id_val == 0.0 {
+                    continue;
+                }
+                let uuid = Self::generate_uuid();
+                let _ = self
+                    .execute_internal(
+                        "UPDATE exercises SET uuid = ?, updated_at = ? WHERE id = ?",
+                        &[
+                            JsValue::from_str(&uuid),
+                            JsValue::from_f64(now as f64),
+                            JsValue::from_f64(id_val),
+                        ],
+                    )
+                    .await;
+            }
+        }
+
+        // ── completed_sets table ─────────────────────────────────────────────
+
+        let _ = self
+            .execute_internal(
+                "ALTER TABLE completed_sets ADD COLUMN uuid TEXT NOT NULL DEFAULT ''",
+                &[],
+            )
+            .await;
+
+        let _ = self
+            .execute_internal(
+                "ALTER TABLE completed_sets ADD COLUMN updated_at INTEGER NOT NULL DEFAULT 0",
+                &[],
+            )
+            .await;
+
+        let _ = self
+            .execute_internal(
+                "ALTER TABLE completed_sets ADD COLUMN deleted_at INTEGER",
+                &[],
+            )
+            .await;
+
+        // Backfill existing sets.
+        let existing_sets = self
+            .execute_internal(
+                "SELECT id FROM completed_sets WHERE uuid = '' OR uuid IS NULL",
+                &[],
+            )
+            .await?;
+
+        if let Some(arr) = existing_sets.dyn_ref::<js_sys::Array>() {
+            for i in 0..arr.length() {
+                let row = arr.get(i);
+                let id_val = js_sys::Reflect::get(&row, &JsValue::from_str("id"))
+                    .unwrap_or(JsValue::NULL)
+                    .as_f64()
+                    .unwrap_or(0.0);
+                if id_val == 0.0 {
+                    continue;
+                }
+                let uuid = Self::generate_uuid();
+                let _ = self
+                    .execute_internal(
+                        "UPDATE completed_sets SET uuid = ?, updated_at = ? WHERE id = ?",
+                        &[
+                            JsValue::from_str(&uuid),
+                            JsValue::from_f64(now as f64),
+                            JsValue::from_f64(id_val),
+                        ],
+                    )
+                    .await;
+            }
+        }
+
+        log::debug!("[DB] v3 migration complete");
+        Ok(())
+    }
+
+    /// Generate a UUID v4 string using the browser's crypto API.
+    fn generate_uuid() -> String {
+        // Use crypto.randomUUID() if available (all modern browsers).
+        let global = js_sys::global();
+        if let Ok(crypto) = js_sys::Reflect::get(&global, &JsValue::from_str("crypto"))
+            && let Ok(uuid_fn) = js_sys::Reflect::get(&crypto, &JsValue::from_str("randomUUID"))
+            && let Some(f) = uuid_fn.dyn_ref::<js_sys::Function>()
+            && let Ok(result) = f.call0(&crypto)
+            && let Some(s) = result.as_string()
+        {
+            return s;
+        }
+
+        // Fallback: construct a UUID-shaped string from Math.random().
+        let r = || (js_sys::Math::random() * 65535.0_f64).floor() as u32;
+        format!(
+            "{:04x}{:04x}-{:04x}-4{:03x}-{:04x}-{:04x}{:04x}{:04x}",
+            r(),
+            r(),
+            r(),
+            r() & 0x0fff,
+            (r() & 0x3fff) | 0x8000,
+            r(),
+            r(),
+            r()
+        )
     }
 
     async fn get_schema_version(&self) -> Result<i64, DatabaseError> {
@@ -189,10 +346,11 @@ impl Database {
         };
 
         let now = js_sys::Date::now();
+        let uuid = Self::generate_uuid();
 
         let sql = r#"
-            INSERT INTO completed_sets (exercise_id, set_number, reps, rpe, weight, is_bodyweight, recorded_at)
-            VALUES (?, ?, ?, ?, ?, ?, ?)
+            INSERT INTO completed_sets (exercise_id, set_number, reps, rpe, weight, is_bodyweight, recorded_at, uuid, updated_at)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
             RETURNING id
         "#;
 
@@ -205,6 +363,8 @@ impl Database {
                 .map(|w| JsValue::from_f64(w as f64))
                 .unwrap_or(JsValue::NULL),
             JsValue::from_bool(is_bodyweight),
+            JsValue::from_f64(now),
+            JsValue::from_str(&uuid),
             JsValue::from_f64(now),
         ];
 
@@ -225,9 +385,12 @@ impl Database {
             SetType::Bodyweight => (None, true),
         };
 
+        let now = js_sys::Date::now();
+        let uuid = Self::generate_uuid();
+
         let sql = r#"
-            INSERT INTO completed_sets (exercise_id, set_number, reps, rpe, weight, is_bodyweight, recorded_at)
-            VALUES (?, ?, ?, ?, ?, ?, ?)
+            INSERT INTO completed_sets (exercise_id, set_number, reps, rpe, weight, is_bodyweight, recorded_at, uuid, updated_at)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
             RETURNING id
         "#;
 
@@ -241,6 +404,8 @@ impl Database {
                 .unwrap_or(JsValue::NULL),
             JsValue::from_bool(is_bodyweight),
             JsValue::from_f64(recorded_at),
+            JsValue::from_str(&uuid),
+            JsValue::from_f64(now),
         ];
 
         let result = self.execute(sql, &params).await?;
@@ -259,7 +424,7 @@ impl Database {
                    cs.set_number, cs.reps, cs.rpe, cs.weight, cs.is_bodyweight, cs.recorded_at
             FROM completed_sets cs
             JOIN exercises e ON cs.exercise_id = e.id
-            WHERE cs.exercise_id = ?
+            WHERE cs.exercise_id = ? AND cs.deleted_at IS NULL
             ORDER BY cs.recorded_at DESC, cs.id DESC
             LIMIT ? OFFSET ?
         "#;
@@ -291,7 +456,7 @@ impl Database {
                    cs.set_number, cs.reps, cs.rpe, cs.weight, cs.is_bodyweight, cs.recorded_at
             FROM completed_sets cs
             JOIN exercises e ON cs.exercise_id = e.id
-            WHERE cs.exercise_id = ? AND cs.recorded_at < ?
+            WHERE cs.exercise_id = ? AND cs.recorded_at < ? AND cs.deleted_at IS NULL
             ORDER BY cs.recorded_at DESC, cs.id DESC
             LIMIT ? OFFSET ?
         "#;
@@ -318,6 +483,7 @@ impl Database {
                    cs.set_number, cs.reps, cs.rpe, cs.weight, cs.is_bodyweight, cs.recorded_at
             FROM completed_sets cs
             JOIN exercises e ON cs.exercise_id = e.id
+            WHERE cs.deleted_at IS NULL
             ORDER BY cs.recorded_at DESC, cs.id DESC
             LIMIT ? OFFSET ?
         "#;
@@ -345,9 +511,11 @@ impl Database {
             None => (JsValue::NULL, true),
         };
 
+        let now = js_sys::Date::now();
+
         let sql = r#"
             UPDATE completed_sets
-            SET reps = ?, rpe = ?, weight = ?, is_bodyweight = ?, recorded_at = ?
+            SET reps = ?, rpe = ?, weight = ?, is_bodyweight = ?, recorded_at = ?, updated_at = ?
             WHERE id = ?
         "#;
 
@@ -357,6 +525,7 @@ impl Database {
             weight_val,
             JsValue::from_bool(is_bodyweight),
             JsValue::from_f64(recorded_at),
+            JsValue::from_f64(now),
             JsValue::from_f64(set_id as f64),
         ];
 
@@ -364,10 +533,16 @@ impl Database {
         Ok(())
     }
 
-    /// Deletes a set by its ID.
+    /// Soft-deletes a set by setting its `deleted_at` timestamp.
+    /// The row is retained in the database but excluded from all normal queries.
     pub async fn delete_set(&self, set_id: i64) -> Result<(), DatabaseError> {
-        let sql = "DELETE FROM completed_sets WHERE id = ?";
-        let params = vec![JsValue::from_f64(set_id as f64)];
+        let now = js_sys::Date::now();
+        let sql = "UPDATE completed_sets SET deleted_at = ?, updated_at = ? WHERE id = ?";
+        let params = vec![
+            JsValue::from_f64(now),
+            JsValue::from_f64(now),
+            JsValue::from_f64(set_id as f64),
+        ];
         self.execute(sql, &params).await?;
         Ok(())
     }
@@ -381,9 +556,11 @@ impl Database {
             crate::models::SetTypeConfig::Bodyweight => (false, None, None),
         };
 
+        let now = js_sys::Date::now();
+
         let result = if let Some(id) = exercise.id {
             let sql = r#"
-                UPDATE exercises SET name = ?, is_weighted = ?, min_weight = ?, increment = ?
+                UPDATE exercises SET name = ?, is_weighted = ?, min_weight = ?, increment = ?, updated_at = ?
                 WHERE id = ?
                 RETURNING id
             "#;
@@ -396,17 +573,20 @@ impl Database {
                 increment
                     .map(|i| JsValue::from_f64(i as f64))
                     .unwrap_or(JsValue::NULL),
+                JsValue::from_f64(now),
                 JsValue::from_f64(id as f64),
             ];
             self.execute(sql, &params).await?
         } else {
+            let uuid = Self::generate_uuid();
             let sql = r#"
-                INSERT INTO exercises (name, is_weighted, min_weight, increment)
-                VALUES (?, ?, ?, ?)
+                INSERT INTO exercises (name, is_weighted, min_weight, increment, uuid, updated_at)
+                VALUES (?, ?, ?, ?, ?, ?)
                 ON CONFLICT(name) DO UPDATE SET
                     is_weighted = excluded.is_weighted,
                     min_weight = excluded.min_weight,
-                    increment = excluded.increment
+                    increment = excluded.increment,
+                    updated_at = excluded.updated_at
                 RETURNING id
             "#;
             let params = vec![
@@ -418,6 +598,8 @@ impl Database {
                 increment
                     .map(|i| JsValue::from_f64(i as f64))
                     .unwrap_or(JsValue::NULL),
+                JsValue::from_str(&uuid),
+                JsValue::from_f64(now),
             ];
             self.execute(sql, &params).await?
         };
@@ -443,8 +625,7 @@ impl Database {
     }
 
     pub async fn get_exercises(&self) -> Result<Vec<ExerciseMetadata>, DatabaseError> {
-        let sql =
-            "SELECT id, name, is_weighted, min_weight, increment FROM exercises ORDER BY name";
+        let sql = "SELECT id, name, is_weighted, min_weight, increment FROM exercises WHERE deleted_at IS NULL ORDER BY name";
         let result = self.execute(sql, &[]).await?;
 
         let array = result
@@ -510,7 +691,7 @@ impl Database {
         let sql = r#"
             SELECT set_number, reps, rpe, weight, is_bodyweight
             FROM completed_sets
-            WHERE exercise_id = ?
+            WHERE exercise_id = ? AND deleted_at IS NULL
             ORDER BY recorded_at DESC, id DESC
             LIMIT 1
         "#;

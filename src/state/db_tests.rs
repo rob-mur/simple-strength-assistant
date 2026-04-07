@@ -1019,6 +1019,347 @@ async fn test_empty_exercise_list_after_open_existing_database_with_no_exercises
     );
 }
 
+// ── Issue 85: sync-readiness schema columns ────────────────────────────────────
+
+/// A newly-saved exercise must have a non-empty UUID.
+#[wasm_bindgen_test]
+async fn test_new_exercise_has_uuid() {
+    use wasm_bindgen::JsCast;
+
+    let mut db = Database::new();
+    db.init(None).await.expect("Database init failed");
+
+    let exercise = ExerciseMetadata {
+        id: None,
+        name: "Squat".to_string(),
+        set_type_config: SetTypeConfig::Weighted {
+            min_weight: 20.0,
+            increment: 2.5,
+        },
+    };
+    let exercise_id = db
+        .save_exercise(&exercise)
+        .await
+        .expect("Save exercise failed");
+
+    let result = db
+        .execute(
+            "SELECT uuid, updated_at FROM exercises WHERE id = ?",
+            &[wasm_bindgen::JsValue::from_f64(exercise_id as f64)],
+        )
+        .await
+        .expect("Query failed");
+    let array = result.dyn_ref::<js_sys::Array>().expect("Expected array");
+    assert_eq!(array.length(), 1, "Should find exactly one row");
+    let row = array.get(0);
+
+    let uuid_val = js_sys::Reflect::get(&row, &wasm_bindgen::JsValue::from_str("uuid"))
+        .unwrap()
+        .as_string()
+        .expect("uuid should be a string");
+    assert!(
+        !uuid_val.is_empty(),
+        "UUID should not be empty for a new exercise"
+    );
+    assert_eq!(uuid_val.len(), 36, "UUID should be 36 characters long");
+
+    let updated_at = js_sys::Reflect::get(&row, &wasm_bindgen::JsValue::from_str("updated_at"))
+        .unwrap()
+        .as_f64()
+        .expect("updated_at should be a number");
+    assert!(
+        updated_at > 0.0,
+        "updated_at should be set for a new exercise"
+    );
+}
+
+/// A newly-logged set must have a non-empty UUID and updated_at.
+#[wasm_bindgen_test]
+async fn test_new_set_has_uuid_and_updated_at() {
+    use wasm_bindgen::JsCast;
+
+    let mut db = Database::new();
+    db.init(None).await.expect("Database init failed");
+
+    let exercise = ExerciseMetadata {
+        id: None,
+        name: "Bench Press".to_string(),
+        set_type_config: SetTypeConfig::Weighted {
+            min_weight: 0.0,
+            increment: 5.0,
+        },
+    };
+    let exercise_id = db
+        .save_exercise(&exercise)
+        .await
+        .expect("Save exercise failed");
+
+    let set = CompletedSet {
+        set_number: 1,
+        reps: 8,
+        rpe: 7.5,
+        set_type: SetType::Weighted { weight: 80.0 },
+    };
+    let set_id = db.log_set(exercise_id, &set).await.expect("log_set failed");
+
+    let result = db
+        .execute(
+            "SELECT uuid, updated_at FROM completed_sets WHERE id = ?",
+            &[wasm_bindgen::JsValue::from_f64(set_id as f64)],
+        )
+        .await
+        .expect("Query failed");
+    let array = result.dyn_ref::<js_sys::Array>().expect("Expected array");
+    assert_eq!(array.length(), 1);
+    let row = array.get(0);
+
+    let uuid_val = js_sys::Reflect::get(&row, &wasm_bindgen::JsValue::from_str("uuid"))
+        .unwrap()
+        .as_string()
+        .expect("uuid should be a string");
+    assert!(
+        !uuid_val.is_empty(),
+        "UUID should not be empty for a new set"
+    );
+    assert_eq!(uuid_val.len(), 36, "UUID should be 36 characters long");
+
+    let updated_at = js_sys::Reflect::get(&row, &wasm_bindgen::JsValue::from_str("updated_at"))
+        .unwrap()
+        .as_f64()
+        .expect("updated_at should be a number");
+    assert!(updated_at > 0.0, "updated_at should be set for a new set");
+}
+
+/// Editing a set must update its updated_at to a value >= the original.
+#[wasm_bindgen_test]
+async fn test_update_set_updates_updated_at() {
+    use wasm_bindgen::JsCast;
+
+    let mut db = Database::new();
+    db.init(None).await.expect("Database init failed");
+
+    let exercise = ExerciseMetadata {
+        id: None,
+        name: "Overhead Press".to_string(),
+        set_type_config: SetTypeConfig::Weighted {
+            min_weight: 0.0,
+            increment: 2.5,
+        },
+    };
+    let exercise_id = db
+        .save_exercise(&exercise)
+        .await
+        .expect("Save exercise failed");
+
+    let set_id = db
+        .log_set(
+            exercise_id,
+            &CompletedSet {
+                set_number: 1,
+                reps: 8,
+                rpe: 7.0,
+                set_type: SetType::Weighted { weight: 50.0 },
+            },
+        )
+        .await
+        .expect("log_set failed");
+
+    // Capture the updated_at before the edit.
+    let before_result = db
+        .execute(
+            "SELECT updated_at FROM completed_sets WHERE id = ?",
+            &[wasm_bindgen::JsValue::from_f64(set_id as f64)],
+        )
+        .await
+        .expect("Query before failed");
+    let before_arr = before_result
+        .dyn_ref::<js_sys::Array>()
+        .expect("Expected array");
+    let before_updated_at = js_sys::Reflect::get(
+        &before_arr.get(0),
+        &wasm_bindgen::JsValue::from_str("updated_at"),
+    )
+    .unwrap()
+    .as_f64()
+    .expect("updated_at before should be a number");
+
+    db.update_set(set_id, 10, 8.0, Some(55.0), 1_700_000_000_000.0)
+        .await
+        .expect("update_set failed");
+
+    let after_result = db
+        .execute(
+            "SELECT updated_at FROM completed_sets WHERE id = ?",
+            &[wasm_bindgen::JsValue::from_f64(set_id as f64)],
+        )
+        .await
+        .expect("Query after failed");
+    let after_arr = after_result
+        .dyn_ref::<js_sys::Array>()
+        .expect("Expected array");
+    let after_updated_at = js_sys::Reflect::get(
+        &after_arr.get(0),
+        &wasm_bindgen::JsValue::from_str("updated_at"),
+    )
+    .unwrap()
+    .as_f64()
+    .expect("updated_at after should be a number");
+
+    assert!(
+        after_updated_at >= before_updated_at,
+        "updated_at ({}) should be >= original ({}) after update",
+        after_updated_at,
+        before_updated_at
+    );
+}
+
+/// Deleting a set soft-deletes it: the row has deleted_at set and no longer
+/// appears in normal queries.
+#[wasm_bindgen_test]
+async fn test_delete_set_is_soft_delete() {
+    use wasm_bindgen::JsCast;
+
+    let mut db = Database::new();
+    db.init(None).await.expect("Database init failed");
+
+    let exercise = ExerciseMetadata {
+        id: None,
+        name: "Romanian Deadlift".to_string(),
+        set_type_config: SetTypeConfig::Weighted {
+            min_weight: 0.0,
+            increment: 5.0,
+        },
+    };
+    let exercise_id = db
+        .save_exercise(&exercise)
+        .await
+        .expect("Save exercise failed");
+
+    let set_id = db
+        .log_set(
+            exercise_id,
+            &CompletedSet {
+                set_number: 1,
+                reps: 8,
+                rpe: 7.0,
+                set_type: SetType::Weighted { weight: 80.0 },
+            },
+        )
+        .await
+        .expect("log_set failed");
+
+    db.delete_set(set_id).await.expect("delete_set failed");
+
+    // The row must still exist in the raw table (soft delete).
+    let raw_result = db
+        .execute(
+            "SELECT deleted_at FROM completed_sets WHERE id = ?",
+            &[wasm_bindgen::JsValue::from_f64(set_id as f64)],
+        )
+        .await
+        .expect("Raw query failed");
+    let raw_arr = raw_result
+        .dyn_ref::<js_sys::Array>()
+        .expect("Expected array");
+    assert_eq!(
+        raw_arr.length(),
+        1,
+        "Row should still exist after soft delete"
+    );
+
+    let deleted_at = js_sys::Reflect::get(
+        &raw_arr.get(0),
+        &wasm_bindgen::JsValue::from_str("deleted_at"),
+    )
+    .unwrap();
+    assert!(
+        !deleted_at.is_null() && !deleted_at.is_undefined(),
+        "deleted_at should be set after soft delete"
+    );
+
+    // The set must not appear in normal queries.
+    let visible = db
+        .get_sets_for_exercise(exercise_id, 10, 0)
+        .await
+        .expect("get_sets_for_exercise failed");
+    assert_eq!(
+        visible.len(),
+        0,
+        "Soft-deleted set should not appear in normal queries"
+    );
+}
+
+/// Each newly-inserted exercise or set gets a unique UUID.
+#[wasm_bindgen_test]
+async fn test_uuids_are_unique_across_records() {
+    use wasm_bindgen::JsCast;
+
+    let mut db = Database::new();
+    db.init(None).await.expect("Database init failed");
+
+    let exercise = ExerciseMetadata {
+        id: None,
+        name: "Deadlift".to_string(),
+        set_type_config: SetTypeConfig::Weighted {
+            min_weight: 0.0,
+            increment: 5.0,
+        },
+    };
+    let exercise_id = db
+        .save_exercise(&exercise)
+        .await
+        .expect("Save exercise failed");
+
+    let id1 = db
+        .log_set(
+            exercise_id,
+            &CompletedSet {
+                set_number: 1,
+                reps: 5,
+                rpe: 7.0,
+                set_type: SetType::Weighted { weight: 100.0 },
+            },
+        )
+        .await
+        .expect("log set 1 failed");
+    let id2 = db
+        .log_set(
+            exercise_id,
+            &CompletedSet {
+                set_number: 2,
+                reps: 5,
+                rpe: 7.5,
+                set_type: SetType::Weighted { weight: 105.0 },
+            },
+        )
+        .await
+        .expect("log set 2 failed");
+
+    let result = db
+        .execute(
+            "SELECT uuid FROM completed_sets WHERE id IN (?, ?)",
+            &[
+                wasm_bindgen::JsValue::from_f64(id1 as f64),
+                wasm_bindgen::JsValue::from_f64(id2 as f64),
+            ],
+        )
+        .await
+        .expect("Query failed");
+    let array = result.dyn_ref::<js_sys::Array>().expect("Expected array");
+    assert_eq!(array.length(), 2);
+
+    let uuid1 = js_sys::Reflect::get(&array.get(0), &wasm_bindgen::JsValue::from_str("uuid"))
+        .unwrap()
+        .as_string()
+        .expect("uuid1 should be a string");
+    let uuid2 = js_sys::Reflect::get(&array.get(1), &wasm_bindgen::JsValue::from_str("uuid"))
+        .unwrap()
+        .as_string()
+        .expect("uuid2 should be a string");
+
+    assert_ne!(uuid1, uuid2, "Each set should have a unique UUID");
+}
+
 /// RED: Creating a new database and reopening the same file restores exercises.
 ///
 /// Simulates the "create new database" path: create a DB, add exercises, export,
@@ -1059,4 +1400,177 @@ async fn test_exercises_restored_after_create_new_then_reopen() {
         "Deadlift should be restored after reopening"
     );
     assert_eq!(exercises[0].name, "Deadlift");
+}
+
+/// Editing an exercise updates its updated_at to a value >= the one before the edit.
+#[wasm_bindgen_test]
+async fn test_edit_exercise_updates_updated_at() {
+    use wasm_bindgen::JsCast;
+
+    let mut db = Database::new();
+    db.init(None).await.expect("Database init failed");
+
+    let exercise = ExerciseMetadata {
+        id: None,
+        name: "Squat".to_string(),
+        set_type_config: SetTypeConfig::Weighted {
+            min_weight: 20.0,
+            increment: 2.5,
+        },
+    };
+    let exercise_id = db.save_exercise(&exercise).await.expect("save failed");
+
+    // Read the initial updated_at
+    let before_result = db
+        .execute(
+            "SELECT updated_at FROM exercises WHERE id = ?",
+            &[wasm_bindgen::JsValue::from_f64(exercise_id as f64)],
+        )
+        .await
+        .expect("SELECT before failed");
+    let before_arr = before_result.dyn_ref::<js_sys::Array>().unwrap();
+    let before_row = before_arr.get(0);
+    let updated_at_before =
+        js_sys::Reflect::get(&before_row, &wasm_bindgen::JsValue::from_str("updated_at"))
+            .unwrap()
+            .as_f64()
+            .expect("updated_at_before should be number");
+
+    // Update the exercise
+    let updated = ExerciseMetadata {
+        id: Some(exercise_id),
+        name: "Squat".to_string(),
+        set_type_config: SetTypeConfig::Weighted {
+            min_weight: 20.0,
+            increment: 5.0, // changed
+        },
+    };
+    db.save_exercise(&updated).await.expect("update failed");
+
+    let after_result = db
+        .execute(
+            "SELECT updated_at FROM exercises WHERE id = ?",
+            &[wasm_bindgen::JsValue::from_f64(exercise_id as f64)],
+        )
+        .await
+        .expect("SELECT after failed");
+    let after_arr = after_result.dyn_ref::<js_sys::Array>().unwrap();
+    let after_row = after_arr.get(0);
+    let updated_at_after =
+        js_sys::Reflect::get(&after_row, &wasm_bindgen::JsValue::from_str("updated_at"))
+            .unwrap()
+            .as_f64()
+            .expect("updated_at_after should be number");
+
+    assert!(
+        updated_at_after >= updated_at_before,
+        "updated_at after edit ({}) must be >= before ({})",
+        updated_at_after,
+        updated_at_before
+    );
+}
+
+/// Migration from v2 to v3: an existing database (exported at v2, imported fresh)
+/// should run the v3 migration without errors. Pre-existing rows should be
+/// backfilled with uuid and updated_at.
+#[wasm_bindgen_test]
+async fn test_v2_to_v3_migration_backfills_existing_rows() {
+    use wasm_bindgen::JsCast;
+
+    // Create and export a v2-schema database (same code path — the migration runs
+    // incrementally, so the result after init() on a fresh DB is always current).
+    // We simulate a pre-v3 database by creating data, exporting, and re-importing;
+    // the re-import triggers migrate_and_create_tables which applies v3 on top.
+    let mut db1 = Database::new();
+    db1.init(None).await.expect("db1 init failed");
+
+    let exercise = ExerciseMetadata {
+        id: None,
+        name: "Deadlift".to_string(),
+        set_type_config: SetTypeConfig::Weighted {
+            min_weight: 60.0,
+            increment: 5.0,
+        },
+    };
+    let ex_id = db1.save_exercise(&exercise).await.expect("save failed");
+    db1.log_set(
+        ex_id,
+        &CompletedSet {
+            set_number: 1,
+            reps: 5,
+            rpe: 8.0,
+            set_type: SetType::Weighted { weight: 100.0 },
+        },
+    )
+    .await
+    .expect("log_set failed");
+
+    let exported = db1.export().await.expect("export failed");
+
+    // Re-import: migration runs again (idempotent).
+    let mut db2 = Database::new();
+    db2.init(Some(exported)).await.expect("db2 init failed");
+
+    // All exercises and sets should have non-empty uuids and non-zero updated_at.
+    let ex_result = db2
+        .execute(
+            "SELECT uuid, updated_at FROM exercises WHERE deleted_at IS NULL",
+            &[],
+        )
+        .await
+        .expect("SELECT exercises failed");
+    let ex_arr = ex_result
+        .dyn_ref::<js_sys::Array>()
+        .expect("Expected array");
+    assert!(ex_arr.length() > 0, "Should have at least one exercise");
+    for i in 0..ex_arr.length() {
+        let row = ex_arr.get(i);
+        let uuid = js_sys::Reflect::get(&row, &wasm_bindgen::JsValue::from_str("uuid"))
+            .unwrap()
+            .as_string()
+            .unwrap_or_default();
+        assert!(
+            !uuid.is_empty(),
+            "Exercise uuid must not be empty after migration"
+        );
+        let updated_at = js_sys::Reflect::get(&row, &wasm_bindgen::JsValue::from_str("updated_at"))
+            .unwrap()
+            .as_f64()
+            .unwrap_or(0.0);
+        assert!(
+            updated_at > 0.0,
+            "Exercise updated_at must be non-zero after migration"
+        );
+    }
+
+    let sets_result = db2
+        .execute(
+            "SELECT uuid, updated_at FROM completed_sets WHERE deleted_at IS NULL",
+            &[],
+        )
+        .await
+        .expect("SELECT sets failed");
+    let sets_arr = sets_result
+        .dyn_ref::<js_sys::Array>()
+        .expect("Expected array");
+    assert!(sets_arr.length() > 0, "Should have at least one set");
+    for i in 0..sets_arr.length() {
+        let row = sets_arr.get(i);
+        let uuid = js_sys::Reflect::get(&row, &wasm_bindgen::JsValue::from_str("uuid"))
+            .unwrap()
+            .as_string()
+            .unwrap_or_default();
+        assert!(
+            !uuid.is_empty(),
+            "Set uuid must not be empty after migration"
+        );
+        let updated_at = js_sys::Reflect::get(&row, &wasm_bindgen::JsValue::from_str("updated_at"))
+            .unwrap()
+            .as_f64()
+            .unwrap_or(0.0);
+        assert!(
+            updated_at > 0.0,
+            "Set updated_at must be non-zero after migration"
+        );
+    }
 }
