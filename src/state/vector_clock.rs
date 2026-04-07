@@ -31,8 +31,7 @@ pub enum ClockRelationship {
 ///   `Concurrent`.
 /// - If all entries are equal (including both empty), they are `Identical`.
 pub fn compare_vector_clocks(a: &VectorClock, b: &VectorClock) -> ClockRelationship {
-    let all_devices: std::collections::HashSet<&String> =
-        a.keys().chain(b.keys()).collect();
+    let all_devices: std::collections::HashSet<&String> = a.keys().chain(b.keys()).collect();
 
     let mut a_greater = false;
     let mut b_greater = false;
@@ -61,10 +60,7 @@ mod tests {
     use super::*;
 
     fn clock(entries: &[(&str, u64)]) -> VectorClock {
-        entries
-            .iter()
-            .map(|(k, v)| (k.to_string(), *v))
-            .collect()
+        entries.iter().map(|(k, v)| (k.to_string(), *v)).collect()
     }
 
     // QA item: Given two identical clocks, the function reports them as identical.
