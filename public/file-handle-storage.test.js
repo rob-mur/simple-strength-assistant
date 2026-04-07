@@ -315,3 +315,54 @@ describe("storeFileHandle / requestWritePermissionAndStore (no-op compatibility 
     expect(await requestWritePermissionAndStore({})).toBe(true);
   });
 });
+
+// ── OPFS unavailable fallback path ─────────────────────────────────────────────
+// Verifies the documented graceful degradation when OPFS is not available
+// (iOS Safari < 16.4): each exported function returns the correct no-op result
+// rather than throwing.
+
+async function loadModuleWithoutOPFS() {
+  // Remove navigator.storage so isOPFSAvailable() returns false.
+  Object.defineProperty(global, "navigator", {
+    value: {},
+    writable: true,
+    configurable: true,
+  });
+  if (typeof global.window === "undefined") {
+    global.window = {};
+  }
+  const mod = await import("./file-handle-storage.js");
+  return mod;
+}
+
+describe("OPFS unavailable — graceful fallback (iOS Safari < 16.4)", () => {
+  let mod;
+
+  beforeEach(async () => {
+    vi.resetModules();
+    mod = await loadModuleWithoutOPFS();
+  });
+
+  it("createNewDatabaseFile returns { success: false } when OPFS is unavailable", async () => {
+    const result = await mod.createNewDatabaseFile();
+    expect(result.success).toBe(false);
+    expect(result.error).toBe("NotSupportedError");
+    expect(result.message).toMatch(/not available/i);
+  });
+
+  it("openExistingDatabaseFile returns { success: false } when OPFS is unavailable", async () => {
+    const result = await mod.openExistingDatabaseFile();
+    expect(result.success).toBe(false);
+    expect(result.error).toBe("NotSupportedError");
+  });
+
+  it("retrieveFileHandle returns null when OPFS is unavailable", async () => {
+    const handle = await mod.retrieveFileHandle();
+    expect(handle).toBeNull();
+  });
+
+  it("clearFileHandle returns true (no-op) when OPFS is unavailable", async () => {
+    const result = await mod.clearFileHandle();
+    expect(result).toBe(true);
+  });
+});
