@@ -18,10 +18,10 @@ Feature: Collapsible Previous Sessions in active workout
     When I tap the "Previous Sessions" header
     Then the "Previous Sessions" section should be collapsed
 
-  Scenario: Logged set appears in history feed immediately
+  Scenario: Completed previous-day session sets appear in history feed
     Given I start a test session with "Deadlift"
-    When I log a set in the current session
-    And I tap the "Previous Sessions" header
+    And I have logged 1 sets for "Deadlift" in a previous session
+    When I tap the "Previous Sessions" header
     Then the history feed should contain at least 1 set
 
   Scenario: Load more button loads the next page when history is long
@@ -33,13 +33,13 @@ Feature: Collapsible Previous Sessions in active workout
     When I click the "Load more" button
     Then the history feed should contain 25 sets
 
-  Scenario: History feed updates reactively when a set is logged while the section is expanded
+  Scenario: History feed shows only previous-day sets while current-day sets are excluded
     Given I start a test session with "Deadlift"
     And I have logged 3 sets for "Deadlift" in a previous session
     When I tap the "Previous Sessions" header
     Then the history feed should contain 3 sets
     When I log a set in the current session
-    Then the history feed should contain 4 sets
+    Then the history feed should contain 3 sets
 
   Scenario: Expanded section shows Set, Reps, and RPE column headers
     Given I start a test session with "Deadlift"

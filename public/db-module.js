@@ -37,6 +37,12 @@ export async function initDatabase(fileData) {
       db = new SQL.Database();
     }
 
+    // Expose a global test hook so E2E tests can run raw SQL without
+    // going through the Rust/WASM layer (e.g. to backdate timestamps).
+    if (typeof window !== "undefined") {
+      window.__dbExecuteQuery = (sql, params) => executeQuery(sql, params);
+    }
+
     return true;
   } catch (error) {
     console.error("Failed to initialize database:", error);
