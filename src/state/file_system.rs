@@ -1,7 +1,6 @@
 #![cfg_attr(feature = "test-mode", allow(dead_code, unused_imports))]
 use super::storage::StorageBackend;
 use async_trait::async_trait;
-use gloo_storage::{LocalStorage, Storage};
 use thiserror::Error;
 use wasm_bindgen::prelude::*;
 use wasm_bindgen_futures::JsFuture;
@@ -73,7 +72,8 @@ impl From<JsValue> for FileSystemError {
 }
 
 /// Manages file system operations using OPFS (Origin Private File System).
-/// Falls back to LocalStorage on browsers that do not support OPFS (iOS Safari < 16.4).
+/// On browsers without OPFS support (iOS Safari < 16.4), the app loads but
+/// data is not persisted across sessions (graceful fallback).
 #[derive(Clone)]
 pub struct FileSystemManager {
     handle: Option<JsValue>,
@@ -88,8 +88,8 @@ impl PartialEq for FileSystemManager {
 
 impl FileSystemManager {
     /// Creates a new FileSystemManager, automatically detecting whether OPFS is
-    /// available. Browsers without OPFS (iOS Safari < 16.4) use LocalStorage as a
-    /// graceful fallback: the app loads but data does not persist across sessions.
+    /// available. Browsers without OPFS (iOS Safari < 16.4) use a no-persistence
+    /// fallback: the app loads but data does not persist across sessions.
     pub fn new() -> Self {
         Self {
             handle: None,
@@ -112,8 +112,7 @@ impl FileSystemManager {
     /// On the fallback path (no OPFS), always returns true so the app proceeds.
     pub async fn check_cached_handle(&mut self) -> Result<bool, FileSystemError> {
         if self.use_fallback {
-            log::debug!("[FileSystem] Using fallback storage (LocalStorage)");
-            // Fallback storage doesn't need handle caching
+            log::debug!("[FileSystem] OPFS not available — using no-persistence fallback mode");
             return Ok(true);
         }
 
@@ -261,10 +260,11 @@ impl FileSystemManager {
         Ok(())
     }
 
-    /// Switches the manager to use fallback storage (LocalStorage).
-    /// Used when OPFS is not available (iOS Safari < 16.4).
+    /// Switches the manager to fallback (no-persistence) mode.
+    /// Used when OPFS is not available (iOS Safari < 16.4): the app loads
+    /// and runs normally but data is not persisted across sessions.
     pub fn use_fallback_storage(&mut self) -> Result<(), FileSystemError> {
-        log::info!("Using LocalStorage fallback storage (OPFS not available)");
+        log::info!("Using fallback mode (OPFS unavailable — data will not persist)");
         self.use_fallback = true;
         Ok(())
     }
@@ -368,19 +368,14 @@ impl FileSystemManager {
     }
 
     async fn read_from_fallback(&self) -> Result<Vec<u8>, FileSystemError> {
-        match LocalStorage::get::<Vec<u8>>("workout_db_data") {
-            Ok(data) => {
-                // Validate SQLite format if data is not empty
-                if !data.is_empty()
-                    && data.len() >= SQLITE_MAGIC_NUMBER.len()
-                    && !data.starts_with(SQLITE_MAGIC_NUMBER)
-                {
-                    return Err(FileSystemError::InvalidFormat);
-                }
-                Ok(data)
-            }
-            Err(_) => Ok(Vec::new()),
-        }
+        // OPFS is not available on this browser (iOS Safari < 16.4).
+        // Data does not persist across sessions — return empty so the app
+        // starts fresh without crashing. This matches the documented graceful
+        // fallback behaviour for unsupported platforms.
+        log::debug!(
+            "[FileSystem] Fallback read: OPFS unavailable, returning empty (no persistence)"
+        );
+        Ok(Vec::new())
     }
 
     /// Writes the provided data to the managed file.
@@ -497,9 +492,13 @@ impl FileSystemManager {
         Ok(())
     }
 
-    async fn write_to_fallback(&self, data: &[u8]) -> Result<(), FileSystemError> {
-        LocalStorage::set("workout_db_data", data.to_vec())
-            .map_err(|e| FileSystemError::WriteError(e.to_string()))?;
+    async fn write_to_fallback(&self, _data: &[u8]) -> Result<(), FileSystemError> {
+        // OPFS is not available on this browser (iOS Safari < 16.4).
+        // Writes are silently dropped — the app remains functional but data
+        // does not persist across sessions.
+        log::debug!(
+            "[FileSystem] Fallback write: OPFS unavailable, discarding data (no persistence)"
+        );
         Ok(())
     }
 

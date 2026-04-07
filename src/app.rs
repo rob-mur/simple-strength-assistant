@@ -148,7 +148,7 @@ fn Shell() -> Element {
                         h4 { class: "font-bold", "Browser Storage Mode" }
                         p {
                             class: "text-sm",
-                            "Your data is stored in browser LocalStorage. This works offline but won't sync across devices or browsers."
+                            "Your data is stored in your browser's private storage (OPFS). This works offline but won't sync across devices or browsers."
                         }
                     }
                 }
