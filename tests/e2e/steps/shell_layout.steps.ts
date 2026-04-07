@@ -56,22 +56,19 @@ Given(
   },
 );
 
-Then(
-  "the tab bar should be visible within the viewport",
-  async ({ page }) => {
-    const tabBar = page.locator('[role="tablist"]');
-    await expect(tabBar).toBeVisible();
+Then("the tab bar should be visible within the viewport", async ({ page }) => {
+  const tabBar = page.locator('[role="tablist"]');
+  await expect(tabBar).toBeVisible();
 
-    // Assert the tab bar is within the viewport bounds (not scrolled off screen)
-    const viewportHeight = page.viewportSize()!.height;
-    const boundingBox = await tabBar.boundingBox();
-    expect(boundingBox).not.toBeNull();
-    expect(boundingBox!.y).toBeGreaterThanOrEqual(0);
-    expect(boundingBox!.y + boundingBox!.height).toBeLessThanOrEqual(
-      viewportHeight,
-    );
-  },
-);
+  // Assert the tab bar is within the viewport bounds (not scrolled off screen)
+  const viewportHeight = page.viewportSize()!.height;
+  const boundingBox = await tabBar.boundingBox();
+  expect(boundingBox).not.toBeNull();
+  expect(boundingBox!.y).toBeGreaterThanOrEqual(0);
+  expect(boundingBox!.y + boundingBox!.height).toBeLessThanOrEqual(
+    viewportHeight,
+  );
+});
 
 Then(
   "the tab bar should not be scrolled off the bottom of the screen",
@@ -95,20 +92,17 @@ When("I scroll to the bottom of the content area", async ({ page }) => {
   await page.waitForTimeout(300);
 });
 
-Then(
-  "the tab bar should not have moved vertically",
-  async ({ page }) => {
-    // After scrolling the content, the tab bar position should still be
-    // within the viewport — the same check as "visible within the viewport"
-    const tabBar = page.locator('[role="tablist"]');
-    const viewportHeight = page.viewportSize()!.height;
-    const boundingBox = await tabBar.boundingBox();
-    expect(boundingBox).not.toBeNull();
-    expect(boundingBox!.y + boundingBox!.height).toBeLessThanOrEqual(
-      viewportHeight,
-    );
-  },
-);
+Then("the tab bar should not have moved vertically", async ({ page }) => {
+  // After scrolling the content, the tab bar position should still be
+  // within the viewport — the same check as "visible within the viewport"
+  const tabBar = page.locator('[role="tablist"]');
+  const viewportHeight = page.viewportSize()!.height;
+  const boundingBox = await tabBar.boundingBox();
+  expect(boundingBox).not.toBeNull();
+  expect(boundingBox!.y + boundingBox!.height).toBeLessThanOrEqual(
+    viewportHeight,
+  );
+});
 
 Then("the page content area should be scrollable", async ({ page }) => {
   const contentArea = page.locator('[data-testid="shell-content"]');
