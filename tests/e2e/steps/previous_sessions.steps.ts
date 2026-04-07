@@ -147,7 +147,8 @@ Given(
     // start-of-today cutoff used by the Previous Sessions panel.
     // The panel only shows sets with recorded_at < midnight(today, local tz).
     // window.__dbExecuteQuery is registered by db-module.js after initDatabase()
-    // and shares the same db instance as the running app.
+    // only when window.__TEST_MODE__ === true (set by the Playwright fixture).
+    // It shares the same db instance as the running app.
     await page.evaluate(async () => {
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       const exec = (window as any).__dbExecuteQuery as

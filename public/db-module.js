@@ -37,9 +37,11 @@ export async function initDatabase(fileData) {
       db = new SQL.Database();
     }
 
-    // Expose a global test hook so E2E tests can run raw SQL without
-    // going through the Rust/WASM layer (e.g. to backdate timestamps).
-    if (typeof window !== "undefined") {
+    // Expose a raw SQL hook only when the test harness has flagged this as a
+    // test environment (window.__TEST_MODE__ = true is set via addInitScript
+    // in the Playwright fixture before the page loads). This ensures the hook
+    // is never present in production builds.
+    if (typeof window !== "undefined" && window.__TEST_MODE__) {
       window.__dbExecuteQuery = (sql, params) => executeQuery(sql, params);
     }
 
