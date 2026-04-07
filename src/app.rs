@@ -1,4 +1,5 @@
 use crate::components::data_management::DataManagementPanel;
+use crate::components::debug_panel::DebugPanel;
 use crate::components::exercise_form::ExerciseForm;
 use crate::components::history_view::HistoryView;
 use crate::components::library_view::LibraryView;
@@ -861,6 +862,9 @@ pub fn App() -> Element {
                         }
                     }
                 }
+            }
+            if cfg!(debug_assertions) {
+                DebugPanel {}
             }
         }
     }
