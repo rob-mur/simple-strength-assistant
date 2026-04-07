@@ -10,8 +10,8 @@ use web_sys::js_sys;
 /// Algorithm: shift `now` into local time, floor to midnight, shift back to UTC.
 pub fn start_of_today_utc_ms() -> f64 {
     let now_ms = js_sys::Date::now();
-    // `getTimezoneOffset()` returns minutes *behind* UTC, so negate it to get
-    // the offset to add in order to convert UTC → local time.
+    // `getTimezoneOffset()` returns (UTC − local) in minutes.
+    // Negate it to get (local − UTC), the offset needed to shift UTC → local.
     let offset_ms = -js_sys::Date::new_0().get_timezone_offset() * 60_000.0;
     let local_now_ms = now_ms + offset_ms;
     // Truncate to the start of the local calendar day, then convert back to UTC.
