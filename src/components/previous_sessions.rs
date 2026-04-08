@@ -5,10 +5,24 @@ use dioxus::prelude::*;
 use wasm_bindgen::prelude::*;
 use web_sys::{IntersectionObserver, IntersectionObserverEntry, IntersectionObserverInit};
 
-// Include all sets regardless of date (finished sessions from today are still "previous").
-const ALL_SETS_CUTOFF_MS: f64 = f64::MAX;
-
 const PAGE_SIZE: i64 = 20;
+
+/// Returns the UTC timestamp (Unix ms) for midnight at the start of the current
+/// local calendar day.  Sets recorded on or after this value belong to today and
+/// must not appear in the Previous Sessions panel.
+///
+/// The calculation follows the same logic used in the database tests:
+/// 1. Obtain the device's UTC offset from `Date.getTimezoneOffset()` (minutes,
+///    negated so east-of-UTC is positive).
+/// 2. Shift `Date.now()` by that offset to obtain a "local-time epoch".
+/// 3. Truncate to a whole day, then shift back to get UTC midnight for today.
+fn start_of_today_utc_ms() -> f64 {
+    let now_ms = js_sys::Date::now();
+    // getTimezoneOffset() returns minutes *west* of UTC, so negate to get east.
+    let offset_ms = -js_sys::Date::new_0().get_timezone_offset() * 60_000.0;
+    let local_now_ms = now_ms + offset_ms;
+    (local_now_ms / 86_400_000.0).floor() * 86_400_000.0 - offset_ms
+}
 
 /// Collapsible "Previous Sessions" panel shown inside the active workout view.
 ///
@@ -47,7 +61,7 @@ pub fn PreviousSessions(
             loading.set(true);
             if let Some(db) = state.database() {
                 match db
-                    .get_sets_for_exercise_before(eid, ALL_SETS_CUTOFF_MS, PAGE_SIZE, offset)
+                    .get_sets_for_exercise_before(eid, start_of_today_utc_ms(), PAGE_SIZE, offset)
                     .await
                 {
                     Ok(mut new_sets) => {
@@ -86,7 +100,7 @@ pub fn PreviousSessions(
             loading.set(true);
             if let Some(db) = state.database() {
                 match db
-                    .get_sets_for_exercise_before(eid, ALL_SETS_CUTOFF_MS, PAGE_SIZE, 0)
+                    .get_sets_for_exercise_before(eid, start_of_today_utc_ms(), PAGE_SIZE, 0)
                     .await
                 {
                     Ok(new_sets) => {

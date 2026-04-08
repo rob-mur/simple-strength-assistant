@@ -2,13 +2,6 @@ import { Given, When, Then, expect } from "./fixtures";
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
-/** Returns the collapse content div inside the Previous Sessions panel. */
-function historyContent(page: import("@playwright/test").Page) {
-  return page.locator(
-    '[data-testid="previous-sessions"] [data-testid="previous-sessions-content"]',
-  );
-}
-
 /** Returns every set row in the expanded history feed. */
 function historyRows(page: import("@playwright/test").Page) {
   return page.locator('[data-testid="previous-sessions-content"] tbody tr');
@@ -141,6 +134,30 @@ Given(
       .click();
     await page.waitForSelector('body[data-hydrated="true"]', {
       timeout: 10000,
+    });
+
+    // Backdate the persisted sets to yesterday so they appear before the
+    // start-of-today cutoff used by the Previous Sessions panel.
+    // The panel only shows sets with recorded_at < midnight(today, local tz).
+    // window.__dbExecuteQuery is registered by db-module.js after initDatabase()
+    // only when window.__TEST_MODE__ === true (set by the Playwright fixture).
+    // It shares the same db instance as the running app.
+    await page.evaluate(async () => {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const exec = (window as any).__dbExecuteQuery as
+        | ((sql: string, params: unknown[]) => Promise<unknown>)
+        | undefined;
+      if (!exec) throw new Error("__dbExecuteQuery not available on window");
+      const oneDayMs = 86_400_000;
+      const now = Date.now();
+      const offsetMs = -new Date().getTimezoneOffset() * 60_000;
+      const startOfTodayUtc =
+        Math.floor((now + offsetMs) / oneDayMs) * oneDayMs - offsetMs;
+      // Shift every set recorded today (>= start-of-today) back by one full day.
+      await exec(
+        "UPDATE completed_sets SET recorded_at = recorded_at - ? WHERE recorded_at >= ?",
+        [oneDayMs, startOfTodayUtc],
+      );
     });
   },
 );
