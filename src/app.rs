@@ -1,3 +1,4 @@
+use crate::components::data_management::DataManagementPanel;
 use crate::components::exercise_form::ExerciseForm;
 use crate::components::history_view::HistoryView;
 use crate::components::library_view::LibraryView;
@@ -87,6 +88,8 @@ pub enum Route {
     LibraryTab,
     #[route("/library/:exercise_id")]
     LibraryExercise { exercise_id: i64 },
+    #[route("/settings")]
+    SettingsTab,
     #[end_layout]
     #[route("/:..path")]
     NotFound { path: Vec<String> },
@@ -106,6 +109,7 @@ fn Shell() -> Element {
             Tab::Workout
         }
         Route::LibraryTab | Route::LibraryExercise { .. } => Tab::Library,
+        Route::SettingsTab => Tab::Settings,
         _ => Tab::Workout,
     };
 
@@ -148,7 +152,7 @@ fn Shell() -> Element {
                         h4 { class: "font-bold", "Browser Storage Mode" }
                         p {
                             class: "text-sm",
-                            "Your data is stored in browser LocalStorage. This works offline but won't sync across devices or browsers."
+                            "Your data is stored in your browser's private storage (OPFS). This works offline but won't sync across devices or browsers."
                         }
                     }
                 }
@@ -215,6 +219,9 @@ fn Shell() -> Element {
                                 navigator.push(target.clone());
                             }
                         }
+                        Tab::Settings => {
+                            navigator.push(Route::SettingsTab);
+                        }
                     }
                 }
             }
@@ -247,6 +254,29 @@ fn WorkoutHistoryExercise(exercise_id: i64) -> Element {
 #[component]
 fn LibraryTab() -> Element {
     rsx! { LibraryView {} }
+}
+
+#[component]
+fn SettingsTab() -> Element {
+    let state = consume_context::<WorkoutState>();
+    rsx! {
+        div {
+            class: "max-w-md mx-auto py-6",
+            h2 { class: "text-xl font-black uppercase tracking-tight mb-6", "Settings" }
+            div {
+                class: "card bg-base-100 shadow-xl",
+                div {
+                    class: "card-body",
+                    h3 { class: "card-title text-base font-bold mb-2", "Data Management" }
+                    p {
+                        class: "text-sm text-base-content/60 mb-4",
+                        "Export your workout database for backup or transfer to another device. Import a previously exported database to restore your data."
+                    }
+                    DataManagementPanel { state }
+                }
+            }
+        }
+    }
 }
 
 #[component]

@@ -6,11 +6,12 @@ Feature: Data export and import
   Background:
     Given I have a fresh context and clear storage
     And I create a new database
+    And I navigate to the Settings tab
 
-  Scenario: Export button is visible on the idle Workout tab
+  Scenario: Export button is visible on the Settings tab
     Then I should see the export button
 
-  Scenario: Import button is visible on the idle Workout tab
+  Scenario: Import button is visible on the Settings tab
     Then I should see the import button
 
   Scenario: Exporting the database triggers a file download

@@ -1,5 +1,4 @@
 use crate::app::{ActiveSession, Route};
-use crate::components::data_management::DataManagementPanel;
 use crate::state::WorkoutState;
 use dioxus::prelude::*;
 
@@ -61,7 +60,6 @@ pub fn WorkoutView(state: WorkoutState) -> Element {
                                 "View workout history"
                             }
                         }
-                        DataManagementPanel { state }
                     }
                 }
             }
