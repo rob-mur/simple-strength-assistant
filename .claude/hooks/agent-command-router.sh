@@ -15,24 +15,30 @@ set -uo pipefail
 # Read stdin
 INPUT=$(cat)
 
+# Extract tool name and command in a single jq invocation
+eval "$(printf '%s' "$INPUT" | jq -r '
+  @sh "TOOL_NAME=\(.tool_name // empty)",
+  @sh "COMMAND=\(.tool_input.command // empty)"
+')"
+
 # Only act on Bash tool calls
-TOOL_NAME=$(printf '%s' "$INPUT" | jq -r '.tool_name // empty')
 if [ "$TOOL_NAME" != "Bash" ]; then
   exit 0
 fi
-
-COMMAND=$(printf '%s' "$INPUT" | jq -r '.tool_input.command // empty')
 
 # Determine the project root (directory containing .claude/)
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
 
-# Match patterns that should be routed to agent wrappers
+# Match patterns that should be routed to agent wrappers.
+# Arguments after the base command are forwarded to the wrapper script.
 REWRITE_COMMAND=""
+EXTRA_ARGS=""
 
 case "$COMMAND" in
-  cargo\ test*|"cargo test")
-    REWRITE_COMMAND="bash $PROJECT_ROOT/scripts/agent-test.sh"
+  cargo\ test*)
+    EXTRA_ARGS="${COMMAND#cargo test}"
+    REWRITE_COMMAND="bash $PROJECT_ROOT/scripts/agent-test.sh${EXTRA_ARGS:+ $EXTRA_ARGS}"
     ;;
   "npm run test:e2e"*|"npx playwright"*)
     REWRITE_COMMAND="bash $PROJECT_ROOT/scripts/agent-test.sh"
@@ -43,14 +49,13 @@ case "$COMMAND" in
   "scripts/lint.sh"*|"bash scripts/lint.sh"*)
     REWRITE_COMMAND="bash $PROJECT_ROOT/scripts/agent-lint.sh"
     ;;
-  cargo\ clippy*|"cargo clippy")
-    REWRITE_COMMAND="bash $PROJECT_ROOT/scripts/agent-lint.sh"
+  cargo\ clippy*)
+    EXTRA_ARGS="${COMMAND#cargo clippy}"
+    REWRITE_COMMAND="bash $PROJECT_ROOT/scripts/agent-lint.sh${EXTRA_ARGS:+ $EXTRA_ARGS}"
     ;;
-  cargo\ fmt*|"cargo fmt")
-    # NOTE: `cargo fmt` (apply) is intentionally converted to a format check via agent-fmt.sh.
-    # Agents should not silently mutate source files; agent-fmt.sh reports what needs fixing
-    # so the agent can decide whether to apply changes.
-    REWRITE_COMMAND="bash $PROJECT_ROOT/scripts/agent-fmt.sh"
+  cargo\ fmt*)
+    EXTRA_ARGS="${COMMAND#cargo fmt}"
+    REWRITE_COMMAND="bash $PROJECT_ROOT/scripts/agent-fmt.sh${EXTRA_ARGS:+ $EXTRA_ARGS}"
     ;;
   "prettier --check"*|"npx prettier --check"*)
     REWRITE_COMMAND="bash $PROJECT_ROOT/scripts/agent-fmt.sh"

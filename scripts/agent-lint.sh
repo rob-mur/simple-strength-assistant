@@ -8,6 +8,10 @@
 
 set -uo pipefail
 
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+PROJECT_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
+cd "$PROJECT_ROOT"
+
 LINT_OUTPUT=$(mktemp)
 trap 'rm -f "$LINT_OUTPUT"' EXIT
 
@@ -20,7 +24,7 @@ elif [ "${_BATS_LINT_STUB:-}" = "fail" ]; then
   LINT_OK=1
 else
   # Real invocation — mirrors lint.sh but captures all output
-  if ! bash scripts/lint.sh >"$LINT_OUTPUT" 2>&1; then
+  if ! bash "$SCRIPT_DIR/lint.sh" >"$LINT_OUTPUT" 2>&1; then
     LINT_OK=1
   fi
 fi

@@ -77,9 +77,10 @@ SCRIPTS_DIR="$(cd "$(dirname "$BATS_TEST_FILENAME")/../scripts" && pwd)"
   [ "$output" = "Passed" ]
 }
 
-@test "agent-fmt.sh exits non-zero and lists unformatted files when formatting is needed" {
+@test "agent-fmt.sh exits 0 and lists formatted files when formatting was applied" {
   _BATS_FMT_STUB=fail run bash "$SCRIPTS_DIR/agent-fmt.sh"
-  [ "$status" -ne 0 ]
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"Formatted:"* ]]
   [[ "$output" == *"src/main.rs"* ]]
   [[ "$output" != *"Checking"* ]]
   [[ "$output" != *"✓"* ]]
@@ -135,6 +136,19 @@ HOOK="$(dirname "$SCRIPTS_DIR")/.claude/hooks/agent-command-router.sh"
   input='{"tool_name":"Bash","tool_input":{"command":"prettier --check ."}}'
   result=$(echo "$input" | bash "$HOOK")
   [[ "$result" == *"agent-fmt.sh"* ]]
+}
+
+@test "agent-command-router.sh forwards cargo test arguments" {
+  input='{"tool_name":"Bash","tool_input":{"command":"cargo test my_specific_test"}}'
+  result=$(echo "$input" | bash "$HOOK")
+  [[ "$result" == *"agent-test.sh"* ]]
+  [[ "$result" == *"my_specific_test"* ]]
+}
+
+@test "agent-command-router.sh passes through non-Bash tool calls" {
+  input='{"tool_name":"Read","tool_input":{"file_path":"/tmp/foo"}}'
+  result=$(echo "$input" | bash "$HOOK")
+  [ -z "$result" ]
 }
 
 @test "agent-command-router.sh does not rewrite unrelated commands" {

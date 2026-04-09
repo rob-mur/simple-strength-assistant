@@ -9,6 +9,10 @@
 
 set -uo pipefail
 
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+PROJECT_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
+cd "$PROJECT_ROOT"
+
 CARGO_OUTPUT=$(mktemp)
 NPM_OUTPUT=$(mktemp)
 trap 'rm -f "$CARGO_OUTPUT" "$NPM_OUTPUT"' EXIT
@@ -17,7 +21,7 @@ CARGO_OK=0
 NPM_OK=0
 
 # ---------------------------------------------------------------------------
-# Run cargo tests
+# Run cargo tests (forwarding any arguments from the agent command)
 # ---------------------------------------------------------------------------
 if [ "${_BATS_CARGO_TEST_STUB:-}" = "pass" ]; then
   : # pass
@@ -25,8 +29,8 @@ elif [ "${_BATS_CARGO_TEST_STUB:-}" = "fail" ]; then
   printf 'failures:\n    tests::some_test\n\ntest result: FAILED. 0 passed; 1 failed\n' >"$CARGO_OUTPUT"
   CARGO_OK=1
 else
-  # Real invocation
-  if ! cargo test >"$CARGO_OUTPUT" 2>&1; then
+  # Real invocation — forward any extra arguments (e.g. test name filters)
+  if ! cargo test "$@" >"$CARGO_OUTPUT" 2>&1; then
     CARGO_OK=1
   fi
 fi
@@ -61,9 +65,18 @@ if [ "$CARGO_OK" -eq 0 ] && [ "$NPM_OK" -eq 0 ]; then
   exit 0
 fi
 
-# Print only failure-relevant lines
+# Print only failure-relevant lines.
+# The awk block extracts the failures: section for normal test failures.
+# If that section is absent (e.g. compile error or panic), fall back to
+# grep for error/panic lines, or tail the raw output as a last resort.
 if [ "$CARGO_OK" -ne 0 ] && [ -s "$CARGO_OUTPUT" ]; then
-  awk '/^failures:/{found=1} found{print}' "$CARGO_OUTPUT" | head -40
+  FAILURES=$(awk '/^failures:/{found=1} found{print}' "$CARGO_OUTPUT" | head -40)
+  if [ -n "$FAILURES" ]; then
+    printf '%s\n' "$FAILURES"
+  else
+    grep -E '^error|panicked|FAILED' "$CARGO_OUTPUT" | head -40 || \
+      tail -20 "$CARGO_OUTPUT"
+  fi
 fi
 
 if [ "$NPM_OK" -ne 0 ] && [ -s "$NPM_OUTPUT" ]; then
