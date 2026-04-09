@@ -289,9 +289,11 @@ function rowsEqual(a, b) {
     .sort();
   if (keysA.join() !== keysB.join()) return false;
   return keysA.every((k) => {
-    // Treat null and undefined as equivalent.
-    const va = a[k] ?? null;
-    const vb = b[k] ?? null;
+    // Coalesce nullish values to 0 — consistent with the `updated_at ?? 0`
+    // guard in mergeDatabases so that null-vs-0 differences are not treated
+    // as conflicts.
+    const va = a[k] ?? 0;
+    const vb = b[k] ?? 0;
     return va === vb;
   });
 }

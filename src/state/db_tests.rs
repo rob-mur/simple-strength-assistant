@@ -1597,16 +1597,60 @@ async fn test_merge_is_pure_function() {
         result2.conflicts.len(),
         "Conflict counts must match across two identical calls"
     );
-    // Both merged blobs must be non-empty; sizes should match.
+    // Both merged blobs must be non-empty and byte-for-byte identical.
     assert!(
         !result1.merged.is_empty(),
         "First merged blob must not be empty"
     );
     assert_eq!(
-        result1.merged.len(),
-        result2.merged.len(),
-        "Merged blob sizes must be equal for identical inputs"
+        result1.merged, result2.merged,
+        "Merged blobs must be byte-for-byte identical for identical inputs"
     );
+}
+
+/// RED → GREEN: A tombstoned row with an older `updated_at` loses to a live row
+/// with a newer `updated_at`. The live row must survive in the merged database.
+#[wasm_bindgen_test]
+async fn test_merge_older_tombstone_loses_to_newer_live_row() {
+    let old_ts = 1000.0_f64;
+    let new_ts = 2000.0_f64;
+
+    // DB A: tombstoned row with the older timestamp.
+    let (_, bytes_a, uuid) = make_db_with_tombstone("Bench Press", old_ts, old_ts).await;
+
+    // DB B: live row (no tombstone) with the newer timestamp.
+    let mut db_b = Database::new();
+    db_b.init(None).await.expect("db init failed");
+    db_b.insert_exercise_with_uuid_for_test(&uuid, "Bench Press", new_ts, None)
+        .await
+        .expect("insert live row failed");
+    let bytes_b = db_b.export().await.expect("export failed");
+
+    let result = Database::merge_databases(bytes_a, bytes_b)
+        .await
+        .expect("merge_databases failed");
+
+    assert!(
+        result.conflicts.is_empty(),
+        "Newer live row vs older tombstone should not conflict"
+    );
+
+    // The live row (newer updated_at) must win — exercise should be present.
+    let mut merged_db = Database::new();
+    merged_db
+        .init(Some(result.merged))
+        .await
+        .expect("init merged db failed");
+    let exercises = merged_db
+        .get_exercises()
+        .await
+        .expect("get_exercises failed");
+    assert_eq!(
+        exercises.len(),
+        1,
+        "Newer live row must win over older tombstone"
+    );
+    assert_eq!(exercises[0].name, "Bench Press");
 }
 
 /// RED → GREEN: Creating a new database and reopening the same file restores exercises.

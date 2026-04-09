@@ -176,31 +176,17 @@ impl Database {
     async fn apply_v3_migration(&self) -> Result<(), DatabaseError> {
         let now = js_sys::Date::now() as i64;
 
-        // ── exercises table ──────────────────────────────────────────────────
-        // ADD COLUMN is a no-op if the column already exists on repeated runs,
-        // but SQLite errors if you try to add a duplicate column.  We guard each
-        // with a separate statement so partial migrations don't stall.
-
-        // uuid column
-        let _ = self
-            .execute_internal(
-                "ALTER TABLE exercises ADD COLUMN uuid TEXT NOT NULL DEFAULT ''",
-                &[],
-            )
-            .await; // ignore "duplicate column" errors
-
-        // updated_at column
-        let _ = self
-            .execute_internal(
-                "ALTER TABLE exercises ADD COLUMN updated_at INTEGER NOT NULL DEFAULT 0",
-                &[],
-            )
-            .await;
-
-        // deleted_at column
-        let _ = self
-            .execute_internal("ALTER TABLE exercises ADD COLUMN deleted_at INTEGER", &[])
-            .await;
+        // Add columns to exercises (suppress only "duplicate column" errors).
+        self.add_column_if_missing(
+            "ALTER TABLE exercises ADD COLUMN uuid TEXT NOT NULL DEFAULT ''",
+        )
+        .await?;
+        self.add_column_if_missing(
+            "ALTER TABLE exercises ADD COLUMN updated_at INTEGER NOT NULL DEFAULT 0",
+        )
+        .await?;
+        self.add_column_if_missing("ALTER TABLE exercises ADD COLUMN deleted_at INTEGER")
+            .await?;
 
         // Backfill existing exercises that still have an empty uuid.
         let existing_exercises = self
@@ -234,28 +220,17 @@ impl Database {
             }
         }
 
-        // ── completed_sets table ─────────────────────────────────────────────
-
-        let _ = self
-            .execute_internal(
-                "ALTER TABLE completed_sets ADD COLUMN uuid TEXT NOT NULL DEFAULT ''",
-                &[],
-            )
-            .await;
-
-        let _ = self
-            .execute_internal(
-                "ALTER TABLE completed_sets ADD COLUMN updated_at INTEGER NOT NULL DEFAULT 0",
-                &[],
-            )
-            .await;
-
-        let _ = self
-            .execute_internal(
-                "ALTER TABLE completed_sets ADD COLUMN deleted_at INTEGER",
-                &[],
-            )
-            .await;
+        // Add columns to completed_sets (suppress only "duplicate column" errors).
+        self.add_column_if_missing(
+            "ALTER TABLE completed_sets ADD COLUMN uuid TEXT NOT NULL DEFAULT ''",
+        )
+        .await?;
+        self.add_column_if_missing(
+            "ALTER TABLE completed_sets ADD COLUMN updated_at INTEGER NOT NULL DEFAULT 0",
+        )
+        .await?;
+        self.add_column_if_missing("ALTER TABLE completed_sets ADD COLUMN deleted_at INTEGER")
+            .await?;
 
         // Backfill existing sets.
         let existing_sets = self
@@ -291,6 +266,20 @@ impl Database {
 
         log::debug!("[DB] v3 migration complete");
         Ok(())
+    }
+
+    /// Executes an ALTER TABLE ADD COLUMN statement, suppressing only
+    /// "duplicate column" errors (which mean the column already exists).
+    /// Any other error is propagated.
+    async fn add_column_if_missing(&self, sql: &str) -> Result<(), DatabaseError> {
+        match self.execute_internal(sql, &[]).await {
+            Ok(_) => Ok(()),
+            Err(DatabaseError::QueryError(msg)) if msg.contains("duplicate column") => {
+                log::debug!("[DB] Column already exists, skipping: {}", sql);
+                Ok(())
+            }
+            Err(e) => Err(e),
+        }
     }
 
     /// Generate a UUID v4 string using the browser's crypto API.
