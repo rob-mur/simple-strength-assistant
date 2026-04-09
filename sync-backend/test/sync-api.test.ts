@@ -7,11 +7,19 @@ import {
   expect,
   test,
 } from "bun:test";
-import { existsSync } from "node:fs";
-import { mkdir, mkdtemp, readdir, readFile, rm, writeFile } from "node:fs/promises";
+import { access, mkdir, mkdtemp, readdir, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { createApp } from "../src/app.ts";
+
+async function fileExists(path: string): Promise<boolean> {
+  try {
+    await access(path);
+    return true;
+  } catch {
+    return false;
+  }
+}
 
 function startServer(dataDir: string) {
   const app = createApp(dataDir);
@@ -355,7 +363,7 @@ describe("conflict detection", () => {
 
     // No conflicts directory
     const conflictsDir = join(dataDir, "ff-test", "conflicts");
-    expect(existsSync(conflictsDir)).toBe(false);
+    expect(await fileExists(conflictsDir)).toBe(false);
 
     // Blob updated
     const getRes = await fetch(`${baseUrl}/sync/ff-test`);
@@ -373,22 +381,22 @@ describe("conflict detection", () => {
     expect(res.status).toBe(200);
 
     // Top-level blob should be removed
-    expect(existsSync(join(dataDir, "conflict-test", "blob"))).toBe(false);
+    expect(await fileExists(join(dataDir, "conflict-test", "blob"))).toBe(
+      false,
+    );
 
     // conflicts/ directory should have two entries
     const conflictsDir = join(dataDir, "conflict-test", "conflicts");
-    expect(existsSync(conflictsDir)).toBe(true);
+    expect(await fileExists(conflictsDir)).toBe(true);
     const entries = await readdir(conflictsDir);
     expect(entries.length).toBe(2);
 
     // Each entry should have blob and clock.json
     for (const entry of entries) {
-      expect(
-        existsSync(join(conflictsDir, entry, "blob")),
-      ).toBe(true);
-      expect(
-        existsSync(join(conflictsDir, entry, "clock.json")),
-      ).toBe(true);
+      expect(await fileExists(join(conflictsDir, entry, "blob"))).toBe(true);
+      expect(await fileExists(join(conflictsDir, entry, "clock.json"))).toBe(
+        true,
+      );
     }
   });
 
@@ -449,7 +457,7 @@ describe("conflict detection", () => {
 
     // Conflict should be resolved - no conflicts dir entries
     const conflictsDir = join(dataDir, "resolve-test", "conflicts");
-    if (existsSync(conflictsDir)) {
+    if (await fileExists(conflictsDir)) {
       const entries = await readdir(conflictsDir);
       expect(entries.length).toBe(0);
     }

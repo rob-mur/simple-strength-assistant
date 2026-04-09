@@ -1,15 +1,53 @@
 import { Hono } from "hono";
-import { randomUUID } from "node:crypto";
-import { existsSync, readdirSync } from "node:fs";
-import { mkdir, readdir, readFile, rename, rm, unlink, writeFile } from "node:fs/promises";
+import {
+  access,
+  mkdir,
+  readdir,
+  readFile,
+  rename,
+  rm,
+  writeFile,
+} from "node:fs/promises";
 import { join } from "node:path";
 import { compareClocks, type VectorClock } from "./vector-clock.ts";
 
-function isConflicted(slotDir: string): boolean {
-  const conflictsDir = join(slotDir, "conflicts");
-  if (!existsSync(conflictsDir)) return false;
+const MAX_BODY_SIZE = 50 * 1024 * 1024; // 50 MB
+const VALID_SYNC_ID = /^[a-zA-Z0-9_-]+$/;
+
+async function fileExists(path: string): Promise<boolean> {
   try {
-    return readdirSync(conflictsDir).length > 0;
+    await access(path);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+function isVectorClock(v: unknown): v is Record<string, number> {
+  return (
+    typeof v === "object" &&
+    v !== null &&
+    !Array.isArray(v) &&
+    Object.values(v as Record<string, unknown>).every(
+      (x) => typeof x === "number",
+    )
+  );
+}
+
+async function atomicWrite(
+  filePath: string,
+  data: string | Uint8Array,
+): Promise<void> {
+  const tmpPath = filePath + ".tmp";
+  await writeFile(tmpPath, data);
+  await rename(tmpPath, filePath);
+}
+
+async function isConflicted(slotDir: string): Promise<boolean> {
+  const conflictsDir = join(slotDir, "conflicts");
+  try {
+    const entries = await readdir(conflictsDir);
+    return entries.length > 0;
   } catch {
     return false;
   }
@@ -17,13 +55,20 @@ function isConflicted(slotDir: string): boolean {
 
 async function getConflictClocks(slotDir: string): Promise<VectorClock[]> {
   const conflictsDir = join(slotDir, "conflicts");
-  if (!existsSync(conflictsDir)) return [];
-  const entries = await readdir(conflictsDir);
+  let entries: string[];
+  try {
+    entries = await readdir(conflictsDir);
+  } catch {
+    return [];
+  }
   const clocks: VectorClock[] = [];
   for (const entry of entries) {
     const clockPath = join(conflictsDir, entry, "clock.json");
-    if (existsSync(clockPath)) {
-      clocks.push(JSON.parse(await readFile(clockPath, "utf-8")));
+    try {
+      const raw = await readFile(clockPath, "utf-8");
+      clocks.push(JSON.parse(raw) as VectorClock);
+    } catch {
+      // skip entries with missing or invalid clock.json
     }
   }
   return clocks;
@@ -42,32 +87,6 @@ function descendsFromAll(
   return true;
 }
 
-const MAX_BODY_SIZE = 50 * 1024 * 1024; // 50 MB
-const VALID_SYNC_ID = /^[a-zA-Z0-9_-]+$/;
-
-function isVectorClock(v: unknown): v is Record<string, number> {
-  return (
-    typeof v === "object" &&
-    v !== null &&
-    !Array.isArray(v) &&
-    Object.values(v as Record<string, unknown>).every(
-      (x) => typeof x === "number",
-    )
-  );
-}
-
-async function atomicWrite(filePath: string, data: string | Uint8Array) {
-  const tmpPath = `${filePath}.${randomUUID()}.tmp`;
-  await writeFile(tmpPath, data);
-  try {
-    await rename(tmpPath, filePath);
-  } catch (err) {
-    // Clean up the temp file to avoid leaking it on rename failure
-    await unlink(tmpPath).catch(() => {});
-    throw err;
-  }
-}
-
 export function createApp(dataDir: string) {
   const app = new Hono();
 
@@ -82,7 +101,7 @@ export function createApp(dataDir: string) {
     const blobPath = join(slotDir, "blob");
 
     // Check for conflicted state
-    if (isConflicted(slotDir)) {
+    if (await isConflicted(slotDir)) {
       return c.json(
         {
           error: "conflict",
@@ -124,9 +143,19 @@ export function createApp(dataDir: string) {
         readFile(metaPath, "utf-8"),
       ]);
 
-      const clock = JSON.parse(clockRaw);
-      const meta = JSON.parse(metaRaw);
-      const conflicted = isConflicted(slotDir);
+      let clock: unknown;
+      let meta: { blob_size: number; last_modified: number };
+      try {
+        clock = JSON.parse(clockRaw);
+        meta = JSON.parse(metaRaw) as {
+          blob_size: number;
+          last_modified: number;
+        };
+      } catch {
+        return c.text("Corrupt metadata", 500);
+      }
+
+      const conflicted = await isConflicted(slotDir);
 
       return c.json({
         vector_clock: clock,
@@ -137,9 +166,6 @@ export function createApp(dataDir: string) {
     } catch (err: unknown) {
       if (err instanceof Error && "code" in err && err.code === "ENOENT") {
         return c.text("Not found", 404);
-      }
-      if (err instanceof SyntaxError) {
-        return c.text("Corrupt metadata", 500);
       }
       throw err;
     }
@@ -188,7 +214,7 @@ export function createApp(dataDir: string) {
     }
 
     // Check if slot is already conflicted
-    if (isConflicted(slotDir)) {
+    if (await isConflicted(slotDir)) {
       const conflictClocks = await getConflictClocks(slotDir);
 
       if (descendsFromAll(incomingClock, conflictClocks)) {
@@ -219,10 +245,17 @@ export function createApp(dataDir: string) {
     }
 
     // Non-conflicted slot: check for divergence
-    if (existsSync(clockPath)) {
-      const serverClock: VectorClock = JSON.parse(
-        await readFile(clockPath, "utf-8"),
-      );
+    let serverClockExists = false;
+    let serverClock: VectorClock = {};
+    try {
+      const raw = await readFile(clockPath, "utf-8");
+      serverClock = JSON.parse(raw) as VectorClock;
+      serverClockExists = true;
+    } catch {
+      // No existing clock - first push
+    }
+
+    if (serverClockExists) {
       const comparison = compareClocks(incomingClock, serverClock);
 
       if (comparison === "concurrent") {
@@ -233,7 +266,7 @@ export function createApp(dataDir: string) {
         const existingId = crypto.randomUUID();
         const existingDir = join(conflictsDir, existingId);
         await mkdir(existingDir, { recursive: true });
-        if (existsSync(blobPath)) {
+        if (await fileExists(blobPath)) {
           await rename(blobPath, join(existingDir, "blob"));
         }
         await writeFile(
