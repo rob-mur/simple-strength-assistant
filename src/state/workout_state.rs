@@ -40,12 +40,12 @@ pub enum InitializationState {
 
 /// Represents the current sync state of the application.
 ///
-/// `NeverSynced` - no sync has ever completed (distinguishes from a sync failure).
 /// `Idle`        - no sync is configured (default before any sync setup).
+/// `NeverSynced` - no sync has ever completed (distinguishes from a sync failure).
 /// `Syncing`     - a sync cycle is currently in progress.
 /// `UpToDate`    - the last sync completed successfully.
 /// `Error`       - the last sync failed or the server was unreachable.
-#[derive(Clone, Copy, PartialEq, Debug, Default)]
+#[derive(Clone, Copy, PartialEq, Eq, Debug, Default)]
 pub enum SyncStatus {
     #[default]
     Idle,
@@ -53,6 +53,19 @@ pub enum SyncStatus {
     Syncing,
     UpToDate,
     Error,
+}
+
+impl SyncStatus {
+    /// Returns the kebab-case attribute string for use in `data-sync-status` attributes.
+    pub fn as_attr_str(self) -> &'static str {
+        match self {
+            SyncStatus::Idle => "idle",
+            SyncStatus::NeverSynced => "never-synced",
+            SyncStatus::Syncing => "syncing",
+            SyncStatus::UpToDate => "up-to-date",
+            SyncStatus::Error => "error",
+        }
+    }
 }
 
 #[derive(Clone, Copy, PartialEq)]

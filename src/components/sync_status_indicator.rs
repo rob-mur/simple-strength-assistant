@@ -8,7 +8,7 @@ use dioxus::prelude::*;
 ///
 /// | State      | Badge style     | Text                |
 /// |------------|-----------------|---------------------|
-/// | Idle       | badge-ghost     | No sync configured  |
+/// | Idle       | badge-ghost     | No sync             |
 /// | NeverSynced| badge-warning   | Never synced        |
 /// | Syncing    | badge-info      | Syncing…            |
 /// | UpToDate   | badge-success   | Up to date          |
@@ -27,18 +27,8 @@ pub fn SyncStatusIndicator(status: SyncStatus) -> Element {
         span {
             class: "{badge_class}",
             "data-testid": "sync-status-indicator",
-            "data-sync-status": sync_status_attr(status),
+            "data-sync-status": status.as_attr_str(),
             "{label}"
         }
-    }
-}
-
-fn sync_status_attr(status: SyncStatus) -> &'static str {
-    match status {
-        SyncStatus::Idle => "idle",
-        SyncStatus::NeverSynced => "never-synced",
-        SyncStatus::Syncing => "syncing",
-        SyncStatus::UpToDate => "up-to-date",
-        SyncStatus::Error => "error",
     }
 }

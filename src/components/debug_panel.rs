@@ -3,21 +3,12 @@ use dioxus::prelude::*;
 
 /// A developer-only debug panel for toggling sync status during QA.
 ///
-/// The panel renders only in debug builds. When compiled with `--release`
-/// (where `debug_assertions` is off) this component returns `None` and the
-/// compiler eliminates the dead branch — nothing leaks into production.
-///
-/// In development it renders as a fixed overlay in the bottom-right corner
-/// with one button per `SyncStatus` variant so the sync status indicator can
-/// be verified without a live sync client.
+/// Guarded at the call site with `#[cfg(debug_assertions)]` so the component
+/// is not compiled into release builds. In development it renders as a fixed
+/// overlay in the bottom-right corner with one button per `SyncStatus` variant
+/// so the sync status indicator can be verified without a live sync client.
 #[component]
 pub fn DebugPanel() -> Element {
-    // Compile-time constant: false in --release, true in dev/test builds.
-    // The compiler will eliminate the unreachable branch entirely in release.
-    if !cfg!(debug_assertions) {
-        return rsx! {};
-    }
-
     let workout_state = consume_context::<WorkoutState>();
     let current = workout_state.sync_status();
 
@@ -47,13 +38,7 @@ pub fn DebugPanel() -> Element {
                             "btn btn-xs btn-ghost"
                         },
                         "data-testid": "debug-sync-status-btn",
-                        "data-sync-status": match status {
-                            SyncStatus::Idle => "idle",
-                            SyncStatus::NeverSynced => "never-synced",
-                            SyncStatus::Syncing => "syncing",
-                            SyncStatus::UpToDate => "up-to-date",
-                            SyncStatus::Error => "error",
-                        },
+                        "data-sync-status": status.as_attr_str(),
                         onclick: move |_| workout_state.set_sync_status(status),
                         "{label}"
                     }
