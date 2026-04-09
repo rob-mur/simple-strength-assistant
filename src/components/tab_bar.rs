@@ -16,7 +16,7 @@ pub fn TabBar(active_tab: Tab, on_change: EventHandler<Tab>) -> Element {
     rsx! {
         div {
             role: "tablist",
-            class: "tabs tabs-boxed bg-base-100 shadow-lg z-50 p-2 pb-safe-tabbar",
+            class: "tabs tabs-boxed bg-base-100 shadow-lg z-50 p-2 pb-safe-tabbar flex-none",
 
             button {
                 role: "tab",
