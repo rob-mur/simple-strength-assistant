@@ -37,8 +37,7 @@ pub fn DebugPanel() -> Element {
                         } else {
                             "btn btn-xs btn-ghost"
                         },
-                        "data-testid": "debug-sync-status-btn",
-                        "data-sync-status": status.as_attr_str(),
+                        "data-testid": "debug-set-{status.as_attr_str()}",
                         onclick: move |_| workout_state.set_sync_status(status),
                         "{label}"
                     }

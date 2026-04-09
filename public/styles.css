@@ -1282,10 +1282,6 @@ html {
   display: inline-flex;
   align-items: center;
 }
-.navbar-end {
-  width: 50%;
-  justify-content: flex-end;
-}
 .progress {
   position: relative;
   width: 100%;

@@ -476,7 +476,7 @@ pub fn App() -> Element {
                     }
                 }
                 div {
-                    class: "navbar-end pr-4",
+                    class: "flex items-center justify-end pr-4",
                     SyncStatusIndicator {
                         status: workout_state.sync_status()
                     }

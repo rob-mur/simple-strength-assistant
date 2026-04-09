@@ -110,8 +110,11 @@ async fn step_data_attribute(world: &mut SyncStatusWorld, attr_value: String) {
 
 #[then("the sync status indicator should be inside the header")]
 async fn step_indicator_in_header(world: &mut SyncStatusWorld) {
-    // The indicator should appear before (or within) the header test div,
-    // and before the main content div.
+    // Placement check: we verify indicator ordering via SSR byte offsets.
+    // This works because dioxus_ssr emits elements in document order, so
+    // byte position correlates with DOM position.  If the SSR serialisation
+    // strategy ever changes (e.g. streaming or out-of-order rendering) this
+    // test will need a DOM-aware assertion instead.
     let header_pos = world
         .rendered_html
         .find("data-testid=\"header\"")
