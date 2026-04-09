@@ -137,10 +137,7 @@ describe("sync API", () => {
     expect(meta.blob_size).toBe(4);
   });
 
-  test("respects DATA_DIR env var (non-default directory works)", async () => {
-    // The test already uses a custom dataDir via createApp, which proves
-    // the DATA_DIR is configurable. This test verifies isolation between
-    // two different data directories.
+  test("separate data directories are isolated from each other", async () => {
     const customDir = await mkdtemp(join(tmpdir(), "sync-custom-"));
     const customServer = startServer(customDir);
 
