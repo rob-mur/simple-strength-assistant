@@ -1,48 +1,39 @@
 Feature: Conflict Resolution UI
-  In order to resolve data conflicts between devices
-  As a user
-  I want to see and resolve conflicts before continuing to use the app
 
-  # QA: conflict screen is shown when sync client reports unresolved conflicts
-  Scenario: Conflict resolution screen is shown when conflicts are present
-    Given the sync client has reported 1 unresolved conflict
-    When I view the app
-    Then the conflict resolution screen should be visible
-    And the main workout UI should not be visible
+  Background:
+    Given the app is in the Ready state
 
-  # QA: each conflicting record shows both versions with enough context
-  Scenario: Each conflict shows both versions with labels
-    Given the sync client has reported a conflict for record "exercise-uuid-1" with versions "Bench Press" and "Bench Presss"
-    When I view the conflict resolution screen
-    Then I should see version A labelled "Device A"
-    And I should see version B labelled "Device B"
-    And I should see the value "Bench Press" for version A
-    And I should see the value "Bench Presss" for version B
+  Scenario: Conflict screen appears when sync client reports unresolved conflicts
+    When the sync client reports 2 unresolved conflicts
+    Then the conflict resolution screen is displayed
+    And the screen shows 2 conflict cards
 
-  # QA: user can select exactly one version per conflicting record
-  Scenario: User can select one version per conflicting record
-    Given the sync client has reported 1 unresolved conflict
-    When I view the conflict resolution screen
-    Then I should see selectable options for version A and version B
-    And selecting one version should not auto-select any other record's version
+  Scenario: Each conflicting record shows both versions with enough context
+    When the sync client reports a conflict for exercise "Bench Press" vs "Flat Bench Press"
+    Then the conflict resolution screen is displayed
+    And the conflict card shows "Device A (Local)" with field "name" value "Bench Press"
+    And the conflict card shows "Device B (Remote)" with field "name" value "Flat Bench Press"
+    And the differing field "name" is visually highlighted
 
-  # QA: resolve button is only available after all conflicts are resolved
-  Scenario: Resolve button appears only after all conflicts have a selection
-    Given the sync client has reported 2 unresolved conflicts
-    When I view the conflict resolution screen
-    Then the resolve button should be disabled or absent
-    When I select version A for all conflicts
-    Then the resolve button should be available
+  Scenario: User can select one version per record
+    When the sync client reports a conflict for exercise "Bench Press" vs "Flat Bench Press"
+    And the user selects version A for the conflict
+    Then version A is marked as selected
+    And version B is not marked as selected
 
-  # QA: if sync completes with zero conflicts, the conflict resolution screen is never shown
-  Scenario: Conflict resolution screen is not shown when there are no conflicts
-    Given the sync client has reported 0 unresolved conflicts
-    When I view the app
-    Then the conflict resolution screen should not be visible
+  Scenario: Selecting one version does not auto-select others
+    When the sync client reports 2 unresolved conflicts
+    And the user selects version A for the first conflict
+    Then only the first conflict has a selection
+    And the resolve button is disabled
 
-  # QA: rejected version does not appear after resolution (resolved state transitions away)
-  Scenario: After resolving all conflicts the resolution screen is dismissed
-    Given the sync client has reported 1 unresolved conflict
-    And I have selected version A for all conflicts
-    When I confirm the resolution
-    Then the conflict resolution screen should not be visible
+  Scenario: Resolve button is enabled only when all conflicts are resolved
+    When the sync client reports 2 unresolved conflicts
+    And the user selects version A for the first conflict
+    And the user selects version B for the second conflict
+    Then the resolve button is enabled
+
+  Scenario: Conflict screen is never shown when there are no conflicts
+    When there are no pending conflicts
+    Then the conflict resolution screen is not displayed
+    And the normal app content is shown

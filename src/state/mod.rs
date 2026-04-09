@@ -18,8 +18,8 @@ pub use file_system::FileSystemManager;
 // VectorClock, ClockRelationship, and compare_vector_clocks are pub(crate)
 // until the sync client (#91) wires them up.
 pub use workout_state::{
-    ConflictChoice, ConflictRecord, InitializationState, PredictedParameters, SyncStatus,
-    WorkoutSession, WorkoutState, WorkoutStateManager,
+    InitializationState, PredictedParameters, SyncStatus, WorkoutSession, WorkoutState,
+    WorkoutStateManager,
 };
 
 #[cfg(feature = "test-mode")]

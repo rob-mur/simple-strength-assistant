@@ -774,6 +774,33 @@ impl Database {
         }))
     }
 
+    /// Execute a raw SQL statement with string parameters.
+    ///
+    /// Each parameter value is bound as a JsValue string. For NULL handling,
+    /// pass the literal string "NULL" which will be converted to JsValue::NULL.
+    pub async fn execute_raw(
+        &self,
+        sql: &str,
+        params: &[String],
+    ) -> Result<JsValue, DatabaseError> {
+        if !self.initialized {
+            return Err(DatabaseError::NotInitialized);
+        }
+
+        let js_params: Vec<JsValue> = params
+            .iter()
+            .map(|p| {
+                if p == "NULL" {
+                    JsValue::NULL
+                } else {
+                    JsValue::from_str(p)
+                }
+            })
+            .collect();
+
+        self.execute_internal(sql, &js_params).await
+    }
+
     pub async fn export(&self) -> Result<Vec<u8>, DatabaseError> {
         if !self.initialized {
             return Err(DatabaseError::NotInitialized);
