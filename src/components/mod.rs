@@ -1,4 +1,5 @@
 pub mod data_management;
+#[cfg(debug_assertions)]
 pub mod debug_panel;
 pub mod edit_set_modal;
 pub mod exercise_form;
