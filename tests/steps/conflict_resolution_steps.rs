@@ -117,20 +117,31 @@ async fn step_sync_reports_specific_conflict(
 }
 
 #[when("the user selects version A for the conflict")]
-async fn step_select_version_a(_world: &mut ConflictResolutionWorld) {
-    // In SSR tests, we verify the UI renders correctly.
-    // Click interaction would require a full browser environment.
-    // We verify that the version-a card is rendered with click handler.
+async fn step_select_version_a(world: &mut ConflictResolutionWorld) {
+    // SSR cannot simulate clicks, but we verify the version-a card is present
+    // and has the click handler data attribute.
+    assert!(
+        world.rendered_html.contains("data-testid=\"version-a\""),
+        "Expected version-a card to be rendered and clickable"
+    );
 }
 
 #[when("the user selects version A for the first conflict")]
-async fn step_select_version_a_first(_world: &mut ConflictResolutionWorld) {
-    // Same as above -- SSR verifies render, not interaction
+async fn step_select_version_a_first(world: &mut ConflictResolutionWorld) {
+    // SSR cannot simulate clicks, but we verify version-a cards are rendered.
+    assert!(
+        world.rendered_html.contains("data-testid=\"version-a\""),
+        "Expected version-a card to be rendered and clickable"
+    );
 }
 
 #[when("the user selects version B for the second conflict")]
-async fn step_select_version_b_second(_world: &mut ConflictResolutionWorld) {
-    // Same as above
+async fn step_select_version_b_second(world: &mut ConflictResolutionWorld) {
+    // SSR cannot simulate clicks, but we verify version-b cards are rendered.
+    assert!(
+        world.rendered_html.contains("data-testid=\"version-b\""),
+        "Expected version-b card to be rendered and clickable"
+    );
 }
 
 #[when("there are no pending conflicts")]
@@ -196,20 +207,51 @@ async fn step_differing_field_highlighted(world: &mut ConflictResolutionWorld, f
 }
 
 #[then("version A is marked as selected")]
-async fn step_version_a_selected(_world: &mut ConflictResolutionWorld) {
-    // In SSR, the initial render has no selection (no clicks have happened).
+async fn step_version_a_selected(world: &mut ConflictResolutionWorld) {
+    // In SSR, the initial render has no selection (clicks require a browser).
     // We verify the version-a element exists and is clickable.
-    // Full selection testing requires E2E browser tests.
+    assert!(
+        world.rendered_html.contains("data-testid=\"version-a\""),
+        "Expected version-a card to be rendered for selection"
+    );
 }
 
 #[then("version B is not marked as selected")]
-async fn step_version_b_not_selected(_world: &mut ConflictResolutionWorld) {
-    // Same as above -- verified by the absence of "Selected" badge in initial render
+async fn step_version_b_not_selected(world: &mut ConflictResolutionWorld) {
+    // In SSR initial render, no selection has been made so version-b should NOT
+    // have the "Selected" badge. We verify it is rendered but not selected.
+    assert!(
+        world.rendered_html.contains("data-testid=\"version-b\""),
+        "Expected version-b card to be rendered"
+    );
+    // Count occurrences of "Selected" badge — should be zero in initial render
+    let selected_count = world.rendered_html.matches("badge-success").count();
+    assert_eq!(
+        selected_count, 0,
+        "Expected no 'Selected' badges in initial render, found {}",
+        selected_count
+    );
 }
 
 #[then("only the first conflict has a selection")]
-async fn step_only_first_selected(_world: &mut ConflictResolutionWorld) {
-    // SSR limitation -- interaction testing deferred to E2E
+async fn step_only_first_selected(world: &mut ConflictResolutionWorld) {
+    // SSR cannot track click state, but we verify multiple conflict cards exist
+    // and no "Selected" badges are present in the initial render.
+    let card_count = world
+        .rendered_html
+        .matches("data-testid=\"conflict-card\"")
+        .count();
+    assert!(
+        card_count >= 2,
+        "Expected at least 2 conflict cards, found {}",
+        card_count
+    );
+    let selected_count = world.rendered_html.matches("badge-success").count();
+    assert_eq!(
+        selected_count, 0,
+        "Expected no selections in initial SSR render, found {}",
+        selected_count
+    );
 }
 
 #[then("the resolve button is disabled")]
@@ -232,9 +274,15 @@ async fn step_resolve_button_disabled(world: &mut ConflictResolutionWorld) {
 }
 
 #[then("the resolve button is enabled")]
-async fn step_resolve_button_enabled(_world: &mut ConflictResolutionWorld) {
-    // SSR limitation -- interaction testing deferred to E2E
-    // We verified the button exists in the disabled step
+async fn step_resolve_button_enabled(world: &mut ConflictResolutionWorld) {
+    // SSR cannot simulate clicks to make all selections, so we verify the
+    // button exists. Full enable/disable testing requires E2E browser tests.
+    assert!(
+        world
+            .rendered_html
+            .contains("data-testid=\"resolve-conflicts-btn\""),
+        "Expected resolve button to be rendered"
+    );
 }
 
 #[then("the conflict resolution screen is not displayed")]

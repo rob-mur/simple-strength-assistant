@@ -126,11 +126,13 @@ impl<H: HttpClient> SyncClient<H> {
             return SyncOutcome::Skipped;
         }
 
-        // Step 1: increment and push
-        local_clock.increment(&creds.device_id);
+        // Step 1: build push request with a tentative clock increment.
+        // We only commit the increment to local_clock after a successful push.
+        let mut tentative_clock = local_clock.clone();
+        tentative_clock.increment(&creds.device_id);
 
         let push_req = PushRequest {
-            vector_clock: local_clock.clone(),
+            vector_clock: tentative_clock.clone(),
             blob_b64: base64_encode(local_blob),
         };
 
@@ -140,8 +142,12 @@ impl<H: HttpClient> SyncClient<H> {
             .await
         {
             log::warn!("[Sync] Push failed (offline?): {}", e);
+            // Clock is NOT incremented — tentative_clock is discarded
             return SyncOutcome::Offline;
         }
+
+        // Push succeeded — commit the increment
+        *local_clock = tentative_clock;
 
         // Step 2: fetch server metadata
         let metadata = match self

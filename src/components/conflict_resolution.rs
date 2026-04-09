@@ -43,6 +43,15 @@ fn differing_fields(version_a: &str, version_b: &str) -> Vec<String> {
             diffs.push(key.clone());
         }
     }
+    // Also check for keys present in B but absent from A
+    for key in b.keys() {
+        if matches!(key.as_str(), "uuid" | "updated_at" | "deleted_at") {
+            continue;
+        }
+        if !a.contains_key(key) {
+            diffs.push(key.clone());
+        }
+    }
     diffs
 }
 
@@ -81,11 +90,12 @@ pub fn ConflictResolutionScreen(state: WorkoutState) -> Element {
     let mut resolving = use_signal(|| false);
     let mut resolve_error = use_signal(|| None::<String>);
 
-    let all_resolved = conflicts
-        .iter()
-        .all(|c| selections().contains_key(&c.row_id));
-
     let conflict_count = conflicts.len();
+
+    let all_resolved = conflict_count > 0
+        && conflicts
+            .iter()
+            .all(|c| selections().contains_key(&c.row_id));
 
     rsx! {
         div {
@@ -374,6 +384,14 @@ mod tests {
         let b = r#"{"uuid":"abc","name":"Flat Bench Press","reps":8}"#;
         let diffs = differing_fields(a, b);
         assert_eq!(diffs, vec!["name"]);
+    }
+
+    #[test]
+    fn test_differing_fields_key_in_b_not_in_a() {
+        let a = r#"{"uuid":"abc","name":"Bench Press"}"#;
+        let b = r#"{"uuid":"abc","name":"Bench Press","reps":8}"#;
+        let diffs = differing_fields(a, b);
+        assert_eq!(diffs, vec!["reps"]);
     }
 
     #[test]

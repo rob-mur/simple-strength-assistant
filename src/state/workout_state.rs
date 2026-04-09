@@ -788,11 +788,48 @@ impl WorkoutStateManager {
                 WorkoutError::Database(e)
             })?;
 
+        // Whitelist of allowed table and column names matching the known schema.
+        // This prevents SQL injection via server-controlled ConflictRecord data.
+        use std::collections::HashSet;
+
+        let allowed_tables: HashSet<&str> =
+            ["exercises", "completed_sets"].iter().copied().collect();
+        let allowed_columns: HashSet<&str> = [
+            "id",
+            "name",
+            "is_weighted",
+            "min_weight",
+            "increment",
+            "exercise_id",
+            "set_number",
+            "reps",
+            "rpe",
+            "weight",
+            "is_bodyweight",
+            "recorded_at",
+            "uuid",
+            "updated_at",
+            "deleted_at",
+        ]
+        .iter()
+        .copied()
+        .collect();
+
         // Apply each resolution by updating the row in the database
         for resolution in &resolutions {
             let uuid = resolution["uuid"].as_str().unwrap_or_default();
             let table = resolution["table"].as_str().unwrap_or_default();
             let chosen_json = resolution["chosen_version"].as_str().unwrap_or_default();
+
+            // Reject unknown table names
+            if !allowed_tables.contains(table) {
+                log::warn!(
+                    "[Conflict] Rejecting unknown table '{}' for row {}",
+                    table,
+                    uuid
+                );
+                continue;
+            }
 
             // Parse the chosen version and build an UPDATE statement
             let fields: std::collections::HashMap<String, serde_json::Value> =
@@ -803,6 +840,16 @@ impl WorkoutStateManager {
             let mut values = Vec::new();
             for (key, val) in &fields {
                 if key == "uuid" {
+                    continue;
+                }
+                // Reject unknown column names
+                if !allowed_columns.contains(key.as_str()) {
+                    log::warn!(
+                        "[Conflict] Rejecting unknown column '{}' in table '{}' for row {}",
+                        key,
+                        table,
+                        uuid
+                    );
                     continue;
                 }
                 set_parts.push(format!("{} = ?", key));
