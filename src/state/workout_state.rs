@@ -127,6 +127,20 @@ impl Default for WorkoutState {
 
 impl WorkoutState {
     pub fn new() -> Self {
+        // Load persisted vector clock so sync resumes from the correct
+        // sequence numbers across page reloads.  In test mode there is
+        // no LocalStorage, so we start with an empty clock.
+        let initial_clock = {
+            #[cfg(all(not(feature = "test-mode"), not(test)))]
+            {
+                crate::sync::load_clock()
+            }
+            #[cfg(any(feature = "test-mode", test))]
+            {
+                VectorClock::new()
+            }
+        };
+
         Self {
             initialization_state: Signal::new(InitializationState::NotInitialized),
             current_session: Signal::new(None),
@@ -138,7 +152,7 @@ impl WorkoutState {
             exercises: Signal::new(Vec::new()),
             sync_status: Signal::new(SyncStatus::Idle),
             resolved_conflicts: Signal::new(Vec::new()),
-            sync_clock: Signal::new(VectorClock::new()),
+            sync_clock: Signal::new(initial_clock),
         }
     }
 

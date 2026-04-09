@@ -16,6 +16,11 @@ pub struct PushRequest {
 #[derive(Debug, Clone, Deserialize)]
 pub struct SyncMetadata {
     pub vector_clock: VectorClock,
+    /// Server-side conflict flag.  Currently unused — the client derives
+    /// conflict status from vector-clock comparison.  Kept for forward
+    /// compatibility with the server API.  TODO(#92): use this to skip
+    /// the clock comparison when the server already knows a conflict exists.
+    #[allow(dead_code)]
     pub conflicted: bool,
 }
 
@@ -315,11 +320,6 @@ mod tests {
                 push_calls: Rc::new(RefCell::new(0)),
             }
         }
-
-        #[allow(dead_code)]
-        fn push_call_count(&self) -> u32 {
-            *self.push_calls.borrow()
-        }
     }
 
     #[async_trait::async_trait(?Send)]
@@ -527,36 +527,26 @@ mod tests {
     // sync_secret never appears in URL segments (enforced by HttpClient contract:
     // secret is passed separately, not interpolated into sync_id path)
 
+    /// Validates that the `HttpClient` trait keeps `sync_secret` structurally
+    /// separate from URL path components.  The real guarantee is at the type
+    /// level: `HttpClient::push` takes `sync_id` and `sync_secret` as
+    /// independent parameters, so the secret is never interpolated into a URL.
+    /// This test confirms that valid credentials pass through to a real sync
+    /// cycle (i.e. are not rejected / skipped).
     #[tokio::test]
-    async fn test_sync_secret_not_in_url_path() {
-        // The SyncClient only passes sync_id as the URL path component
-        // and passes sync_secret as a separate argument (header in real impl).
-        // We validate this at the type level: HttpClient::push takes
-        // sync_id and sync_secret as separate parameters.
-        // This test verifies that a sync_secret-looking value in sync_id is
-        // rejected by is_valid (i.e., we never construct such credentials).
-        let creds_with_secret_in_id = SyncCredentials {
-            sync_id: "secret-in-id-value".into(),
-            sync_secret: "secret-in-id-value".into(), // same value (worst case)
+    async fn test_valid_credentials_are_not_skipped() {
+        let creds = SyncCredentials {
+            sync_id: "valid-sync-id".into(),
+            sync_secret: "some-secret".into(),
             device_id: "dev".into(),
         };
-        // The credential itself is technically valid (both fields non-empty).
-        // The guarantee is structural: the HttpClient interface keeps secret
-        // out of the URL by design. No URL is constructed in Rust at all —
-        // that happens in the real HTTP implementation.
-        assert!(creds_with_secret_in_id.is_valid());
+        assert!(creds.is_valid());
 
-        // Confirm SyncOutcome::Skipped is NOT returned for valid credentials
         let http = MockHttp::new(VectorClock::new(), vec![]);
         let client = SyncClient::new(http);
         let mut clock = VectorClock::new();
         let outcome = client
-            .run(
-                Some(&creds_with_secret_in_id),
-                b"local",
-                &mut clock,
-                &no_op_merge,
-            )
+            .run(Some(&creds), b"local", &mut clock, &no_op_merge)
             .await;
         assert_ne!(outcome, SyncOutcome::Skipped);
     }

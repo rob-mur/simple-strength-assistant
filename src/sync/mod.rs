@@ -6,16 +6,20 @@ pub mod vector_clock;
 pub mod http;
 
 pub use client::{MergeResult, SyncClient, SyncOutcome};
-pub use credentials::SyncCredentials;
+pub use credentials::{SyncCredentials, load_clock, save_clock};
 pub use vector_clock::VectorClock;
 
 /// Trivial merge stub used until the real union-merge (#89) is implemented.
-/// It returns the local blob unchanged with no conflicts.
-/// This means diverged-clock cases will push the local blob back as the
-/// "merged" result — a safe fallback until the full merge lands.
+/// When clocks have diverged, we cannot safely pick a winner, so this stub
+/// always reports a conflict.  This causes `SyncClient::run` to return
+/// `SyncOutcome::ConflictDetected`, letting the user know their data needs
+/// manual attention rather than silently discarding the server's changes.
 pub fn stub_merge(local: &[u8], _server: &[u8]) -> MergeResult {
     MergeResult {
         merged: local.to_vec(),
-        conflicts: vec![],
+        conflicts: vec![client::ConflictRecord {
+            table: "*".into(),
+            row_id: "stub-merge-placeholder".into(),
+        }],
     }
 }
