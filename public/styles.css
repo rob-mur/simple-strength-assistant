@@ -3099,11 +3099,11 @@ details.collapse summary::-webkit-details-marker {
 .h-6 {
   height: 1.5rem;
 }
+.h-\[100dvh\] {
+  height: 100dvh;
+}
 .h-auto {
   height: auto;
-}
-.h-screen {
-  height: 100vh;
 }
 .max-h-\[90dvh\] {
   max-height: 90dvh;

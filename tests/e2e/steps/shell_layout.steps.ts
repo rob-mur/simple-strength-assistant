@@ -7,7 +7,7 @@ import { setDioxusInput } from "./dioxus_helpers";
 async function seedLongHistory(page: import("@playwright/test").Page) {
   // Add an exercise and log several sets so history is long enough to scroll
   await page.click('[data-testid="tab-library"]');
-  await page.waitForTimeout(300);
+  await page.waitForSelector('[data-testid="library-view"]', { timeout: 5000 });
 
   const addBtn = page
     .locator(
@@ -17,7 +17,10 @@ async function seedLongHistory(page: import("@playwright/test").Page) {
   if (await addBtn.isVisible()) {
     await addBtn.click();
   } else {
-    await page.locator("button.btn-circle.btn-primary").click();
+    // Floating add button in the library header
+    await page
+      .locator('[data-testid="library-view"] button.btn-primary')
+      .click();
   }
 
   await setDioxusInput(page, "#exercise-name-input", "Squat");
@@ -33,7 +36,9 @@ async function seedLongHistory(page: import("@playwright/test").Page) {
   // Log enough sets to make the content taller than the viewport
   for (let i = 0; i < 12; i++) {
     await page.click('button:has-text("Log Set")');
-    await page.waitForTimeout(100);
+    await page.waitForSelector(`button:has-text("Log Set"):not([disabled])`, {
+      timeout: 2000,
+    });
   }
 
   // Navigate to history via SPA navigation (works regardless of session state)
@@ -41,8 +46,11 @@ async function seedLongHistory(page: import("@playwright/test").Page) {
     window.history.pushState({}, "", "/workout/history");
     window.dispatchEvent(new PopStateEvent("popstate"));
   });
-  await page.waitForTimeout(500);
+  await page.waitForSelector('[data-testid="history-view"]', { timeout: 5000 });
 }
+
+// Store tab bar position between steps for before/after comparison
+let tabBarYBeforeScroll: number | null = null;
 
 // ── Steps ─────────────────────────────────────────────────────────────────────
 
@@ -85,23 +93,38 @@ Then(
 );
 
 When("I scroll to the bottom of the content area", async ({ page }) => {
+  // Capture the tab bar position before scrolling
+  const tabBar = page.locator('[role="tablist"]');
+  const boundingBox = await tabBar.boundingBox();
+  expect(boundingBox).not.toBeNull();
+  tabBarYBeforeScroll = boundingBox!.y;
+
   const contentArea = page.locator('[data-testid="shell-content"]');
   await contentArea.evaluate((el) => {
     el.scrollTop = el.scrollHeight;
   });
-  await page.waitForTimeout(300);
+  // Wait for scroll to settle
+  await contentArea.evaluate(
+    (el) =>
+      new Promise<void>((resolve) => {
+        let lastTop = el.scrollTop;
+        requestAnimationFrame(() => {
+          if (el.scrollTop === lastTop) resolve();
+          else resolve(); // scroll completed synchronously
+        });
+      }),
+  );
 });
 
 Then("the tab bar should not have moved vertically", async ({ page }) => {
-  // After scrolling the content, the tab bar position should still be
-  // within the viewport — the same check as "visible within the viewport"
+  expect(tabBarYBeforeScroll).not.toBeNull();
+
   const tabBar = page.locator('[role="tablist"]');
-  const viewportHeight = page.viewportSize()!.height;
   const boundingBox = await tabBar.boundingBox();
   expect(boundingBox).not.toBeNull();
-  expect(boundingBox!.y + boundingBox!.height).toBeLessThanOrEqual(
-    viewportHeight,
-  );
+
+  // Compare the actual Y position before and after scrolling
+  expect(boundingBox!.y).toBe(tabBarYBeforeScroll);
 });
 
 Then("the page content area should be scrollable", async ({ page }) => {

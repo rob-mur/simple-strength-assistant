@@ -19,8 +19,6 @@ Feature: Shell layout — fixed navigation bar
     And the tab bar should not have moved vertically
 
   Scenario: Short content pages show the tab bar correctly
-    Given I have a fresh context and clear storage
-    And I create a new database
     Then the tab bar should be visible within the viewport
     And the page content area should be scrollable
 
