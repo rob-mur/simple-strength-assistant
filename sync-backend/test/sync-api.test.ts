@@ -226,6 +226,46 @@ describe("sync API", () => {
     expect(socket.data).toContain("413");
   });
 
+  test("GET /sync/:sync_id/metadata returns 404 for a slot that has never been pushed", async () => {
+    const res = await fetch(`${baseUrl}/sync/no-such-slot/metadata`);
+    expect(res.status).toBe(404);
+  });
+
+  test("GET /sync/:sync_id/metadata returns correct JSON shape after push", async () => {
+    const blob = new Uint8Array([0xaa, 0xbb, 0xcc, 0xdd]);
+    const clock = { device_a: 3 };
+    const before = Date.now();
+
+    await fetch(`${baseUrl}/sync/metadata-test`, {
+      method: "POST",
+      body: blob,
+      headers: {
+        "Content-Type": "application/octet-stream",
+        "X-Vector-Clock": JSON.stringify(clock),
+      },
+    });
+
+    const after = Date.now();
+
+    const res = await fetch(`${baseUrl}/sync/metadata-test/metadata`);
+    expect(res.status).toBe(200);
+
+    const json = await res.json();
+
+    // vector_clock matches what was pushed
+    expect(json.vector_clock).toEqual(clock);
+
+    // blob_size matches byte length
+    expect(json.blob_size).toBe(4);
+
+    // last_modified is a Unix-millisecond timestamp within the push window
+    expect(json.last_modified).toBeGreaterThanOrEqual(before);
+    expect(json.last_modified).toBeLessThanOrEqual(after);
+
+    // conflicted is always false (hardcoded for now)
+    expect(json.conflicted).toBe(false);
+  });
+
   test("separate data directories are isolated from each other", async () => {
     const customDir = await mkdtemp(join(tmpdir(), "sync-custom-"));
     const customServer = startServer(customDir);
