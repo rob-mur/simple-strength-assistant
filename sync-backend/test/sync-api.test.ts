@@ -1,8 +1,33 @@
-import { afterAll, beforeAll, describe, expect, test } from "bun:test";
-import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import {
+  afterAll,
+  afterEach,
+  beforeAll,
+  beforeEach,
+  describe,
+  expect,
+  test,
+} from "bun:test";
+import {
+  access,
+  mkdir,
+  mkdtemp,
+  readdir,
+  readFile,
+  rm,
+  writeFile,
+} from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { createApp } from "../src/app.ts";
+
+async function fileExists(path: string): Promise<boolean> {
+  try {
+    await access(path);
+    return true;
+  } catch {
+    return false;
+  }
+}
 
 function startServer(dataDir: string) {
   const app = createApp(dataDir);
@@ -262,7 +287,7 @@ describe("sync API", () => {
     expect(json.last_modified).toBeGreaterThanOrEqual(before);
     expect(json.last_modified).toBeLessThanOrEqual(after);
 
-    // conflicted is always false (hardcoded for now)
+    // conflicted is false for non-conflicted slot
     expect(json.conflicted).toBe(false);
   });
 
@@ -304,5 +329,176 @@ describe("sync API", () => {
 
     customServer.server.stop(true);
     await rm(customDir, { recursive: true, force: true });
+  });
+});
+
+describe("conflict detection", () => {
+  let dataDir: string;
+  let server: ReturnType<typeof Bun.serve>;
+  let baseUrl: string;
+
+  beforeEach(async () => {
+    dataDir = await mkdtemp(join(tmpdir(), "sync-conflict-"));
+    const app = createApp(dataDir);
+    server = Bun.serve({ fetch: app.fetch, port: 0 });
+    baseUrl = `http://localhost:${server.port}`;
+  });
+
+  afterEach(async () => {
+    server.stop(true);
+    await rm(dataDir, { recursive: true, force: true });
+  });
+
+  async function push(
+    syncId: string,
+    blob: Uint8Array,
+    clock: Record<string, number>,
+  ) {
+    return fetch(`${baseUrl}/sync/${syncId}`, {
+      method: "POST",
+      body: blob,
+      headers: {
+        "Content-Type": "application/octet-stream",
+        "X-Vector-Clock": JSON.stringify(clock),
+      },
+    });
+  }
+
+  test("fast-forward push updates canonical blob, no conflict created", async () => {
+    await push("ff-test", new Uint8Array([1]), { a: 1 });
+    const res = await push("ff-test", new Uint8Array([2]), { a: 2 });
+    expect(res.status).toBe(200);
+
+    // No conflicts directory
+    const conflictsDir = join(dataDir, "ff-test", "conflicts");
+    expect(await fileExists(conflictsDir)).toBe(false);
+
+    // Blob updated
+    const getRes = await fetch(`${baseUrl}/sync/ff-test`);
+    expect(getRes.status).toBe(200);
+    const returned = new Uint8Array(await getRes.arrayBuffer());
+    expect(returned).toEqual(new Uint8Array([2]));
+  });
+
+  test("diverging push moves canonical blob to conflicts and stores incoming as second entry", async () => {
+    // Initial push from device A
+    await push("conflict-test", new Uint8Array([0xaa]), { a: 1 });
+
+    // Diverging push from device B (concurrent clock)
+    const res = await push("conflict-test", new Uint8Array([0xbb]), { b: 1 });
+    expect(res.status).toBe(200);
+
+    // Top-level blob should be removed
+    expect(await fileExists(join(dataDir, "conflict-test", "blob"))).toBe(
+      false,
+    );
+
+    // conflicts/ directory should have two entries
+    const conflictsDir = join(dataDir, "conflict-test", "conflicts");
+    expect(await fileExists(conflictsDir)).toBe(true);
+    const entries = await readdir(conflictsDir);
+    expect(entries.length).toBe(2);
+
+    // Each entry should have blob and clock.json
+    for (const entry of entries) {
+      expect(await fileExists(join(conflictsDir, entry, "blob"))).toBe(true);
+      expect(await fileExists(join(conflictsDir, entry, "clock.json"))).toBe(
+        true,
+      );
+    }
+  });
+
+  test("multiple concurrent pushes before resolution accumulate entries in conflicts/", async () => {
+    // Three devices A, B, C all start from the same base clock
+    // Device A pushes first (becomes canonical)
+    await push("accum-test", new Uint8Array([0xaa]), { base: 1, a: 1 });
+
+    // Device B pushes with a clock concurrent to A (divergence -> 2 conflict entries)
+    await push("accum-test", new Uint8Array([0xbb]), { base: 1, b: 1 });
+
+    const conflictsDir = join(dataDir, "accum-test", "conflicts");
+    let entries = await readdir(conflictsDir);
+    expect(entries.length).toBe(2);
+
+    // Device C's push is concurrent with existing conflict clocks -> returns 409
+    const res = await push("accum-test", new Uint8Array([0xcc]), {
+      base: 1,
+      c: 1,
+    });
+    expect(res.status).toBe(409);
+
+    // Still 2 entries (no accumulation after conflict)
+    entries = await readdir(conflictsDir);
+    expect(entries.length).toBe(2);
+  });
+
+  test("GET returns 409 in conflicted state with JSON body", async () => {
+    await push("get-conflict", new Uint8Array([0xaa]), { a: 1 });
+    await push("get-conflict", new Uint8Array([0xbb]), { b: 1 });
+
+    const res = await fetch(`${baseUrl}/sync/get-conflict`);
+    expect(res.status).toBe(409);
+
+    const json = await res.json();
+    expect(json).toHaveProperty("error");
+  });
+
+  test("POST into conflicted slot with clock descending from some but not all returns 409", async () => {
+    await push("post-conflict", new Uint8Array([0xaa]), { a: 1 });
+    await push("post-conflict", new Uint8Array([0xbb]), { b: 1 });
+
+    // Push with clock that descends from {a:1} but not {b:1} — partial merge, should be rejected
+    const res = await push("post-conflict", new Uint8Array([0xcc]), { a: 2 });
+    expect(res.status).toBe(409);
+  });
+
+  test("POST with clock descending from all conflict clocks resolves the conflict", async () => {
+    await push("resolve-test", new Uint8Array([0xaa]), { a: 1 });
+    await push("resolve-test", new Uint8Array([0xbb]), { b: 1 });
+
+    // Push with clock that descends from both conflict clocks
+    const res = await push("resolve-test", new Uint8Array([0xff]), {
+      a: 2,
+      b: 2,
+    });
+    expect(res.status).toBe(200);
+
+    // Conflict should be resolved - no conflicts dir entries
+    const conflictsDir = join(dataDir, "resolve-test", "conflicts");
+    if (await fileExists(conflictsDir)) {
+      const entries = await readdir(conflictsDir);
+      expect(entries.length).toBe(0);
+    }
+
+    // Canonical blob restored
+    const getRes = await fetch(`${baseUrl}/sync/resolve-test`);
+    expect(getRes.status).toBe(200);
+    const returned = new Uint8Array(await getRes.arrayBuffer());
+    expect(returned).toEqual(new Uint8Array([0xff]));
+  });
+
+  test("GET /sync/:sync_id/metadata returns conflicted: true when conflicts exist", async () => {
+    await push("meta-conflict", new Uint8Array([0xaa]), { a: 1 });
+    await push("meta-conflict", new Uint8Array([0xbb]), { b: 1 });
+
+    const res = await fetch(`${baseUrl}/sync/meta-conflict/metadata`);
+    expect(res.status).toBe(200);
+
+    const json = await res.json();
+    expect(json.conflicted).toBe(true);
+  });
+
+  test("GET /sync/:sync_id/metadata returns conflicted: false after resolution", async () => {
+    await push("meta-resolve", new Uint8Array([0xaa]), { a: 1 });
+    await push("meta-resolve", new Uint8Array([0xbb]), { b: 1 });
+
+    // Resolve
+    await push("meta-resolve", new Uint8Array([0xff]), { a: 2, b: 2 });
+
+    const res = await fetch(`${baseUrl}/sync/meta-resolve/metadata`);
+    expect(res.status).toBe(200);
+
+    const json = await res.json();
+    expect(json.conflicted).toBe(false);
   });
 });
