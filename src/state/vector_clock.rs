@@ -31,18 +31,22 @@ pub enum ClockRelationship {
 ///   `Concurrent`.
 /// - If all entries are equal (including both empty), they are `Identical`.
 pub fn compare_vector_clocks(a: &VectorClock, b: &VectorClock) -> ClockRelationship {
-    let all_devices: std::collections::HashSet<&String> = a.keys().chain(b.keys()).collect();
-
     let mut a_greater = false;
     let mut b_greater = false;
 
-    for device in all_devices {
-        let seq_a = a.get(device).copied().unwrap_or(0);
+    // First pass: iterate over all entries in `a`, looking up each in `b`.
+    for (device, &seq_a) in a {
         let seq_b = b.get(device).copied().unwrap_or(0);
-
         if seq_a > seq_b {
             a_greater = true;
         } else if seq_b > seq_a {
+            b_greater = true;
+        }
+    }
+
+    // Second pass: check entries in `b` that are absent from `a`.
+    for (device, &seq_b) in b {
+        if !a.contains_key(device) && seq_b > 0 {
             b_greater = true;
         }
     }
