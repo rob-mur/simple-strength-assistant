@@ -1,10 +1,13 @@
 use crate::components::data_management::DataManagementPanel;
+#[cfg(any(debug_assertions, feature = "test-mode"))]
+use crate::components::debug_panel::DebugPanel;
 use crate::components::exercise_form::ExerciseForm;
 use crate::components::history_view::HistoryView;
 use crate::components::library_view::LibraryView;
 use crate::components::previous_sessions::PreviousSessions;
 use crate::components::rpe_slider::RPESlider;
 use crate::components::step_controls::StepControls;
+use crate::components::sync_status_indicator::SyncStatusIndicator;
 use crate::components::tab_bar::{Tab, TabBar};
 use crate::components::tape_measure::TapeMeasure;
 use crate::components::workout_view::WorkoutView;
@@ -472,6 +475,12 @@ pub fn App() -> Element {
                         "Simple Strength Assistant"
                     }
                 }
+                div {
+                    class: "flex items-center justify-end pr-4",
+                    SyncStatusIndicator {
+                        status: workout_state.sync_status()
+                    }
+                }
             }
             match workout_state.initialization_state() {
                 InitializationState::NotInitialized | InitializationState::Initializing => {
@@ -855,8 +864,19 @@ pub fn App() -> Element {
                     }
                 }
             }
+            {render_debug_panel()}
         }
     }
+}
+
+#[cfg(any(debug_assertions, feature = "test-mode"))]
+fn render_debug_panel() -> Element {
+    rsx! { DebugPanel {} }
+}
+
+#[cfg(not(any(debug_assertions, feature = "test-mode")))]
+fn render_debug_panel() -> Element {
+    rsx! {}
 }
 
 #[component]
