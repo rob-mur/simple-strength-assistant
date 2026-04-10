@@ -1,5 +1,5 @@
 pub mod data_management;
-#[cfg(debug_assertions)]
+#[cfg(any(debug_assertions, feature = "test-mode"))]
 pub mod debug_panel;
 pub mod edit_set_modal;
 pub mod exercise_form;

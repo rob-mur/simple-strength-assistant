@@ -3,8 +3,9 @@ use dioxus::prelude::*;
 
 /// A developer-only debug panel for toggling sync status during QA.
 ///
-/// Guarded at the call site with `#[cfg(debug_assertions)]` so the component
-/// is not compiled into release builds. In development it renders as a fixed
+/// Guarded at the call site with `#[cfg(any(debug_assertions, feature = "test-mode"))]`
+/// so the component is excluded from production release builds but available in
+/// both debug builds and test-mode builds (used by Playwright e2e tests). It renders as a fixed
 /// overlay in the bottom-right corner with one button per `SyncStatus` variant
 /// so the sync status indicator can be verified without a live sync client.
 #[component]

@@ -1,5 +1,5 @@
 use crate::components::data_management::DataManagementPanel;
-#[cfg(debug_assertions)]
+#[cfg(any(debug_assertions, feature = "test-mode"))]
 use crate::components::debug_panel::DebugPanel;
 use crate::components::exercise_form::ExerciseForm;
 use crate::components::history_view::HistoryView;
@@ -869,12 +869,12 @@ pub fn App() -> Element {
     }
 }
 
-#[cfg(debug_assertions)]
+#[cfg(any(debug_assertions, feature = "test-mode"))]
 fn render_debug_panel() -> Element {
     rsx! { DebugPanel {} }
 }
 
-#[cfg(not(debug_assertions))]
+#[cfg(not(any(debug_assertions, feature = "test-mode")))]
 fn render_debug_panel() -> Element {
     rsx! {}
 }
