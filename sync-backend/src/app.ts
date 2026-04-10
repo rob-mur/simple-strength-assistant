@@ -78,6 +78,8 @@ function descendsFromAll(
   incoming: VectorClock,
   clocks: VectorClock[],
 ): boolean {
+  // If there are no conflict clocks but we're in conflicted state, don't resolve
+  if (clocks.length === 0) return false;
   for (const clock of clocks) {
     const cmp = compareClocks(incoming, clock);
     if (cmp !== "a_descends_from_b" && cmp !== "identical") {
