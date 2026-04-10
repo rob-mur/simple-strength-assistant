@@ -1,7 +1,7 @@
 import { Hono } from "hono";
 import { randomUUID } from "node:crypto";
 import { readFile } from "node:fs/promises";
-import { mkdir, rename, writeFile } from "node:fs/promises";
+import { mkdir, rename, unlink, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 
 const MAX_BODY_SIZE = 50 * 1024 * 1024; // 50 MB
@@ -21,7 +21,13 @@ function isVectorClock(v: unknown): v is Record<string, number> {
 async function atomicWrite(filePath: string, data: string | Uint8Array) {
   const tmpPath = `${filePath}.${randomUUID()}.tmp`;
   await writeFile(tmpPath, data);
-  await rename(tmpPath, filePath);
+  try {
+    await rename(tmpPath, filePath);
+  } catch (err) {
+    // Clean up the temp file to avoid leaking it on rename failure
+    await unlink(tmpPath).catch(() => {});
+    throw err;
+  }
 }
 
 export function createApp(dataDir: string) {
@@ -68,9 +74,6 @@ export function createApp(dataDir: string) {
       return c.text("Payload too large", 413);
     }
 
-    // Ensure slot directory exists
-    await mkdir(slotDir, { recursive: true });
-
     // Read raw body
     const body = new Uint8Array(await c.req.arrayBuffer());
 
@@ -93,6 +96,9 @@ export function createApp(dataDir: string) {
       }
       clock = parsed;
     }
+
+    // Ensure slot directory exists (after all validation to avoid orphaned dirs)
+    await mkdir(slotDir, { recursive: true });
 
     // Atomic write: blob
     await atomicWrite(blobPath, body);

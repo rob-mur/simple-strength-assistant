@@ -138,7 +138,7 @@ describe("sync API", () => {
   });
 
   test("POST returns 400 for invalid sync_id", async () => {
-    const res = await fetch(`${baseUrl}/sync/../../etc`, {
+    const res = await fetch(`${baseUrl}/sync/has%2Fslash`, {
       method: "POST",
       body: new Uint8Array([1, 2, 3]),
       headers: {
@@ -189,16 +189,41 @@ describe("sync API", () => {
   });
 
   test("POST returns 413 for oversized Content-Length", async () => {
-    const res = await fetch(`${baseUrl}/sync/too-large`, {
-      method: "POST",
-      body: new Uint8Array([1]),
-      headers: {
-        "Content-Type": "application/octet-stream",
-        "Content-Length": String(100 * 1024 * 1024),
-        "X-Vector-Clock": JSON.stringify({ n: 1 }),
+    // Use a raw HTTP request so Content-Length isn't overridden by fetch()
+    const url = new URL(`${baseUrl}/sync/too-large`);
+    const socket = await Bun.connect({
+      hostname: url.hostname,
+      port: Number(url.port),
+      socket: {
+        data(_socket, data) {
+          socket.data += new TextDecoder().decode(data);
+        },
+        open() {},
+        close() {},
+        error() {},
       },
+      data: "",
     });
-    expect(res.status).toBe(413);
+
+    const body = new Uint8Array([1]);
+    const request = [
+      `POST /sync/too-large HTTP/1.1`,
+      `Host: ${url.hostname}:${url.port}`,
+      `Content-Type: application/octet-stream`,
+      `Content-Length: ${100 * 1024 * 1024}`,
+      `X-Vector-Clock: ${JSON.stringify({ n: 1 })}`,
+      ``,
+      ``,
+    ].join("\r\n");
+
+    socket.write(request);
+    socket.write(body);
+
+    // Wait for response
+    await Bun.sleep(200);
+    socket.end();
+
+    expect(socket.data).toContain("413");
   });
 
   test("separate data directories are isolated from each other", async () => {
