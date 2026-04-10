@@ -1,5 +1,5 @@
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
-import { mkdtemp, readFile, rm } from "node:fs/promises";
+import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { createApp } from "../src/app.ts";
@@ -264,6 +264,16 @@ describe("sync API", () => {
 
     // conflicted is always false (hardcoded for now)
     expect(json.conflicted).toBe(false);
+  });
+
+  test("GET /sync/:sync_id/metadata returns 500 for corrupt clock.json", async () => {
+    const slotDir = join(dataDir, "corrupt-clock");
+    await mkdir(slotDir, { recursive: true });
+    await writeFile(join(slotDir, "clock.json"), "not-valid-json");
+    await writeFile(join(slotDir, "meta.json"), JSON.stringify({ blob_size: 1, last_modified: 0 }));
+
+    const res = await fetch(`${baseUrl}/sync/corrupt-clock/metadata`);
+    expect(res.status).toBe(500);
   });
 
   test("separate data directories are isolated from each other", async () => {

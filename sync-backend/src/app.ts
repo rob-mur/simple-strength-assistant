@@ -81,6 +81,9 @@ export function createApp(dataDir: string) {
       if (err instanceof Error && "code" in err && err.code === "ENOENT") {
         return c.text("Not found", 404);
       }
+      if (err instanceof SyntaxError) {
+        return c.text("Corrupt metadata", 500);
+      }
       throw err;
     }
   });
@@ -110,7 +113,7 @@ export function createApp(dataDir: string) {
       return c.text("Payload too large", 413);
     }
 
-    // Parse vector clock from header
+    // Parse and validate vector clock from header
     const clockHeader = c.req.header("X-Vector-Clock");
     let clock: Record<string, number> = {};
     if (clockHeader) {
