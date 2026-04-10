@@ -270,7 +270,10 @@ describe("sync API", () => {
     const slotDir = join(dataDir, "corrupt-clock");
     await mkdir(slotDir, { recursive: true });
     await writeFile(join(slotDir, "clock.json"), "not-valid-json");
-    await writeFile(join(slotDir, "meta.json"), JSON.stringify({ blob_size: 1, last_modified: 0 }));
+    await writeFile(
+      join(slotDir, "meta.json"),
+      JSON.stringify({ blob_size: 1, last_modified: 0 }),
+    );
 
     const res = await fetch(`${baseUrl}/sync/corrupt-clock/metadata`);
     expect(res.status).toBe(500);
