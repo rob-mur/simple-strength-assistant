@@ -3099,6 +3099,9 @@ details.collapse summary::-webkit-details-marker {
 .h-6 {
   height: 1.5rem;
 }
+.h-\[100dvh\] {
+  height: 100dvh;
+}
 .h-auto {
   height: auto;
 }
@@ -3113,9 +3116,6 @@ details.collapse summary::-webkit-details-marker {
 }
 .min-h-8 {
   min-height: 2rem;
-}
-.min-h-screen {
-  min-height: 100vh;
 }
 .w-12 {
   width: 3rem;
