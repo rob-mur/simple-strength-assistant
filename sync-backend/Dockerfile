@@ -21,4 +21,4 @@ USER bun
 # EXPOSE documents the default port; the actual port is controlled by the PORT env var
 EXPOSE 3000
 
-CMD ["bun", "run", "src/index.ts"]
+ENTRYPOINT ["sh", "-c", "mkdir -p \"$DATA_DIR\" && exec bun run src/index.ts"]
