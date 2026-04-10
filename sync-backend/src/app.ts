@@ -1,4 +1,5 @@
 import { Hono } from "hono";
+import { randomUUID } from "node:crypto";
 import { readFile } from "node:fs/promises";
 import { mkdir, rename, writeFile } from "node:fs/promises";
 import { join } from "node:path";
@@ -6,8 +7,19 @@ import { join } from "node:path";
 const MAX_BODY_SIZE = 50 * 1024 * 1024; // 50 MB
 const VALID_SYNC_ID = /^[a-zA-Z0-9_-]+$/;
 
+function isVectorClock(v: unknown): v is Record<string, number> {
+  return (
+    typeof v === "object" &&
+    v !== null &&
+    !Array.isArray(v) &&
+    Object.values(v as Record<string, unknown>).every(
+      (x) => typeof x === "number",
+    )
+  );
+}
+
 async function atomicWrite(filePath: string, data: string | Uint8Array) {
-  const tmpPath = filePath + ".tmp";
+  const tmpPath = `${filePath}.${randomUUID()}.tmp`;
   await writeFile(tmpPath, data);
   await rename(tmpPath, filePath);
 }
@@ -68,13 +80,18 @@ export function createApp(dataDir: string) {
 
     // Parse vector clock from header
     const clockHeader = c.req.header("X-Vector-Clock");
-    let clock: unknown = {};
+    let clock: Record<string, number> = {};
     if (clockHeader) {
+      let parsed: unknown;
       try {
-        clock = JSON.parse(clockHeader);
+        parsed = JSON.parse(clockHeader);
       } catch {
         return c.text("Invalid X-Vector-Clock header", 400);
       }
+      if (!isVectorClock(parsed)) {
+        return c.text("Invalid X-Vector-Clock header", 400);
+      }
+      clock = parsed;
     }
 
     // Atomic write: blob

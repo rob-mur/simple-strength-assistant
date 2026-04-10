@@ -137,6 +137,70 @@ describe("sync API", () => {
     expect(meta.blob_size).toBe(4);
   });
 
+  test("POST returns 400 for invalid sync_id", async () => {
+    const res = await fetch(`${baseUrl}/sync/../../etc`, {
+      method: "POST",
+      body: new Uint8Array([1, 2, 3]),
+      headers: {
+        "Content-Type": "application/octet-stream",
+        "X-Vector-Clock": JSON.stringify({ n: 1 }),
+      },
+    });
+    expect(res.status).toBe(400);
+  });
+
+  test("GET returns 400 for invalid sync_id", async () => {
+    const res = await fetch(`${baseUrl}/sync/bad%2Fid`);
+    expect(res.status).toBe(400);
+  });
+
+  test("POST returns 400 for malformed X-Vector-Clock header", async () => {
+    const res = await fetch(`${baseUrl}/sync/clock-bad`, {
+      method: "POST",
+      body: new Uint8Array([1, 2, 3]),
+      headers: {
+        "Content-Type": "application/octet-stream",
+        "X-Vector-Clock": "not-json{{{",
+      },
+    });
+    expect(res.status).toBe(400);
+  });
+
+  test("POST returns 400 for structurally invalid X-Vector-Clock", async () => {
+    const res = await fetch(`${baseUrl}/sync/clock-struct`, {
+      method: "POST",
+      body: new Uint8Array([1, 2, 3]),
+      headers: {
+        "Content-Type": "application/octet-stream",
+        "X-Vector-Clock": JSON.stringify([1, 2, 3]),
+      },
+    });
+    expect(res.status).toBe(400);
+
+    const res2 = await fetch(`${baseUrl}/sync/clock-struct2`, {
+      method: "POST",
+      body: new Uint8Array([1, 2, 3]),
+      headers: {
+        "Content-Type": "application/octet-stream",
+        "X-Vector-Clock": JSON.stringify({ node: "not-a-number" }),
+      },
+    });
+    expect(res2.status).toBe(400);
+  });
+
+  test("POST returns 413 for oversized Content-Length", async () => {
+    const res = await fetch(`${baseUrl}/sync/too-large`, {
+      method: "POST",
+      body: new Uint8Array([1]),
+      headers: {
+        "Content-Type": "application/octet-stream",
+        "Content-Length": String(100 * 1024 * 1024),
+        "X-Vector-Clock": JSON.stringify({ n: 1 }),
+      },
+    });
+    expect(res.status).toBe(413);
+  });
+
   test("separate data directories are isolated from each other", async () => {
     const customDir = await mkdtemp(join(tmpdir(), "sync-custom-"));
     const customServer = startServer(customDir);
