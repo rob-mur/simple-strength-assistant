@@ -56,6 +56,38 @@ export function createApp(dataDir: string) {
     }
   });
 
+  app.get("/sync/:sync_id/metadata", async (c) => {
+    const syncId = c.req.param("sync_id");
+
+    if (!VALID_SYNC_ID.test(syncId)) {
+      return c.text("Invalid sync_id", 400);
+    }
+
+    const slotDir = join(dataDir, syncId);
+    const clockPath = join(slotDir, "clock.json");
+    const metaPath = join(slotDir, "meta.json");
+
+    try {
+      const clock = JSON.parse(await readFile(clockPath, "utf-8"));
+      const meta = JSON.parse(await readFile(metaPath, "utf-8"));
+
+      return c.json({
+        vector_clock: clock,
+        blob_size: meta.blob_size,
+        last_modified: meta.last_modified,
+        conflicted: false,
+      });
+    } catch (err: unknown) {
+      if (err instanceof Error && "code" in err && err.code === "ENOENT") {
+        return c.text("Not found", 404);
+      }
+      if (err instanceof SyntaxError) {
+        return c.text("Corrupt metadata", 500);
+      }
+      throw err;
+    }
+  });
+
   app.post("/sync/:sync_id", async (c) => {
     const syncId = c.req.param("sync_id");
 
@@ -81,7 +113,7 @@ export function createApp(dataDir: string) {
       return c.text("Payload too large", 413);
     }
 
-    // Parse vector clock from header
+    // Parse and validate vector clock from header
     const clockHeader = c.req.header("X-Vector-Clock");
     let clock: Record<string, number> = {};
     if (clockHeader) {
