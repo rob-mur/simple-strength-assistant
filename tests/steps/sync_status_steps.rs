@@ -33,7 +33,7 @@ impl SyncStatusWorld {
         let mut vdom = VirtualDom::new_with_props(
             TestWrapper,
             WrapperProps {
-                status: self.sync_status,
+                status: self.sync_status.clone(),
             },
         );
         vdom.rebuild_in_place();
