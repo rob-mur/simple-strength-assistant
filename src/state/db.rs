@@ -157,10 +157,10 @@ impl Database {
         self.execute_internal(create_index, &[]).await?;
 
         // ── v3 migration: add sync-readiness columns ──────────────────────────
-        // Only runs for databases that were previously at schema version 2.
-        // Fresh databases (version 0) are created directly with the full v3
-        // schema above, so ALTER TABLE is not needed for them.
-        if current_version == 2 {
+        // Runs for any database not yet at v3, including fresh databases
+        // (whose CREATE TABLE statements use the v2 schema without sync columns)
+        // and existing v2 databases that need the new columns added.
+        if current_version < 3 {
             log::debug!("[DB] Applying v3 migration: adding sync columns");
             self.apply_v3_migration().await?;
         }
