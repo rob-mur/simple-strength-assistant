@@ -3,11 +3,13 @@ use std::collections::HashMap;
 /// A vector clock maps device IDs to their sequence numbers.
 ///
 /// Currently unused — will be consumed by the sync client in #91.
+#[allow(dead_code)]
 pub(crate) type VectorClock = HashMap<String, u64>;
 
 /// The relationship between two vector clocks A and B.
 ///
 /// Currently unused — will be consumed by the sync client in #91.
+#[allow(dead_code)]
 #[derive(Debug, PartialEq, Eq)]
 pub(crate) enum ClockRelationship {
     /// Both clocks are identical (same entries, same sequence numbers).
@@ -34,7 +36,9 @@ pub(crate) enum ClockRelationship {
 /// - If neither strictly dominates the other and they differ, they are
 ///   `Concurrent`.
 /// - If all entries are equal (including both empty), they are `Identical`.
+///
 /// Currently unused — will be consumed by the sync client in #91.
+#[allow(dead_code)]
 pub(crate) fn compare_vector_clocks(a: &VectorClock, b: &VectorClock) -> ClockRelationship {
     let mut a_greater = false;
     let mut b_greater = false;
