@@ -22,7 +22,7 @@ pub fn SyncStatusIndicator(status: SyncStatus) -> Element {
         SyncStatus::Syncing => ("badge badge-info badge-sm", "Syncing…"),
         SyncStatus::UpToDate => ("badge badge-success badge-sm", "Up to date"),
         SyncStatus::Error(_) => ("badge badge-error badge-sm", "Sync error"),
-        SyncStatus::ConflictsDetected(_) => ("badge badge-warning badge-sm", "Conflicts"),
+        SyncStatus::ConflictsDetected => ("badge badge-warning badge-sm", "Conflicts"),
     };
 
     rsx! {

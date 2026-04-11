@@ -2,6 +2,7 @@ use crate::models::{CompletedSet, ExerciseMetadata, SetType};
 #[cfg(feature = "test-mode")]
 use crate::state::StorageBackend;
 use crate::state::{Database, Storage, error::WorkoutError};
+use crate::sync::ConflictRecord;
 use crate::sync::VectorClock;
 #[cfg(all(not(feature = "test-mode"), not(test)))]
 use crate::sync::{SyncCredentials, SyncOutcome, save_clock};
@@ -41,30 +42,6 @@ pub enum InitializationState {
     Error,
 }
 
-/// Which version of a conflicting record the user has chosen to keep.
-#[derive(Clone, Copy, PartialEq, Debug)]
-pub enum ConflictChoice {
-    VersionA,
-    VersionB,
-}
-
-/// A single record that has a true conflict: same UUID, same `updated_at`,
-/// but different field values on the two devices.
-///
-/// `uuid`       - stable record identifier used to apply the resolution.
-/// `field_label`- human-readable description of the record (e.g. exercise name).
-/// `version_a`  - string representation of the value on device A.
-/// `version_b`  - string representation of the value on device B.
-/// `choice`     - `None` until the user selects a version.
-#[derive(Clone, Debug, PartialEq)]
-pub struct ConflictRecord {
-    pub uuid: String,
-    pub field_label: String,
-    pub version_a: String,
-    pub version_b: String,
-    pub choice: Option<ConflictChoice>,
-}
-
 /// Represents the current sync state of the application.
 ///
 /// `Idle`               - no sync is configured (default before any sync setup).
@@ -75,6 +52,7 @@ pub struct ConflictRecord {
 ///                        (e.g. "network timeout", "401 Unauthorized") so the UI
 ///                        can surface actionable context instead of a generic message.
 /// `ConflictsDetected`  - the merge found true conflicts that require user resolution.
+///                        Actual conflict data is stored in `WorkoutState::pending_conflicts`.
 #[derive(Clone, PartialEq, Debug, Default)]
 pub enum SyncStatus {
     #[default]
@@ -83,7 +61,7 @@ pub enum SyncStatus {
     Syncing,
     UpToDate,
     Error(String),
-    ConflictsDetected(Vec<ConflictRecord>),
+    ConflictsDetected,
 }
 
 impl SyncStatus {
@@ -95,7 +73,7 @@ impl SyncStatus {
             SyncStatus::Syncing => "syncing",
             SyncStatus::UpToDate => "up-to-date",
             SyncStatus::Error(_) => "error",
-            SyncStatus::ConflictsDetected(_) => "conflicts",
+            SyncStatus::ConflictsDetected => "conflicts",
         }
     }
 }
@@ -111,12 +89,12 @@ pub struct WorkoutState {
     last_save_time: Signal<f64>,
     exercises: Signal<Vec<ExerciseMetadata>>,
     sync_status: Signal<SyncStatus>,
-    /// Stores the user's resolved conflict choices after `ConflictResolution`
-    /// fires `on_resolve`.  The sync client (#91) reads this to perform the
-    /// OPFS merge write and push to `POST /sync/:sync_id`.
-    resolved_conflicts: Signal<Vec<ConflictRecord>>,
     /// Local vector clock, persisted across sync cycles
     sync_clock: Signal<VectorClock>,
+    /// Pending conflicts from a sync merge that the user needs to resolve.
+    pending_conflicts: Signal<Vec<ConflictRecord>>,
+    /// The merged database blob waiting for conflict resolution before being committed.
+    pending_merged_blob: Signal<Option<Vec<u8>>>,
 }
 
 impl Default for WorkoutState {
@@ -127,20 +105,14 @@ impl Default for WorkoutState {
 
 impl WorkoutState {
     pub fn new() -> Self {
-        // Load persisted vector clock so sync resumes from the correct
-        // sequence numbers across page reloads.  In test mode there is
-        // no LocalStorage, so we start with an empty clock.
-        let initial_clock = {
-            #[cfg(all(not(feature = "test-mode"), not(test)))]
-            {
-                crate::sync::load_clock()
-            }
-            #[cfg(any(feature = "test-mode", test))]
-            {
-                VectorClock::new()
-            }
-        };
-
+        // Start with an empty clock. In production, the persisted clock is
+        // loaded via `load_persisted_clock()` during `setup_database()` so
+        // sync resumes from the correct sequence numbers after page reloads.
+        //
+        // Note: calling `crate::sync::load_clock()` directly here (even
+        // behind `#[cfg(not(test))]`) breaks Dioxus 0.7.x SSR rendering —
+        // cross-module function calls inside `Signal::new()` constructors
+        // cause the virtual DOM to produce empty output. See #95.
         Self {
             initialization_state: Signal::new(InitializationState::NotInitialized),
             current_session: Signal::new(None),
@@ -151,8 +123,19 @@ impl WorkoutState {
             last_save_time: Signal::new(0.0),
             exercises: Signal::new(Vec::new()),
             sync_status: Signal::new(SyncStatus::Idle),
-            resolved_conflicts: Signal::new(Vec::new()),
-            sync_clock: Signal::new(initial_clock),
+            sync_clock: Signal::new(VectorClock::new()),
+            pending_conflicts: Signal::new(Vec::new()),
+            pending_merged_blob: Signal::new(None),
+        }
+    }
+
+    /// Load the persisted vector clock from LocalStorage (production only).
+    /// Called during database setup so sync resumes from the correct state.
+    pub fn load_persisted_clock(&self) {
+        #[cfg(all(not(feature = "test-mode"), not(test)))]
+        {
+            let clock = crate::sync::load_clock();
+            self.set_sync_clock(clock);
         }
     }
 
@@ -237,18 +220,6 @@ impl WorkoutState {
         sig.set(status);
     }
 
-    /// Returns the conflict choices recorded by the last call to `set_resolved_conflicts`.
-    pub fn resolved_conflicts(&self) -> Vec<ConflictRecord> {
-        (self.resolved_conflicts)()
-    }
-
-    /// Stores the user's conflict resolution choices so the sync client (#91)
-    /// can read them when performing the OPFS merge write and server push.
-    pub fn set_resolved_conflicts(&self, conflicts: Vec<ConflictRecord>) {
-        let mut sig = self.resolved_conflicts;
-        sig.set(conflicts);
-    }
-
     pub fn sync_clock(&self) -> VectorClock {
         (self.sync_clock)()
     }
@@ -256,6 +227,29 @@ impl WorkoutState {
     pub fn set_sync_clock(&self, clock: VectorClock) {
         let mut sig = self.sync_clock;
         sig.set(clock);
+    }
+
+    pub fn pending_conflicts(&self) -> Vec<ConflictRecord> {
+        (self.pending_conflicts)()
+    }
+
+    pub fn set_pending_conflicts(&self, conflicts: Vec<ConflictRecord>) {
+        let mut sig = self.pending_conflicts;
+        sig.set(conflicts);
+    }
+
+    pub fn pending_merged_blob(&self) -> Option<Vec<u8>> {
+        (self.pending_merged_blob)()
+    }
+
+    pub fn set_pending_merged_blob(&self, blob: Option<Vec<u8>>) {
+        let mut sig = self.pending_merged_blob;
+        sig.set(blob);
+    }
+
+    /// Returns true if there are unresolved sync conflicts pending.
+    pub fn has_pending_conflicts(&self) -> bool {
+        !self.pending_conflicts().is_empty()
     }
 }
 
@@ -351,6 +345,11 @@ impl WorkoutStateManager {
         if let Err(e) = Self::sync_exercises(state).await {
             log::warn!("Failed to load exercises after DB setup: {}", e);
         }
+
+        // Load the persisted vector clock so sync resumes from the correct
+        // sequence numbers. Done here (not in WorkoutState::new()) to avoid
+        // a Dioxus SSR bug with cross-module calls during signal construction.
+        state.load_persisted_clock();
 
         state.set_initialization_state(InitializationState::Ready);
 
@@ -626,6 +625,7 @@ impl WorkoutStateManager {
             log::warn!("Failed to sync exercises after file initialization: {}", e);
         }
 
+        state.load_persisted_clock();
         state.set_initialization_state(InitializationState::Ready);
 
         log::debug!("[UI] Setup complete! State is now Ready");
@@ -638,8 +638,7 @@ impl WorkoutStateManager {
     }
 
     /// Trigger a background sync cycle.  Non-blocking: errors are swallowed
-    /// except for `ConflictDetected`, which updates the save_error banner so
-    /// the user is informed they need to resolve conflicts.
+    /// except for `ConflictDetected`, which surfaces the conflict resolution UI.
     ///
     /// This is a no-op when `sync_id` is not configured in LocalStorage
     /// (i.e. the pairing flow has not been run yet).
@@ -712,15 +711,9 @@ impl WorkoutStateManager {
                 log::info!("[Sync] Merge complete, reloading database");
                 Self::apply_synced_blob(state, &blob, "merge").await;
             }
-            // TODO(#89): this arm is unreachable while `stub_merge` always
-            // reports a conflict.  Once the real union-merge lands, genuine
-            // conflict-free merges will flow through `Merged` above, and only
-            // true row-level conflicts will reach here.
-            SyncOutcome::ConflictDetected(_) => {
+            SyncOutcome::ConflictDetected { merged, conflicts } => {
                 log::warn!("[Sync] Conflicts detected — user action required");
-                state.set_save_error(Some(
-                    "Sync conflicts detected. Your data has been preserved locally. Conflict resolution coming in a future update.".to_string(),
-                ));
+                Self::set_conflict_state(state, conflicts, merged);
             }
         }
     }
@@ -746,6 +739,177 @@ impl WorkoutStateManager {
                 log::warn!("[Sync] Failed to init DB from {} blob: {}", label, e);
             }
         }
+    }
+
+    /// Store pending conflicts from a sync merge so the UI can display the
+    /// conflict resolution screen.
+    pub fn set_conflict_state(
+        state: &WorkoutState,
+        conflicts: Vec<ConflictRecord>,
+        merged_blob: Vec<u8>,
+    ) {
+        state.set_pending_conflicts(conflicts);
+        state.set_pending_merged_blob(Some(merged_blob));
+    }
+
+    /// Apply the user's conflict resolutions to the merged database blob.
+    ///
+    /// `choices` maps each conflict's `row_id` to a boolean:
+    /// - `true`  = keep version A (local)
+    /// - `false` = keep version B (remote)
+    ///
+    /// The method rewrites the conflicting rows in the merged blob according
+    /// to the user's choices, saves the result to OPFS, and pushes to the server.
+    pub async fn apply_conflict_resolutions(
+        state: &WorkoutState,
+        choices: &std::collections::HashMap<String, bool>,
+    ) -> Result<(), WorkoutError> {
+        let merged_blob = state
+            .pending_merged_blob()
+            .ok_or(WorkoutError::NotInitialized)?;
+        let conflicts = state.pending_conflicts();
+
+        // Build a JSON array of resolution instructions for the JS side.
+        // Each entry tells the DB module which version's data to write for a given UUID.
+        let mut resolutions = Vec::new();
+        for conflict in &conflicts {
+            let keep_a = choices.get(&conflict.row_id).copied().unwrap_or(true);
+            let chosen_version = if keep_a {
+                &conflict.version_a
+            } else {
+                &conflict.version_b
+            };
+            resolutions.push(serde_json::json!({
+                "uuid": conflict.row_id,
+                "table": conflict.table,
+                "chosen_version": chosen_version,
+            }));
+        }
+
+        log::info!("[Conflict] Applying {} resolutions", resolutions.len());
+
+        // Initialize a new database from the merged blob
+        let mut resolved_db = Database::new();
+        resolved_db
+            .init(Some(merged_blob.clone()))
+            .await
+            .map_err(|e| {
+                log::error!("[Conflict] Failed to init DB from merged blob: {}", e);
+                WorkoutError::Database(e)
+            })?;
+
+        // Whitelist of allowed table and column names matching the known schema.
+        // This prevents SQL injection via server-controlled ConflictRecord data.
+        use std::collections::HashSet;
+
+        let allowed_tables: HashSet<&str> =
+            ["exercises", "completed_sets"].iter().copied().collect();
+        let allowed_columns: HashSet<&str> = [
+            "id",
+            "name",
+            "is_weighted",
+            "min_weight",
+            "increment",
+            "exercise_id",
+            "set_number",
+            "reps",
+            "rpe",
+            "weight",
+            "is_bodyweight",
+            "recorded_at",
+            "uuid",
+            "updated_at",
+            "deleted_at",
+        ]
+        .iter()
+        .copied()
+        .collect();
+
+        // Apply each resolution by updating the row in the database
+        for resolution in &resolutions {
+            let uuid = resolution["uuid"].as_str().unwrap_or_default();
+            let table = resolution["table"].as_str().unwrap_or_default();
+            let chosen_json = resolution["chosen_version"].as_str().unwrap_or_default();
+
+            // Reject unknown table names
+            if !allowed_tables.contains(table) {
+                log::warn!(
+                    "[Conflict] Rejecting unknown table '{}' for row {}",
+                    table,
+                    uuid
+                );
+                continue;
+            }
+
+            // Parse the chosen version and build an UPDATE statement
+            let fields: std::collections::HashMap<String, serde_json::Value> =
+                serde_json::from_str(chosen_json).unwrap_or_default();
+
+            // Build SET clause from the chosen version's fields (excluding uuid)
+            let mut set_parts = Vec::new();
+            let mut values = Vec::new();
+            for (key, val) in &fields {
+                if key == "uuid" {
+                    continue;
+                }
+                // Reject unknown column names
+                if !allowed_columns.contains(key.as_str()) {
+                    log::warn!(
+                        "[Conflict] Rejecting unknown column '{}' in table '{}' for row {}",
+                        key,
+                        table,
+                        uuid
+                    );
+                    continue;
+                }
+                set_parts.push(format!("{} = ?", key));
+                match val {
+                    serde_json::Value::String(s) => values.push(s.clone()),
+                    serde_json::Value::Number(n) => values.push(n.to_string()),
+                    serde_json::Value::Null => values.push("NULL".to_string()),
+                    other => values.push(other.to_string()),
+                }
+            }
+
+            if !set_parts.is_empty() {
+                let sql = format!(
+                    "UPDATE {} SET {} WHERE uuid = ?",
+                    table,
+                    set_parts.join(", ")
+                );
+                values.push(uuid.to_string());
+
+                log::debug!("[Conflict] Executing: {} with {} params", sql, values.len());
+                if let Err(e) = resolved_db.execute_raw(&sql, &values).await {
+                    log::warn!("[Conflict] Failed to apply resolution for {}: {}", uuid, e);
+                }
+            }
+        }
+
+        // Export the resolved database
+        let resolved_blob = resolved_db.export().await.map_err(WorkoutError::Database)?;
+
+        // Save to OPFS
+        if let Some(fm) = state.file_manager() {
+            fm.write_file(&resolved_blob)
+                .await
+                .map_err(WorkoutError::FileSystem)?;
+            log::info!("[Conflict] Resolved database saved to OPFS");
+        }
+
+        // Update the active database
+        state.set_database(resolved_db);
+
+        // Sync exercises from the resolved database
+        if let Err(e) = Self::sync_exercises(state).await {
+            log::warn!(
+                "[Conflict] Failed to sync exercises after resolution: {}",
+                e
+            );
+        }
+
+        log::info!("[Conflict] All conflicts resolved successfully");
+        Ok(())
     }
 }
 

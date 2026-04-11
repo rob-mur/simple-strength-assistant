@@ -1,4 +1,4 @@
-use crate::components::conflict_resolution::ConflictResolution;
+use crate::components::conflict_resolution::ConflictResolutionScreen;
 use crate::components::data_management::DataManagementPanel;
 #[cfg(any(debug_assertions, feature = "test-mode"))]
 use crate::components::debug_panel::DebugPanel;
@@ -15,10 +15,7 @@ use crate::components::workout_view::WorkoutView;
 use crate::models::{CompletedSet, SetType, SetTypeConfig};
 #[cfg(feature = "test-mode")]
 use crate::state::StorageBackend;
-use crate::state::{
-    ConflictRecord, InitializationState, SyncStatus, WorkoutError, WorkoutState,
-    WorkoutStateManager,
-};
+use crate::state::{InitializationState, WorkoutError, WorkoutState, WorkoutStateManager};
 use dioxus::prelude::*;
 use wasm_bindgen::JsCast;
 
@@ -791,31 +788,9 @@ pub fn App() -> Element {
                     }
                 }
                 InitializationState::Ready => {
-                    // If the sync client has detected conflicts, show the resolution
-                    // screen instead of the normal workout UI.
-                    if let SyncStatus::ConflictsDetected(conflicts) = workout_state.sync_status() {
+                    if workout_state.has_pending_conflicts() {
                         rsx! {
-                            main {
-                                class: "flex-1 flex flex-col min-h-0 w-full",
-                                ConflictResolution {
-                                    conflicts,
-                                    on_resolve: move |resolved: Vec<ConflictRecord>| {
-                                        // Store the user's choices so the sync client
-                                        // (#91) can read them when performing the OPFS
-                                        // merge write and push to POST /sync/:sync_id.
-                                        log::info!(
-                                            "[ConflictResolution] Resolved {} conflicts",
-                                            resolved.len()
-                                        );
-                                        workout_state.set_resolved_conflicts(resolved);
-                                        // TODO(#91): This is scaffolding — the sync client
-                                        // should transition to UpToDate only after the
-                                        // resolved DB is written to OPFS and pushed to the
-                                        // server.  Until then, this is a premature transition.
-                                        workout_state.set_sync_status(SyncStatus::UpToDate);
-                                    },
-                                }
-                            }
+                            ConflictResolutionScreen { state: workout_state }
                         }
                     } else {
                         rsx! {
