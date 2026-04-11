@@ -94,11 +94,32 @@ impl FileSystemManager {
     /// Creates a new FileSystemManager, automatically detecting whether OPFS is
     /// available. Browsers without OPFS (iOS Safari < 16.4) use a no-persistence
     /// fallback: the app loads but data does not persist across sessions.
+    ///
+    /// When `window.__TEST_MODE__ === true` (set by the Playwright test fixture),
+    /// the manager forces fallback mode regardless of OPFS availability. This
+    /// makes it behave like `InMemoryStorage`: reads return empty, writes are
+    /// discarded, and no OPFS file picker or user gesture is required.
     pub fn new() -> Self {
+        let test_mode = Self::is_test_mode();
+        if test_mode {
+            log::debug!("[FileSystem] Test mode detected — using no-persistence fallback");
+        }
         Self {
             handle: None,
-            use_fallback: !Self::is_opfs_supported(),
+            use_fallback: test_mode || !Self::is_opfs_supported(),
         }
+    }
+
+    /// Returns true when the Playwright test harness has set
+    /// `window.__TEST_MODE__ = true` via `addInitScript`.
+    fn is_test_mode() -> bool {
+        window()
+            .and_then(|w| {
+                js_sys::Reflect::get(&w, &JsValue::from_str("__TEST_MODE__"))
+                    .ok()
+                    .and_then(|v| v.as_bool())
+            })
+            .unwrap_or(false)
     }
 
     fn is_opfs_supported() -> bool {
