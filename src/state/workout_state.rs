@@ -683,10 +683,7 @@ impl WorkoutStateManager {
         // Only persist the updated clock when the sync cycle actually reached
         // the server.  Persisting after Offline would accumulate meaningless
         // sequence numbers (the server never saw the increment).
-        let should_persist_clock = !matches!(
-            outcome,
-            SyncOutcome::Skipped | SyncOutcome::Offline
-        );
+        let should_persist_clock = !matches!(outcome, SyncOutcome::Skipped | SyncOutcome::Offline);
         if should_persist_clock {
             state.set_sync_clock(clock.clone());
             if let Err(e) = save_clock(&clock) {
@@ -738,19 +735,11 @@ impl WorkoutStateManager {
                 if let Some(fm) = state.file_manager()
                     && let Err(e) = fm.write_file(blob).await
                 {
-                    log::warn!(
-                        "[Sync] Failed to persist {} blob to OPFS: {}",
-                        label,
-                        e
-                    );
+                    log::warn!("[Sync] Failed to persist {} blob to OPFS: {}", label, e);
                 }
                 state.set_database(new_db);
                 if let Err(e) = Self::sync_exercises(state).await {
-                    log::warn!(
-                        "[Sync] Failed to sync exercises after {}: {}",
-                        label,
-                        e
-                    );
+                    log::warn!("[Sync] Failed to sync exercises after {}: {}", label, e);
                 }
             }
             Err(e) => {
