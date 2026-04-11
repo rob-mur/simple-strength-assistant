@@ -735,14 +735,14 @@ impl WorkoutStateManager {
         let mut new_db = Database::new();
         match new_db.init(Some(blob.to_vec())).await {
             Ok(_) => {
-                if let Some(fm) = state.file_manager() {
-                    if let Err(e) = fm.write_file(blob).await {
-                        log::warn!(
-                            "[Sync] Failed to persist {} blob to OPFS: {}",
-                            label,
-                            e
-                        );
-                    }
+                if let Some(fm) = state.file_manager()
+                    && let Err(e) = fm.write_file(blob).await
+                {
+                    log::warn!(
+                        "[Sync] Failed to persist {} blob to OPFS: {}",
+                        label,
+                        e
+                    );
                 }
                 state.set_database(new_db);
                 if let Err(e) = Self::sync_exercises(state).await {

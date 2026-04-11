@@ -1,7 +1,8 @@
 /// Real WASM HTTP implementation of `HttpClient` using `web_sys::fetch`.
 ///
-/// Authentication: HMAC-SHA256 of the JSON request body keyed with `sync_secret`,
-/// sent as the `X-Sync-Auth` header.  `sync_secret` is **never** placed in any URL.
+/// Authentication: `sync_secret` is passed as a raw bearer token in the
+/// `X-Sync-Secret` header.  It is **never** placed in any URL.
+/// TODO: upgrade to HMAC-SHA256 of the request body if the server supports it.
 #[cfg(not(test))]
 pub mod wasm {
     use super::super::client::{HttpClient, PushRequest, SyncError, SyncMetadata};
@@ -109,20 +110,19 @@ pub mod wasm {
                 return Err(SyncError::ServerError(resp.status()));
             }
 
-            let json_promise = resp
-                .json()
+            // Use resp.text() → serde_json::from_str to avoid a double
+            // round-trip (JS parse → JS stringify → Rust parse).
+            let text_promise = resp
+                .text()
                 .map_err(|e| SyncError::SerializationError(format!("{:?}", e)))?;
 
-            let json_val = JsFuture::from(json_promise)
+            let text_val = JsFuture::from(text_promise)
                 .await
                 .map_err(|e| SyncError::SerializationError(format!("{:?}", e)))?;
 
-            let json_str = js_sys::JSON::stringify(&json_val)
-                .map_err(|e| SyncError::SerializationError(format!("{:?}", e)))?
-                .as_string()
-                .ok_or_else(|| {
-                    SyncError::SerializationError("JSON stringify failed".to_string())
-                })?;
+            let json_str = text_val.as_string().ok_or_else(|| {
+                SyncError::SerializationError("Response text was not a string".to_string())
+            })?;
 
             serde_json::from_str(&json_str)
                 .map_err(|e| SyncError::SerializationError(e.to_string()))

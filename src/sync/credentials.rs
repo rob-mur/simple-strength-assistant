@@ -6,7 +6,7 @@ use serde::{Deserialize, Serialize};
 pub struct SyncCredentials {
     /// UUID identifying the sync slot on the server
     pub sync_id: String,
-    /// Secret used to authenticate requests (HMAC key — never in URL)
+    /// Secret used to authenticate requests (sent as X-Sync-Secret header — never in URL)
     pub sync_secret: String,
     /// UUID identifying this specific device
     pub device_id: String,
@@ -42,13 +42,17 @@ impl SyncCredentials {
     }
 
     /// Validates that none of the credential fields are empty and that
-    /// `sync_id` does not contain path-traversal characters.
+    /// `sync_id` contains only URL-safe characters (alphanumeric + hyphen).
+    /// This is stricter than blocking individual characters and prevents
+    /// path-traversal, query injection, and fragment injection.
     pub fn is_valid(&self) -> bool {
         !self.sync_id.is_empty()
             && !self.sync_secret.is_empty()
             && !self.device_id.is_empty()
-            && !self.sync_id.contains('/')
-            && !self.sync_id.contains('.')
+            && self
+                .sync_id
+                .chars()
+                .all(|c| c.is_ascii_alphanumeric() || c == '-')
     }
 }
 
@@ -152,6 +156,46 @@ mod tests {
             device_id: "device-1".into(),
         };
         assert!(!creds.is_valid());
+    }
+
+    #[test]
+    fn test_invalid_credentials_sync_id_with_query() {
+        let creds = SyncCredentials {
+            sync_id: "abc?admin=true".into(),
+            sync_secret: "secret".into(),
+            device_id: "device-1".into(),
+        };
+        assert!(!creds.is_valid());
+    }
+
+    #[test]
+    fn test_invalid_credentials_sync_id_with_hash() {
+        let creds = SyncCredentials {
+            sync_id: "abc#fragment".into(),
+            sync_secret: "secret".into(),
+            device_id: "device-1".into(),
+        };
+        assert!(!creds.is_valid());
+    }
+
+    #[test]
+    fn test_invalid_credentials_sync_id_with_ampersand() {
+        let creds = SyncCredentials {
+            sync_id: "abc&x=1".into(),
+            sync_secret: "secret".into(),
+            device_id: "device-1".into(),
+        };
+        assert!(!creds.is_valid());
+    }
+
+    #[test]
+    fn test_valid_credentials_uuid_format() {
+        let creds = SyncCredentials {
+            sync_id: "550e8400-e29b-41d4-a716-446655440000".into(),
+            sync_secret: "secret".into(),
+            device_id: "device-1".into(),
+        };
+        assert!(creds.is_valid());
     }
 
     #[test]
