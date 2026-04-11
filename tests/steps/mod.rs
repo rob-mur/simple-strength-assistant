@@ -1,3 +1,4 @@
+pub mod conflict_resolution_steps;
 pub mod exercise_list_steps;
 pub mod exercise_search_steps;
 pub mod library_steps;

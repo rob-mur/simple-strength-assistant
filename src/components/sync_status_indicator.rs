@@ -15,19 +15,21 @@ use dioxus::prelude::*;
 /// | Error      | badge-error     | Sync error          |
 #[component]
 pub fn SyncStatusIndicator(status: SyncStatus) -> Element {
-    let (badge_class, label) = match status {
+    let sync_attr = status.as_attr_str();
+    let (badge_class, label) = match &status {
         SyncStatus::Idle => ("badge badge-ghost badge-sm", "No sync"),
         SyncStatus::NeverSynced => ("badge badge-warning badge-sm", "Never synced"),
         SyncStatus::Syncing => ("badge badge-info badge-sm", "Syncing…"),
         SyncStatus::UpToDate => ("badge badge-success badge-sm", "Up to date"),
-        SyncStatus::Error => ("badge badge-error badge-sm", "Sync error"),
+        SyncStatus::Error(_) => ("badge badge-error badge-sm", "Sync error"),
+        SyncStatus::ConflictsDetected(_) => ("badge badge-warning badge-sm", "Conflicts"),
     };
 
     rsx! {
         span {
             class: "{badge_class}",
             "data-testid": "sync-status-indicator",
-            "data-sync-status": status.as_attr_str(),
+            "data-sync-status": sync_attr,
             "{label}"
         }
     }

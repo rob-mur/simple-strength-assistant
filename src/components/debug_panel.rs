@@ -18,7 +18,7 @@ pub fn DebugPanel() -> Element {
         ("Never Synced", SyncStatus::NeverSynced),
         ("Syncing", SyncStatus::Syncing),
         ("Up to Date", SyncStatus::UpToDate),
-        ("Error", SyncStatus::Error),
+        ("Error", SyncStatus::Error("debug panel test".into())),
     ];
 
     rsx! {
@@ -31,16 +31,21 @@ pub fn DebugPanel() -> Element {
             }
             div {
                 class: "flex flex-col gap-1",
-                for (label, status) in statuses.iter().copied() {
-                    button {
-                        class: if current == status {
-                            "btn btn-xs btn-primary"
-                        } else {
-                            "btn btn-xs btn-ghost"
-                        },
-                        "data-testid": "debug-set-{status.as_attr_str()}",
-                        onclick: move |_| workout_state.set_sync_status(status),
-                        "{label}"
+                for (label, status) in statuses.iter().cloned() {
+                    {
+                        let status_for_click = status.clone();
+                        rsx! {
+                            button {
+                                class: if current == status {
+                                    "btn btn-xs btn-primary"
+                                } else {
+                                    "btn btn-xs btn-ghost"
+                                },
+                                "data-testid": "debug-set-{status.as_attr_str()}",
+                                onclick: move |_| workout_state.set_sync_status(status_for_click.clone()),
+                                "{label}"
+                            }
+                        }
                     }
                 }
             }

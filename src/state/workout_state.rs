@@ -38,32 +38,61 @@ pub enum InitializationState {
     Error,
 }
 
+/// Which version of a conflicting record the user has chosen to keep.
+#[derive(Clone, Copy, PartialEq, Debug)]
+pub enum ConflictChoice {
+    VersionA,
+    VersionB,
+}
+
+/// A single record that has a true conflict: same UUID, same `updated_at`,
+/// but different field values on the two devices.
+///
+/// `uuid`       - stable record identifier used to apply the resolution.
+/// `field_label`- human-readable description of the record (e.g. exercise name).
+/// `version_a`  - string representation of the value on device A.
+/// `version_b`  - string representation of the value on device B.
+/// `choice`     - `None` until the user selects a version.
+#[derive(Clone, Debug, PartialEq)]
+pub struct ConflictRecord {
+    pub uuid: String,
+    pub field_label: String,
+    pub version_a: String,
+    pub version_b: String,
+    pub choice: Option<ConflictChoice>,
+}
+
 /// Represents the current sync state of the application.
 ///
-/// `Idle`        - no sync is configured (default before any sync setup).
-/// `NeverSynced` - no sync has ever completed (distinguishes from a sync failure).
-/// `Syncing`     - a sync cycle is currently in progress.
-/// `UpToDate`    - the last sync completed successfully.
-/// `Error`       - the last sync failed or the server was unreachable.
-#[derive(Clone, Copy, PartialEq, Eq, Debug, Default)]
+/// `Idle`               - no sync is configured (default before any sync setup).
+/// `NeverSynced`        - no sync has ever completed (distinguishes from a sync failure).
+/// `Syncing`            - a sync cycle is currently in progress.
+/// `UpToDate`           - the last sync completed successfully.
+/// `Error(reason)`      - the last sync failed; carries a human-readable reason
+///                        (e.g. "network timeout", "401 Unauthorized") so the UI
+///                        can surface actionable context instead of a generic message.
+/// `ConflictsDetected`  - the merge found true conflicts that require user resolution.
+#[derive(Clone, PartialEq, Debug, Default)]
 pub enum SyncStatus {
     #[default]
     Idle,
     NeverSynced,
     Syncing,
     UpToDate,
-    Error,
+    Error(String),
+    ConflictsDetected(Vec<ConflictRecord>),
 }
 
 impl SyncStatus {
     /// Returns the kebab-case attribute string for use in `data-sync-status` attributes.
-    pub fn as_attr_str(self) -> &'static str {
+    pub fn as_attr_str(&self) -> &'static str {
         match self {
             SyncStatus::Idle => "idle",
             SyncStatus::NeverSynced => "never-synced",
             SyncStatus::Syncing => "syncing",
             SyncStatus::UpToDate => "up-to-date",
-            SyncStatus::Error => "error",
+            SyncStatus::Error(_) => "error",
+            SyncStatus::ConflictsDetected(_) => "conflicts",
         }
     }
 }
@@ -79,6 +108,10 @@ pub struct WorkoutState {
     last_save_time: Signal<f64>,
     exercises: Signal<Vec<ExerciseMetadata>>,
     sync_status: Signal<SyncStatus>,
+    /// Stores the user's resolved conflict choices after `ConflictResolution`
+    /// fires `on_resolve`.  The sync client (#91) reads this to perform the
+    /// OPFS merge write and push to `POST /sync/:sync_id`.
+    resolved_conflicts: Signal<Vec<ConflictRecord>>,
 }
 
 impl Default for WorkoutState {
@@ -99,6 +132,7 @@ impl WorkoutState {
             last_save_time: Signal::new(0.0),
             exercises: Signal::new(Vec::new()),
             sync_status: Signal::new(SyncStatus::Idle),
+            resolved_conflicts: Signal::new(Vec::new()),
         }
     }
 
@@ -181,6 +215,18 @@ impl WorkoutState {
     pub fn set_sync_status(&self, status: SyncStatus) {
         let mut sig = self.sync_status;
         sig.set(status);
+    }
+
+    /// Returns the conflict choices recorded by the last call to `set_resolved_conflicts`.
+    pub fn resolved_conflicts(&self) -> Vec<ConflictRecord> {
+        (self.resolved_conflicts)()
+    }
+
+    /// Stores the user's conflict resolution choices so the sync client (#91)
+    /// can read them when performing the OPFS merge write and server push.
+    pub fn set_resolved_conflicts(&self, conflicts: Vec<ConflictRecord>) {
+        let mut sig = self.resolved_conflicts;
+        sig.set(conflicts);
     }
 }
 
