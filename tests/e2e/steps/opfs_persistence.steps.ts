@@ -7,8 +7,9 @@ When("I reload the page", async ({ page }) => {
   // Full page reload — OPFS data should survive this
   await page.reload();
 
-  // Wait for the WASM app to fully hydrate after reload
-  await page.waitForSelector('body[data-hydrated="true"]', {
+  // Wait for the WASM app to fully initialize after reload.
+  // The tab bar only renders once the DB is loaded and the app reaches Ready state.
+  await page.waitForSelector('[data-testid="tab-workout"]', {
     timeout: 30000,
   });
 });

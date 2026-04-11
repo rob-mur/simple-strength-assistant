@@ -34,14 +34,12 @@ When('I click the "View workout history" button', async ({ page }) => {
       window.dispatchEvent(new PopStateEvent("popstate"));
     });
   }
-  await page.waitForLoadState("networkidle");
-  await page.waitForTimeout(300);
+  await page.waitForTimeout(500);
 });
 
 When("I click the history icon in the session header", async ({ page }) => {
   await page.locator('[data-testid="history-icon-btn"]').click();
-  await page.waitForLoadState("networkidle");
-  await page.waitForTimeout(300);
+  await page.waitForTimeout(500);
 });
 
 // ── Assertion steps ───────────────────────────────────────────────────────────

@@ -8,13 +8,19 @@ Given("I have a fresh context and clear storage", async ({ page, context }) => {
   await context.clearCookies();
   await page.goto("/");
   await page.evaluate(() => localStorage.clear());
-  await page.waitForLoadState("networkidle");
+  // Wait for WASM app to render (either the DB setup screen or the main app)
+  await page.waitForSelector(
+    'button:has-text("Create New Database"), [data-testid="tab-workout"]',
+    { timeout: 30000 },
+  );
 });
 
 Given("I create a new database", async ({ page }) => {
   await page.click('button:has-text("Create New Database")');
-  await page.waitForLoadState("networkidle");
-  await page.waitForTimeout(200);
+  // Wait for app to reach Ready state (tab bar appears after DB init completes)
+  await page.waitForSelector('[data-testid="tab-workout"]', {
+    timeout: 30000,
+  });
 });
 
 Given("I finish any active session", async ({ page }) => {

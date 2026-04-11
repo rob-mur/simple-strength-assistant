@@ -8,8 +8,7 @@ import { setDioxusInput } from "./dioxus_helpers";
 
 Given("I navigate to the Settings tab", async ({ page }) => {
   await page.click('[data-testid="tab-settings"]');
-  await page.waitForLoadState("networkidle");
-  await page.waitForTimeout(100);
+  await page.waitForTimeout(300);
 });
 
 // ── Export steps ───────────────────────────────────────────────────────────────
