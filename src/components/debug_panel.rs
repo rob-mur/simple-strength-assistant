@@ -31,7 +31,7 @@ pub fn DebugPanel() -> Element {
             }
             div {
                 class: "flex flex-col gap-1",
-                for (label, status) in statuses.iter().copied() {
+                for (label, status) in statuses.iter().cloned() {
                     button {
                         class: if current == status {
                             "btn btn-xs btn-primary"

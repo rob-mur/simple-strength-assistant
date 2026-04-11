@@ -3305,6 +3305,9 @@ details.collapse summary::-webkit-details-marker {
 .min-h-8 {
   min-height: 2rem;
 }
+.min-h-screen {
+  min-height: 100vh;
+}
 .w-12 {
   width: 3rem;
 }

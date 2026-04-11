@@ -1,5 +1,7 @@
 use crate::models::{CompletedSet, ExerciseMetadata, HistorySet, SetType};
 use thiserror::Error;
+#[cfg(test)]
+use uuid::Uuid;
 use wasm_bindgen::prelude::*;
 use web_sys::js_sys;
 
