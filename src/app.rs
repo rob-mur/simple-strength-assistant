@@ -1,6 +1,6 @@
 use crate::components::conflict_resolution::ConflictResolutionScreen;
 use crate::components::data_management::DataManagementPanel;
-#[cfg(any(debug_assertions, feature = "test-mode"))]
+#[cfg(debug_assertions)]
 use crate::components::debug_panel::DebugPanel;
 use crate::components::exercise_form::ExerciseForm;
 use crate::components::history_view::HistoryView;
@@ -13,8 +13,6 @@ use crate::components::tab_bar::{Tab, TabBar};
 use crate::components::tape_measure::TapeMeasure;
 use crate::components::workout_view::WorkoutView;
 use crate::models::{CompletedSet, SetType, SetTypeConfig};
-#[cfg(feature = "test-mode")]
-use crate::state::StorageBackend;
 use crate::state::{InitializationState, WorkoutError, WorkoutState, WorkoutStateManager};
 use dioxus::prelude::*;
 use wasm_bindgen::JsCast;
@@ -466,10 +464,14 @@ pub fn App() -> Element {
 
     // Trigger background sync once the database transitions to Ready.
     // Sync is non-blocking: the app is fully usable while sync runs.
-    // In test-mode there is no real HTTP client, so we skip this.
+    // Sync short-circuits if no credentials are configured (see SyncCredentials::load),
+    // so it is safe to run even when sync is not set up or in E2E test environments.
     // A `sync_in_progress` guard prevents duplicate sync cycles if the
     // effect re-fires (e.g. due to re-renders or state transitions).
-    #[cfg(all(not(feature = "test-mode"), not(test)))]
+    //
+    // The `#[cfg(not(test))]` guard is needed because `trigger_background_sync`
+    // depends on the real HTTP client module which is excluded from test builds.
+    #[cfg(not(test))]
     {
         let mut sync_in_progress = use_signal(|| false);
         use_effect(move || {
@@ -898,12 +900,12 @@ pub fn App() -> Element {
     }
 }
 
-#[cfg(any(debug_assertions, feature = "test-mode"))]
+#[cfg(debug_assertions)]
 fn render_debug_panel() -> Element {
     rsx! { DebugPanel {} }
 }
 
-#[cfg(not(any(debug_assertions, feature = "test-mode")))]
+#[cfg(not(debug_assertions))]
 fn render_debug_panel() -> Element {
     rsx! {}
 }

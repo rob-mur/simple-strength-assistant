@@ -4,19 +4,17 @@ use wasm_bindgen_test::*;
 
 wasm_bindgen_test_configure!(run_in_browser);
 
-// ── WorkoutStateManager integration tests (test-mode only) ───────────────────
+// ── WorkoutStateManager integration tests ────────────────────────────────────
 //
-// These tests exercise `WorkoutStateManager::start_session` end-to-end.  They
-// require the `test-mode` Cargo feature so that the in-memory storage backend
-// is available (avoiding OPFS file-picker interactions).
-// Run with: wasm-pack test --headless --chrome --features test-mode
-#[cfg(feature = "test-mode")]
+// These tests exercise `WorkoutStateManager::start_session` end-to-end using
+// the OPFS-backed FileSystemManager (the same code path as production).
+// Run with: wasm-pack test --headless --chrome
 mod workout_state_manager_tests {
     use super::*;
-    use crate::state::{StorageBackend, WorkoutState, WorkoutStateManager};
+    use crate::state::{WorkoutState, WorkoutStateManager};
 
-    /// Helper: creates a fully initialised `WorkoutState` with a real in-memory
-    /// SQLite database and an `InMemoryStorage` file backend.
+    /// Helper: creates a fully initialised `WorkoutState` with a real
+    /// SQLite database and an OPFS-backed `FileSystemManager`.
     async fn make_ready_state() -> WorkoutState {
         let state = WorkoutState::new();
 
@@ -25,7 +23,7 @@ mod workout_state_manager_tests {
         db.init(None).await.expect("Database init failed");
         state.set_database(db);
 
-        // Wire up an in-memory storage backend so save_database succeeds.
+        // Wire up the OPFS storage backend so save_database succeeds.
         let mut storage = crate::state::Storage::new();
         storage
             .create_new_file()

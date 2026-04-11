@@ -19,23 +19,27 @@ export async function initDatabase(fileData) {
   try {
     await ensureSQLLoaded();
 
-    // CRITICAL: Close existing database to ensure test isolation
-    // Without this, tests share state and see data from previous tests
+    // Build the new database FIRST, before touching the existing `db`.
+    // If the constructor throws (malformed blob, OOM, etc.), the current
+    // database remains intact so in-session queries continue to work.
+    let newDb;
+    if (fileData && fileData.length > 0) {
+      const uint8Array = new Uint8Array(fileData);
+      newDb = new SQL.Database(uint8Array);
+    } else {
+      newDb = new SQL.Database();
+    }
+
+    // Construction succeeded — now it is safe to close the old database.
     if (db) {
       try {
         db.close();
       } catch (e) {
         console.warn("Failed to close existing database:", e);
       }
-      db = null;
     }
 
-    if (fileData && fileData.length > 0) {
-      const uint8Array = new Uint8Array(fileData);
-      db = new SQL.Database(uint8Array);
-    } else {
-      db = new SQL.Database();
-    }
+    db = newDb;
 
     // Expose a raw SQL hook only when the test harness has flagged this as a
     // test environment (window.__TEST_MODE__ = true is set via addInitScript

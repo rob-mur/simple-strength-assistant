@@ -36,13 +36,12 @@
 
   scripts = {
     build.exec = "dx bundle --web --release --debug-symbols=false";
-    build-e2e.exec = "dx bundle --web --release --debug-symbols=false --features test-mode";
     format.exec = "cargo fmt && prettier --write .";
     lint.exec = "./scripts/lint.sh";
   };
 
   processes = {
-    test-serve.exec = "dx serve --port 3000 --features test-mode";
+    test-serve.exec = "dx serve --port 3000";
   };
 
   git-hooks.hooks = {

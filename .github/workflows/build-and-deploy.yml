@@ -26,7 +26,7 @@ on:
         type: boolean
         default: false
       build-command:
-        description: "devenv build script to run (e.g., 'build' or 'build-e2e')"
+        description: "devenv build script to run (default: 'build')"
         required: false
         type: string
         default: "build"
@@ -75,7 +75,7 @@ on:
         type: boolean
         default: false
       build-command:
-        description: "devenv build script to run (e.g., 'build' or 'build-e2e')"
+        description: "devenv build script to run (default: 'build')"
         required: false
         type: string
         default: "build"

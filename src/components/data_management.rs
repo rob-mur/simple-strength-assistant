@@ -1,5 +1,3 @@
-#[cfg(feature = "test-mode")]
-use crate::state::StorageBackend;
 use crate::state::WorkoutState;
 use dioxus::prelude::*;
 #[cfg(target_arch = "wasm32")]

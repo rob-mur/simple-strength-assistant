@@ -1,10 +1,8 @@
 use crate::models::{CompletedSet, ExerciseMetadata, SetType};
-#[cfg(feature = "test-mode")]
-use crate::state::StorageBackend;
 use crate::state::{Database, Storage, error::WorkoutError};
 use crate::sync::ConflictRecord;
 use crate::sync::VectorClock;
-#[cfg(all(not(feature = "test-mode"), not(test)))]
+#[cfg(not(test))]
 use crate::sync::{SyncCredentials, SyncOutcome, save_clock};
 use dioxus::prelude::*;
 
@@ -132,7 +130,7 @@ impl WorkoutState {
     /// Load the persisted vector clock from LocalStorage (production only).
     /// Called during database setup so sync resumes from the correct state.
     pub fn load_persisted_clock(&self) {
-        #[cfg(all(not(feature = "test-mode"), not(test)))]
+        #[cfg(not(test))]
         {
             let clock = crate::sync::load_clock();
             self.set_sync_clock(clock);
@@ -642,7 +640,7 @@ impl WorkoutStateManager {
     ///
     /// This is a no-op when `sync_id` is not configured in LocalStorage
     /// (i.e. the pairing flow has not been run yet).
-    #[cfg(all(not(feature = "test-mode"), not(test)))]
+    #[cfg(not(test))]
     pub async fn trigger_background_sync(state: &WorkoutState) {
         use crate::sync::client::SyncClient;
         use crate::sync::http::wasm::FetchClient;
@@ -720,8 +718,23 @@ impl WorkoutStateManager {
 
     /// Shared helper for `Pulled` and `Merged` sync outcomes: initialise a new
     /// database from the given blob, persist it to OPFS, and sync exercises.
-    #[cfg(all(not(feature = "test-mode"), not(test)))]
+    ///
+    /// On failure the existing in-memory database is left untouched so the
+    /// session remains functional.  The JS `initDatabase` function also guards
+    /// against this: it constructs the new `SQL.Database` before closing the old
+    /// one, so a malformed blob cannot leave `db` as null.
+    #[cfg(not(test))]
     async fn apply_synced_blob(state: &WorkoutState, blob: &[u8], label: &str) {
+        // Rust-layer defence: reject empty blobs before handing them to the JS
+        // layer.  An empty blob is never a valid SQLite database.
+        if blob.is_empty() {
+            log::warn!(
+                "[Sync] Ignoring empty {} blob — existing database left intact",
+                label
+            );
+            return;
+        }
+
         let mut new_db = Database::new();
         match new_db.init(Some(blob.to_vec())).await {
             Ok(_) => {
@@ -736,7 +749,11 @@ impl WorkoutStateManager {
                 }
             }
             Err(e) => {
-                log::warn!("[Sync] Failed to init DB from {} blob: {}", label, e);
+                log::warn!(
+                    "[Sync] Failed to init DB from {} blob (existing DB left intact): {}",
+                    label,
+                    e
+                );
             }
         }
     }
