@@ -13,7 +13,7 @@ wasm_bindgen_test_configure!(run_in_browser);
 #[cfg(feature = "test-mode")]
 mod workout_state_manager_tests {
     use super::*;
-    use crate::state::{InitializationState, StorageBackend, WorkoutState, WorkoutStateManager};
+    use crate::state::{StorageBackend, WorkoutState, WorkoutStateManager};
 
     /// Helper: creates a fully initialised `WorkoutState` with a real in-memory
     /// SQLite database and an `InMemoryStorage` file backend.
@@ -26,7 +26,7 @@ mod workout_state_manager_tests {
         state.set_database(db);
 
         // Wire up an in-memory storage backend so save_database succeeds.
-        let mut storage = super::storage::InMemoryStorage::new();
+        let mut storage = crate::state::Storage::new();
         storage
             .create_new_file()
             .await
@@ -411,7 +411,7 @@ async fn test_get_sets_for_exercise_before_excludes_today() {
 
     // Compute the UTC ms at the start of today (local calendar day).
     let now_ms = js_sys::Date::now();
-    let offset_ms = -(js_sys::Date::new_0().get_timezone_offset() as f64) * 60_000.0;
+    let offset_ms = -js_sys::Date::new_0().get_timezone_offset() * 60_000.0;
     let local_now_ms = now_ms + offset_ms;
     let start_of_today_utc = (local_now_ms / 86_400_000.0).floor() * 86_400_000.0 - offset_ms;
 

@@ -467,6 +467,28 @@ pub fn App() -> Element {
         }
     });
 
+    // Trigger background sync once the database transitions to Ready.
+    // Sync is non-blocking: the app is fully usable while sync runs.
+    // In test-mode there is no real HTTP client, so we skip this.
+    // A `sync_in_progress` guard prevents duplicate sync cycles if the
+    // effect re-fires (e.g. due to re-renders or state transitions).
+    #[cfg(all(not(feature = "test-mode"), not(test)))]
+    {
+        let mut sync_in_progress = use_signal(|| false);
+        use_effect(move || {
+            if workout_state.initialization_state() == InitializationState::Ready
+                && !sync_in_progress()
+            {
+                sync_in_progress.set(true);
+                spawn(async move {
+                    log::debug!("[Sync] App ready — starting background sync");
+                    WorkoutStateManager::trigger_background_sync(&workout_state).await;
+                    sync_in_progress.set(false);
+                });
+            }
+        });
+    }
+
     rsx! {
         div {
             class: "flex flex-col h-[100dvh] bg-base-200",
