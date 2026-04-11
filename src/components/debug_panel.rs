@@ -32,15 +32,20 @@ pub fn DebugPanel() -> Element {
             div {
                 class: "flex flex-col gap-1",
                 for (label, status) in statuses.iter().cloned() {
-                    button {
-                        class: if current == status {
-                            "btn btn-xs btn-primary"
-                        } else {
-                            "btn btn-xs btn-ghost"
-                        },
-                        "data-testid": "debug-set-{status.as_attr_str()}",
-                        onclick: move |_| workout_state.set_sync_status(status),
-                        "{label}"
+                    {
+                        let status_for_click = status.clone();
+                        rsx! {
+                            button {
+                                class: if current == status {
+                                    "btn btn-xs btn-primary"
+                                } else {
+                                    "btn btn-xs btn-ghost"
+                                },
+                                "data-testid": "debug-set-{status.as_attr_str()}",
+                                onclick: move |_| workout_state.set_sync_status(status_for_click.clone()),
+                                "{label}"
+                            }
+                        }
                     }
                 }
             }
