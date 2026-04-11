@@ -501,4 +501,69 @@ describe("conflict detection", () => {
     const json = await res.json();
     expect(json.conflicted).toBe(false);
   });
+
+  test("after resolution, clock.json reflects the resolving clock and meta.json has correct blob_size and recent last_modified", async () => {
+    await push("clock-meta-resolve", new Uint8Array([0xaa]), { a: 1 });
+    await push("clock-meta-resolve", new Uint8Array([0xbb]), { b: 1 });
+
+    const resolvedBlob = new Uint8Array([0xdd, 0xee, 0xff]);
+    const resolvingClock = { a: 2, b: 2 };
+    const before = Date.now();
+
+    const resolveRes = await push(
+      "clock-meta-resolve",
+      resolvedBlob,
+      resolvingClock,
+    );
+    expect(resolveRes.status).toBe(200);
+
+    const after = Date.now();
+
+    const clockJson = JSON.parse(
+      await readFile(
+        join(dataDir, "clock-meta-resolve", "clock.json"),
+        "utf-8",
+      ),
+    );
+    expect(clockJson).toEqual(resolvingClock);
+
+    const meta = JSON.parse(
+      await readFile(join(dataDir, "clock-meta-resolve", "meta.json"), "utf-8"),
+    );
+    expect(meta.blob_size).toBe(3);
+    // last_modified is stored as Date.now() (milliseconds since epoch)
+    expect(meta.last_modified).toBeGreaterThanOrEqual(before);
+    expect(meta.last_modified).toBeLessThanOrEqual(after);
+  });
+
+  test("a second fast-forward push after resolution succeeds normally", async () => {
+    // Create conflict
+    await push("ff-after-resolve", new Uint8Array([0xaa]), { a: 1 });
+    await push("ff-after-resolve", new Uint8Array([0xbb]), { b: 1 });
+
+    // Resolve the conflict
+    const resolveRes = await push("ff-after-resolve", new Uint8Array([0xff]), {
+      a: 2,
+      b: 2,
+    });
+    expect(resolveRes.status).toBe(200);
+
+    // Fast-forward push after resolution — slot should behave as if never conflicted
+    const ffBlob = new Uint8Array([0x11, 0x22]);
+    const res = await push("ff-after-resolve", ffBlob, { a: 3, b: 2 });
+    expect(res.status).toBe(200);
+
+    // No conflicts directory should exist
+    const conflictsDir = join(dataDir, "ff-after-resolve", "conflicts");
+    if (await fileExists(conflictsDir)) {
+      const entries = await readdir(conflictsDir);
+      expect(entries.length).toBe(0);
+    }
+
+    // Blob is the fast-forwarded one
+    const getRes = await fetch(`${baseUrl}/sync/ff-after-resolve`);
+    expect(getRes.status).toBe(200);
+    const returned = new Uint8Array(await getRes.arrayBuffer());
+    expect(returned).toEqual(ffBlob);
+  });
 });
