@@ -652,7 +652,7 @@ impl WorkoutStateManager {
         // Check credentials first to short-circuit before the expensive
         // database export when sync is not configured.
         let credentials = SyncCredentials::load();
-        if credentials.as_ref().map_or(true, |c| !c.is_valid()) {
+        if credentials.as_ref().is_none_or(|c| !c.is_valid()) {
             log::debug!("[Sync] Skipped — no valid sync_id configured");
             return;
         }
