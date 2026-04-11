@@ -273,6 +273,13 @@ impl Database {
     /// Executes an ALTER TABLE ADD COLUMN statement, suppressing only
     /// "duplicate column" errors (which mean the column already exists).
     /// Any other error is propagated.
+    ///
+    /// Note: Detection relies on the English error message "duplicate column"
+    /// returned by SQLite for `SQLITE_ERROR` on `ALTER TABLE ADD COLUMN` when
+    /// the column already exists.  SQLite error messages are not localised, so
+    /// this is stable across platforms, but it is version-sensitive in
+    /// principle. The sql.js WASM build pins the SQLite version, mitigating
+    /// this risk.
     async fn add_column_if_missing(&self, sql: &str) -> Result<(), DatabaseError> {
         match self.execute_internal(sql, &[]).await {
             Ok(_) => Ok(()),

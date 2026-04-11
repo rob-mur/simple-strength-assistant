@@ -15,7 +15,8 @@ pub use error::WorkoutError;
 pub use file_system::FileSystemError;
 #[cfg(not(feature = "test-mode"))]
 pub use file_system::FileSystemManager;
-pub use vector_clock::{ClockRelationship, VectorClock, compare_vector_clocks};
+// VectorClock, ClockRelationship, and compare_vector_clocks are pub(crate)
+// until the sync client (#91) wires them up.
 pub use workout_state::{
     ConflictChoice, ConflictRecord, InitializationState, PredictedParameters, SyncStatus,
     WorkoutSession, WorkoutState, WorkoutStateManager,

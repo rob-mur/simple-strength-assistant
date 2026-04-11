@@ -786,6 +786,10 @@ pub fn App() -> Element {
                                             resolved.len()
                                         );
                                         workout_state.set_resolved_conflicts(resolved);
+                                        // TODO(#91): This is scaffolding — the sync client
+                                        // should transition to UpToDate only after the
+                                        // resolved DB is written to OPFS and pushed to the
+                                        // server.  Until then, this is a premature transition.
                                         workout_state.set_sync_status(SyncStatus::UpToDate);
                                     },
                                 }

@@ -115,6 +115,9 @@ export async function exportDatabase() {
  *   (the row from A is kept in the merged output as a placeholder)
  * - Soft-deleted records (tombstone: deleted_at set) sync as normal rows;
  *   deleted_at is subject to last-write-wins
+ * - Same updated_at, one tombstone and one live row → tombstone wins silently
+ *   (no conflict surfaced). This is a deliberate design choice: a delete is
+ *   treated as authoritative when timestamps are tied.
  * - Both have a tombstone for the same UUID → merged keeps the more recent deleted_at
  *
  * This function does NOT write to OPFS, does NOT touch the global `db` variable,
@@ -210,8 +213,8 @@ export async function mergeDatabases(dataA, dataB) {
         conflicts.push({
           uuid,
           table_name: table,
-          version_a: JSON.stringify(rowA),
-          version_b: JSON.stringify(rowB),
+          version_a: humanizeRow(rowA),
+          version_b: humanizeRow(rowB),
         });
       }
       // If rows are identical there is nothing to do.
@@ -257,7 +260,7 @@ function insertRow(database, table, row) {
   const placeholders = cols.map(() => "?").join(", ");
   const values = cols.map((c) => row[c]);
   database.run(
-    `INSERT OR IGNORE INTO ${table} (${cols.join(", ")}) VALUES (${placeholders})`,
+    `INSERT INTO ${table} (${cols.join(", ")}) VALUES (${placeholders})`,
     values
   );
 }
@@ -277,6 +280,19 @@ function updateRow(database, table, row) {
 }
 
 /**
+ * Format a row object for human-readable display in the conflict resolution UI.
+ * Strips internal/metadata columns (id, uuid, updated_at, deleted_at) and
+ * presents only the meaningful fields as "key: value" pairs.
+ */
+function humanizeRow(row) {
+  const skip = new Set(["id", "uuid", "updated_at", "deleted_at"]);
+  const parts = Object.entries(row)
+    .filter(([k]) => !skip.has(k))
+    .map(([k, v]) => `${k}: ${v}`);
+  return parts.length > 0 ? parts.join(", ") : JSON.stringify(row);
+}
+
+/**
  * Compare two row objects for equality, ignoring the `id` field (which is a
  * local auto-increment value and may legitimately differ between databases).
  */
@@ -288,13 +304,16 @@ function rowsEqual(a, b) {
     .filter((k) => k !== "id")
     .sort();
   if (keysA.join() !== keysB.join()) return false;
+  // Timestamp columns use nullish-to-0 coalescing to stay consistent with
+  // the `updated_at ?? 0` guard in mergeDatabases.  All other columns use
+  // strict equality so that semantically distinct values (e.g. null vs 0 on
+  // deleted_at) are not silently conflated.
+  const TIMESTAMP_COLS = new Set(["updated_at"]);
   return keysA.every((k) => {
-    // Coalesce nullish values to 0 — consistent with the `updated_at ?? 0`
-    // guard in mergeDatabases so that null-vs-0 differences are not treated
-    // as conflicts.
-    const va = a[k] ?? 0;
-    const vb = b[k] ?? 0;
-    return va === vb;
+    if (TIMESTAMP_COLS.has(k)) {
+      return (a[k] ?? 0) === (b[k] ?? 0);
+    }
+    return a[k] === b[k];
   });
 }
 
@@ -314,6 +333,7 @@ export function triggerSqliteDownload(data, filename) {
   document.body.appendChild(a);
   a.click();
   document.body.removeChild(a);
-  // Revoke the object URL after a short delay to free memory
-  setTimeout(() => URL.revokeObjectURL(url), 10000);
+  // Revoke the object URL after a short delay to free memory.
+  // 1 s is sufficient for all major browsers to initiate the download.
+  setTimeout(() => URL.revokeObjectURL(url), 1000);
 }

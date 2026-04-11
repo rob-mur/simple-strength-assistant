@@ -18,7 +18,7 @@ pub fn DebugPanel() -> Element {
         ("Never Synced", SyncStatus::NeverSynced),
         ("Syncing", SyncStatus::Syncing),
         ("Up to Date", SyncStatus::UpToDate),
-        ("Error", SyncStatus::Error),
+        ("Error", SyncStatus::Error("debug panel test".into())),
     ];
 
     rsx! {

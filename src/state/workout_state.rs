@@ -68,7 +68,9 @@ pub struct ConflictRecord {
 /// `NeverSynced`        - no sync has ever completed (distinguishes from a sync failure).
 /// `Syncing`            - a sync cycle is currently in progress.
 /// `UpToDate`           - the last sync completed successfully.
-/// `Error`              - the last sync failed or the server was unreachable.
+/// `Error(reason)`      - the last sync failed; carries a human-readable reason
+///                        (e.g. "network timeout", "401 Unauthorized") so the UI
+///                        can surface actionable context instead of a generic message.
 /// `ConflictsDetected`  - the merge found true conflicts that require user resolution.
 #[derive(Clone, PartialEq, Debug, Default)]
 pub enum SyncStatus {
@@ -77,7 +79,7 @@ pub enum SyncStatus {
     NeverSynced,
     Syncing,
     UpToDate,
-    Error,
+    Error(String),
     ConflictsDetected(Vec<ConflictRecord>),
 }
 
@@ -89,7 +91,7 @@ impl SyncStatus {
             SyncStatus::NeverSynced => "never-synced",
             SyncStatus::Syncing => "syncing",
             SyncStatus::UpToDate => "up-to-date",
-            SyncStatus::Error => "error",
+            SyncStatus::Error(_) => "error",
             SyncStatus::ConflictsDetected(_) => "conflicts",
         }
     }

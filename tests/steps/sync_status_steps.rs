@@ -61,7 +61,7 @@ async fn step_sync_status_set(world: &mut SyncStatusWorld, status: String) {
         "never synced" => SyncStatus::NeverSynced,
         "syncing" => SyncStatus::Syncing,
         "up to date" => SyncStatus::UpToDate,
-        "error" => SyncStatus::Error,
+        "error" => SyncStatus::Error("test error".into()),
         other => panic!("Unknown sync status: {other}"),
     };
     world.render_component();
