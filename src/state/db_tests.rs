@@ -1616,11 +1616,15 @@ async fn test_merge_is_pure_function() {
     // Compare logical content: load both merged databases and verify they
     // contain the same exercises.
     let mut db1 = Database::new();
-    db1.init(Some(result1.merged)).await.expect("init db1 failed");
+    db1.init(Some(result1.merged))
+        .await
+        .expect("init db1 failed");
     let exercises1 = db1.get_exercises().await.expect("get_exercises db1 failed");
 
     let mut db2 = Database::new();
-    db2.init(Some(result2.merged)).await.expect("init db2 failed");
+    db2.init(Some(result2.merged))
+        .await
+        .expect("init db2 failed");
     let exercises2 = db2.get_exercises().await.expect("get_exercises db2 failed");
 
     assert_eq!(
