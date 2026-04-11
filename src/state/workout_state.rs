@@ -105,20 +105,14 @@ impl Default for WorkoutState {
 
 impl WorkoutState {
     pub fn new() -> Self {
-        // Load persisted vector clock so sync resumes from the correct
-        // sequence numbers across page reloads.  In test mode there is
-        // no LocalStorage, so we start with an empty clock.
-        let initial_clock = {
-            #[cfg(all(not(feature = "test-mode"), not(test)))]
-            {
-                crate::sync::load_clock()
-            }
-            #[cfg(any(feature = "test-mode", test))]
-            {
-                VectorClock::new()
-            }
-        };
-
+        // Start with an empty clock. In production, the persisted clock is
+        // loaded via `load_persisted_clock()` during `setup_database()` so
+        // sync resumes from the correct sequence numbers after page reloads.
+        //
+        // Note: calling `crate::sync::load_clock()` directly here (even
+        // behind `#[cfg(not(test))]`) breaks Dioxus 0.7.x SSR rendering —
+        // cross-module function calls inside `Signal::new()` constructors
+        // cause the virtual DOM to produce empty output. See #95.
         Self {
             initialization_state: Signal::new(InitializationState::NotInitialized),
             current_session: Signal::new(None),
@@ -129,9 +123,19 @@ impl WorkoutState {
             last_save_time: Signal::new(0.0),
             exercises: Signal::new(Vec::new()),
             sync_status: Signal::new(SyncStatus::Idle),
-            sync_clock: Signal::new(initial_clock),
+            sync_clock: Signal::new(VectorClock::new()),
             pending_conflicts: Signal::new(Vec::new()),
             pending_merged_blob: Signal::new(None),
+        }
+    }
+
+    /// Load the persisted vector clock from LocalStorage (production only).
+    /// Called during database setup so sync resumes from the correct state.
+    pub fn load_persisted_clock(&self) {
+        #[cfg(all(not(feature = "test-mode"), not(test)))]
+        {
+            let clock = crate::sync::load_clock();
+            self.set_sync_clock(clock);
         }
     }
 
@@ -341,6 +345,11 @@ impl WorkoutStateManager {
         if let Err(e) = Self::sync_exercises(state).await {
             log::warn!("Failed to load exercises after DB setup: {}", e);
         }
+
+        // Load the persisted vector clock so sync resumes from the correct
+        // sequence numbers. Done here (not in WorkoutState::new()) to avoid
+        // a Dioxus SSR bug with cross-module calls during signal construction.
+        state.load_persisted_clock();
 
         state.set_initialization_state(InitializationState::Ready);
 
@@ -616,6 +625,7 @@ impl WorkoutStateManager {
             log::warn!("Failed to sync exercises after file initialization: {}", e);
         }
 
+        state.load_persisted_clock();
         state.set_initialization_state(InitializationState::Ready);
 
         log::debug!("[UI] Setup complete! State is now Ready");

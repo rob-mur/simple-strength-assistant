@@ -15,9 +15,7 @@ use crate::components::workout_view::WorkoutView;
 use crate::models::{CompletedSet, SetType, SetTypeConfig};
 #[cfg(feature = "test-mode")]
 use crate::state::StorageBackend;
-use crate::state::{
-    InitializationState, SyncStatus, WorkoutError, WorkoutState, WorkoutStateManager,
-};
+use crate::state::{InitializationState, WorkoutError, WorkoutState, WorkoutStateManager};
 use dioxus::prelude::*;
 use wasm_bindgen::JsCast;
 
