@@ -528,10 +528,7 @@ describe("conflict detection", () => {
     expect(clockJson).toEqual(resolvingClock);
 
     const meta = JSON.parse(
-      await readFile(
-        join(dataDir, "clock-meta-resolve", "meta.json"),
-        "utf-8",
-      ),
+      await readFile(join(dataDir, "clock-meta-resolve", "meta.json"), "utf-8"),
     );
     expect(meta.blob_size).toBe(3);
     // last_modified is stored as Date.now() (milliseconds since epoch)
