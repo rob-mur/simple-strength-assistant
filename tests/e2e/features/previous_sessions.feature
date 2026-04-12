@@ -1,3 +1,4 @@
+@fast
 Feature: Collapsible Previous Sessions in active workout
   As a user logging a workout
   I want to see my past sets for the current exercise

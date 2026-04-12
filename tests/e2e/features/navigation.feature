@@ -1,3 +1,4 @@
+@fast
 Feature: App Navigation
   As a user
   I want the app to remember my position in each tab

@@ -1,3 +1,4 @@
+@fast
 Feature: Shell layout — fixed navigation bar
   As a user
   I want the bottom navigation bar to always be visible

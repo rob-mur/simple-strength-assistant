@@ -1,9 +1,14 @@
 import { defineConfig, devices } from "@playwright/test";
 import { defineBddConfig } from "playwright-bdd";
 
+// Tag convention: every .feature file must have either @fast or @e2e.
+// @fast → runs in playwright.fast.config.ts against a local dx serve.
+// @e2e → runs here against the Vercel preview URL.
+// An untagged feature file will be silently excluded from both suites.
 const testDir = defineBddConfig({
   features: "tests/e2e/features/**/*.feature",
   steps: "tests/e2e/steps/**/*.ts",
+  tags: "@e2e",
 });
 
 const baseURL = process.env.PLAYWRIGHT_BASE_URL || "http://localhost:3000";

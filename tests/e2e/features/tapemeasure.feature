@@ -1,3 +1,4 @@
+@fast
 Feature: TapeMeasure Component E2E
 
   Background:

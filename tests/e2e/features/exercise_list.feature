@@ -3,7 +3,7 @@ Feature: Exercise List Display
   I want to see a list of my exercises
   So that I can browse and select exercises for my workout
 
-  @e2e
+  @fast
   Scenario: End-to-end user flow for viewing the exercise list
     Given I have a fresh context and clear storage
     And I create a new database

@@ -1,3 +1,4 @@
+@fast
 Feature: StepControls Component E2E
 
   Background:

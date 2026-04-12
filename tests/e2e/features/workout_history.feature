@@ -1,3 +1,4 @@
+@fast
 Feature: Full workout history view
   As a user
   I want to view my complete workout history
