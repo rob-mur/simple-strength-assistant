@@ -1,3 +1,4 @@
+@fast
 Feature: Today's Sets section label in active session
   As a user logging a workout
   I want the in-progress sets section to be clearly labelled "Today's Sets"

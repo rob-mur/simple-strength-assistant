@@ -1,3 +1,4 @@
+@fast
 Feature: Sync Status Indicator
   As a user
   I want to see the current sync state at a glance

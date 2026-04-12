@@ -1,3 +1,4 @@
+@fast
 Feature: Edit/Delete Set Modal
   As a user
   I want to edit or delete logged sets in the history view

@@ -7,7 +7,8 @@
     "watch:css": "postcss src/styles.css -o public/styles.css --watch",
     "test:e2e": "bddgen && playwright test",
     "test:e2e:ui": "bddgen && playwright test --ui",
-    "test:e2e:headed": "bddgen && playwright test --headed"
+    "test:e2e:headed": "bddgen && playwright test --headed",
+    "test:fast": "bddgen --config playwright.fast.config.ts && playwright test --config playwright.fast.config.ts"
   },
   "devDependencies": {
     "@commitlint/cli": "^19.6.1",

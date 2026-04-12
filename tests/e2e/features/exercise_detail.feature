@@ -3,7 +3,7 @@ Feature: Exercise Detail View
   I want to see the details and history of a specific exercise
   So that I can review my progress and start a session
 
-  @e2e
+  @fast
   Scenario: Open detail view from library and start a session
     Given I have a fresh context and clear storage
     And I create a new database
@@ -17,7 +17,7 @@ Feature: Exercise Detail View
     Then the user should be on the Workout tab
     And a session for "Bench Press" should be active
 
-  @e2e
+  @fast
   Scenario: Edit exercise from detail view
     Given I have a fresh context and clear storage
     And I create a new database
@@ -30,7 +30,7 @@ Feature: Exercise Detail View
     And the user saves the exercise
     Then the user should see "HEAVY SQUAT" in the header
 
-  @e2e
+  @fast
   Scenario: Back button returns to library
     Given I have a fresh context and clear storage
     And I create a new database

@@ -1,3 +1,4 @@
+@fast
 Feature: Data export and import
   As a user
   I want to export and import my workout database

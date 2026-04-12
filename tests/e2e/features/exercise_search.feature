@@ -3,7 +3,7 @@ Feature: Exercise Search and Filtering
   I want to search and filter my exercise list
   So that I can quickly find the exercise I want to perform
 
-  @e2e
+  @fast
   Scenario: End-to-end user flow for searching exercises
     Given I have a fresh context and clear storage
     And I create a new database

@@ -1,3 +1,4 @@
+@fast
 Feature: RPESlider Component E2E
 
   Background:
