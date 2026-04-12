@@ -3,6 +3,13 @@ use wasm_bindgen::prelude::*;
 use wasm_bindgen_futures::JsFuture;
 use web_sys::{js_sys, window};
 
+/// Write directly to browser `console.log` – unlike the Rust `log` crate this
+/// is guaranteed to appear in Playwright console output regardless of the
+/// compile profile or tracing filter level.
+fn js_log(msg: &str) {
+    web_sys::console::log_1(&JsValue::from_str(msg));
+}
+
 #[wasm_bindgen(module = "/public/file-handle-storage.js")]
 extern "C" {
     #[wasm_bindgen(js_name = storeFileHandle)]
@@ -101,12 +108,17 @@ impl FileSystemManager {
     /// discarded, and no OPFS file picker or user gesture is required.
     pub fn new() -> Self {
         let test_mode = Self::is_test_mode();
-        if test_mode {
-            log::debug!("[FileSystem] Test mode detected — using no-persistence fallback");
-        }
+        let opfs_supported = Self::is_opfs_supported();
+        let use_fallback = test_mode || !opfs_supported;
+
+        js_log(&format!(
+            "[FileSystem] new(): test_mode={}, opfs_supported={}, use_fallback={}",
+            test_mode, opfs_supported, use_fallback
+        ));
+
         Self {
             handle: None,
-            use_fallback: test_mode || !Self::is_opfs_supported(),
+            use_fallback,
         }
     }
 
@@ -137,7 +149,9 @@ impl FileSystemManager {
     /// On the fallback path (no OPFS), always returns true so the app proceeds.
     pub async fn check_cached_handle(&mut self) -> Result<bool, FileSystemError> {
         if self.use_fallback {
-            log::debug!("[FileSystem] OPFS not available — using no-persistence fallback mode");
+            js_log(
+                "[FileSystem] check_cached_handle: fallback mode → returning true (skip file picker)",
+            );
             return Ok(true);
         }
 
@@ -396,13 +410,10 @@ impl FileSystemManager {
     }
 
     async fn read_from_fallback(&self) -> Result<Vec<u8>, FileSystemError> {
-        // OPFS is not available on this browser (iOS Safari < 16.4).
-        // Data does not persist across sessions — return empty so the app
-        // starts fresh without crashing. This matches the documented graceful
-        // fallback behaviour for unsupported platforms.
-        log::debug!(
-            "[FileSystem] Fallback read: OPFS unavailable, returning empty (no persistence)"
-        );
+        // OPFS is not available on this browser (iOS Safari < 16.4) or
+        // __TEST_MODE__ is active.  Return empty so the app starts fresh
+        // with a brand-new in-memory database.
+        js_log("[FileSystem] read_from_fallback: returning empty Vec (new DB will be created)");
         Ok(Vec::new())
     }
 

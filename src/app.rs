@@ -15,7 +15,12 @@ use crate::components::workout_view::WorkoutView;
 use crate::models::{CompletedSet, SetType, SetTypeConfig};
 use crate::state::{InitializationState, WorkoutError, WorkoutState, WorkoutStateManager};
 use dioxus::prelude::*;
-use wasm_bindgen::JsCast;
+use wasm_bindgen::prelude::*;
+
+/// Write directly to browser `console.log`.
+fn js_log(msg: &str) {
+    web_sys::console::log_1(&JsValue::from_str(msg));
+}
 
 struct ErrorInfo {
     title: String,
@@ -616,39 +621,29 @@ pub fn App() -> Element {
                                             class: "btn btn-primary btn-block justify-start h-auto py-4",
                                             onclick: move |_| {
                                                 spawn(async move {
-                                                    log::debug!("[UI] User clicked create new database - has user gesture");
+                                                    js_log("[UI] Create New Database clicked");
                                                     let mut file_manager = crate::state::Storage::new();
 
                                                     match file_manager.create_new_file().await {
                                                         Ok(_) => {
-                                                            log::debug!("[UI] New database file created successfully");
-
-                                                            // Continue initialization inline
+                                                            js_log("[UI] File created, initializing DB...");
                                                             workout_state.set_initialization_state(InitializationState::Initializing);
 
-                                                            // New file is always empty
-                                                            log::debug!("[UI] Initializing new database...");
                                                             let mut database = crate::state::Database::new();
                                                             match database.init(None).await {
                                                                 Ok(_) => {
-                                                                    log::debug!("[UI] New database initialized successfully");
-
-                                                                    // Clear any existing session state to ensure clean slate
-                                                                    log::debug!("[UI] Clearing current_session to ensure fresh start");
+                                                                    js_log("[UI] DB initialized, transitioning to Ready...");
                                                                     workout_state.set_current_session(None);
-                                                                    log::debug!("[UI] current_session cleared, should show StartSessionView");
-
-                                                                    // Store database and file manager in state, sync exercises, transition to Ready
                                                                     WorkoutStateManager::complete_file_initialization(&workout_state, database, file_manager).await;
                                                                 }
                                                                 Err(e) => {
-                                                                    log::error!("Database initialization failed: {}", e);
+                                                                    js_log(&format!("[UI] DB init failed: {}", e));
                                                                     WorkoutStateManager::handle_error(&workout_state, WorkoutError::Database(e));
                                                                 }
                                                             }
                                                         }
                                                         Err(e) => {
-                                                            log::error!("Failed to create new database: {}", e);
+                                                            js_log(&format!("[UI] create_new_file failed: {}", e));
                                                             WorkoutStateManager::handle_error(&workout_state, WorkoutError::FileSystem(e));
                                                         }
                                                     }
