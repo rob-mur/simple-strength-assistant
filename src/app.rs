@@ -483,6 +483,17 @@ pub fn App() -> Element {
             if workout_state.initialization_state() == InitializationState::Ready
                 && !sync_in_progress()
             {
+                // Skip sync in test mode — the test harness sets __TEST_MODE__
+                // and there is no sync server to talk to. Running sync here would
+                // block the main thread waiting for a network response that never
+                // comes, freezing the page for Playwright.
+                let is_fallback = workout_state
+                    .file_manager()
+                    .map(|fm| fm.is_using_fallback())
+                    .unwrap_or(false);
+                if is_fallback {
+                    return;
+                }
                 sync_in_progress.set(true);
                 spawn(async move {
                     log::debug!("[Sync] App ready — starting background sync");

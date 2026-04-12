@@ -16,6 +16,13 @@ Given("I have a fresh context and clear storage", async ({ page, context }) => {
 });
 
 Given("I create a new database", async ({ page }) => {
+  // In fallback/test mode the app may skip the file-picker screen and go
+  // straight to Ready state. If the tab bar is already visible, there is
+  // nothing to do.
+  const tabWorkout = page.locator('[data-testid="tab-workout"]');
+  if (await tabWorkout.isVisible()) {
+    return;
+  }
   await page.click('button:has-text("Create New Database")');
   // Wait for app to reach Ready state (tab bar appears after DB init completes)
   await page.waitForSelector('[data-testid="tab-workout"]', {
