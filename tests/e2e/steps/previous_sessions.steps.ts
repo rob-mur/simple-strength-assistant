@@ -46,8 +46,7 @@ When("I tap the {string} header", async ({ page }, _sectionName: string) => {
 When("I log a set in the current session", async ({ page }) => {
   await page.locator('button:has-text("LOG SET")').click();
   // Wait for the set to be persisted and state to refresh
-  await page.waitForLoadState("networkidle");
-  await page.waitForTimeout(300);
+  await page.waitForTimeout(500);
 });
 
 Then(

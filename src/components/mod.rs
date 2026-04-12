@@ -1,6 +1,6 @@
 pub mod conflict_resolution;
 pub mod data_management;
-#[cfg(any(debug_assertions, feature = "test-mode"))]
+#[cfg(debug_assertions)]
 pub mod debug_panel;
 pub mod edit_set_modal;
 pub mod exercise_form;

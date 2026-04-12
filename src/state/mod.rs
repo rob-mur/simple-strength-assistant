@@ -7,13 +7,12 @@ mod workout_state;
 
 #[cfg(test)]
 mod db_tests;
-#[cfg(all(test, not(feature = "test-mode")))]
+#[cfg(test)]
 mod file_system_tests;
 
 pub use db::{Database, DatabaseError, MergeConflict, MergeResult};
 pub use error::WorkoutError;
 pub use file_system::FileSystemError;
-#[cfg(not(feature = "test-mode"))]
 pub use file_system::FileSystemManager;
 // VectorClock, ClockRelationship, and compare_vector_clocks are pub(crate)
 // until the sync client (#91) wires them up.
@@ -22,12 +21,8 @@ pub use workout_state::{
     WorkoutStateManager,
 };
 
-#[cfg(feature = "test-mode")]
-pub use storage::StorageBackend;
-
-// Type alias that switches between OPFS and in-memory storage based on test-mode feature
-#[cfg(not(feature = "test-mode"))]
+// Storage is always the OPFS-backed FileSystemManager.
+// E2E tests run against the same prod binary; the test harness injects
+// window.__TEST_MODE__ = true so that JS-layer hooks are available without
+// needing a compile-time feature flag.
 pub type Storage = FileSystemManager;
-
-#[cfg(feature = "test-mode")]
-pub type Storage = storage::InMemoryStorage;

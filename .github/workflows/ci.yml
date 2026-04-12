@@ -55,26 +55,9 @@ jobs:
       VERCEL_ORG_ID: ${{ secrets.VERCEL_ORG_ID }}
       VERCEL_PROJECT_ID: ${{ secrets.VERCEL_PROJECT_ID }}
 
-  build-and-deploy-e2e:
-    permissions:
-      contents: read
-      deployments: write
-      pull-requests: write
-    uses: ./.github/workflows/build-and-deploy.yml
-    with:
-      git-ref: ${{ github.event.pull_request.head.sha }}
-      vercel-environment: "preview"
-      use-release-artifact: false
-      github-comment: false
-      build-command: "build-e2e"
-    secrets:
-      VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
-      VERCEL_ORG_ID: ${{ secrets.VERCEL_ORG_ID }}
-      VERCEL_PROJECT_ID: ${{ secrets.VERCEL_PROJECT_ID }}
-
   e2e-test:
     runs-on: ubuntu-latest
-    needs: [build-and-deploy-e2e]
+    needs: [build-and-deploy]
 
     steps:
       - name: Checkout code
@@ -88,7 +71,7 @@ jobs:
       - name: Run Playwright E2E tests
         run: devenv shell npm run test:e2e
         env:
-          PLAYWRIGHT_BASE_URL: ${{ needs.build-and-deploy-e2e.outputs.deployment-url }}
+          PLAYWRIGHT_BASE_URL: ${{ needs.build-and-deploy.outputs.deployment-url }}
           VERCEL_AUTOMATION_BYPASS_SECRET: ${{ secrets.VERCEL_AUTOMATION_BYPASS_SECRET }}
 
   claude-review:

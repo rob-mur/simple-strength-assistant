@@ -1,12 +1,17 @@
 use crate::models::{CompletedSet, ExerciseMetadata, SetType};
-#[cfg(feature = "test-mode")]
-use crate::state::StorageBackend;
 use crate::state::{Database, Storage, error::WorkoutError};
 use crate::sync::ConflictRecord;
 use crate::sync::VectorClock;
-#[cfg(all(not(feature = "test-mode"), not(test)))]
+#[cfg(not(test))]
 use crate::sync::{SyncCredentials, SyncOutcome, save_clock};
 use dioxus::prelude::*;
+use wasm_bindgen::JsValue;
+
+/// Write directly to browser `console.log` – always visible in Playwright
+/// output regardless of the Rust log level or compile profile.
+fn js_log(msg: &str) {
+    web_sys::console::log_1(&JsValue::from_str(msg));
+}
 
 // Initial prediction constants
 const DEFAULT_WEIGHTED_REPS: u32 = 8;
@@ -132,7 +137,7 @@ impl WorkoutState {
     /// Load the persisted vector clock from LocalStorage (production only).
     /// Called during database setup so sync resumes from the correct state.
     pub fn load_persisted_clock(&self) {
-        #[cfg(all(not(feature = "test-mode"), not(test)))]
+        #[cfg(not(test))]
         {
             let clock = crate::sync::load_clock();
             self.set_sync_clock(clock);
@@ -257,15 +262,15 @@ pub struct WorkoutStateManager;
 
 impl WorkoutStateManager {
     pub async fn setup_database(state: &WorkoutState) -> Result<(), WorkoutError> {
-        log::debug!("[DB Init] Starting database setup...");
+        js_log("[DB Init] Starting database setup...");
 
         match state.initialization_state() {
             InitializationState::Initializing => {
-                log::debug!("[DB Init] Already in progress, skipping");
+                js_log("[DB Init] Already in progress, skipping");
                 return Err(WorkoutError::InitializationInProgress);
             }
             InitializationState::Ready => {
-                log::debug!("[DB Init] Already initialized, skipping");
+                js_log("[DB Init] Already initialized, skipping");
                 return Ok(());
             }
             _ => {}
@@ -273,51 +278,46 @@ impl WorkoutStateManager {
 
         state.set_initialization_state(InitializationState::Initializing);
 
-        log::debug!("[DB Init] Creating file manager...");
+        js_log("[DB Init] Creating file manager...");
         let mut file_manager = Storage::new();
 
-        log::debug!("[DB Init] Checking for cached file handle...");
+        js_log("[DB Init] Checking for cached file handle...");
         let has_cached = file_manager.check_cached_handle().await.map_err(|e| {
-            log::error!("Failed to check cached handle: {}", e);
+            js_log(&format!("[DB Init] check_cached_handle error: {}", e));
             WorkoutError::FileSystem(e)
         })?;
 
-        log::debug!("[DB Init] Has cached handle: {}", has_cached);
+        js_log(&format!(
+            "[DB Init] has_cached={}, use_fallback={}",
+            has_cached,
+            file_manager.is_using_fallback()
+        ));
 
         if has_cached {
-            // Store it even if we might fail later (e.g. permission check)
-            // This allows the Error UI to see we have a handle and re-request permission.
             state.set_file_manager(file_manager.clone());
         } else {
-            log::debug!("[DB Init] No cached handle, transitioning to SelectingFile state");
-            log::debug!("[DB Init] File picker requires user gesture - waiting for button click");
+            js_log("[DB Init] No cached handle → SelectingFile (waiting for user gesture)");
             state.set_initialization_state(InitializationState::SelectingFile);
-
-            // Return OK - UI will call prompt_for_file from button onclick
             return Ok(());
         }
 
         let file_data = if file_manager.has_handle() {
-            log::debug!("[DB Init] Reading file contents...");
+            js_log("[DB Init] Reading file contents...");
             match file_manager.read_file().await {
                 Ok(data) if data.is_empty() => {
-                    log::debug!("[DB Init] File is empty (0 bytes), will create new database");
+                    js_log("[DB Init] File empty → will create new database");
                     None
                 }
                 Ok(data) => {
-                    log::debug!(
-                        "[DB Init] Read {} bytes from file, loading existing database",
+                    js_log(&format!(
+                        "[DB Init] Read {} bytes, loading existing database",
                         data.len()
-                    );
+                    ));
                     Some(data)
                 }
                 Err(e) => {
-                    // Don't silently treat read errors as "empty file"
-                    // If we can't read the cached file handle, return error
-                    log::error!("Failed to read cached file handle: {}", e);
+                    js_log(&format!("[DB Init] read_file error: {}", e));
 
-                    // If the format is invalid, clear the cached handle from IndexedDB
-                    // This prevents the loop where "Retry" keeps finding the same bad handle.
                     if matches!(e, crate::state::FileSystemError::InvalidFormat) {
                         let _ = file_manager.clear_handle().await;
                     }
@@ -326,34 +326,30 @@ impl WorkoutStateManager {
                 }
             }
         } else {
-            log::debug!("[DB Init] No file handle, creating new database");
+            js_log("[DB Init] No file handle → new database");
             None
         };
 
-        log::debug!("[DB Init] Initializing database...");
+        js_log("[DB Init] Calling database.init()...");
         let mut database = Database::new();
         database.init(file_data).await.map_err(|e| {
-            log::error!("Failed to initialize database: {}", e);
+            js_log(&format!("[DB Init] database.init() FAILED: {}", e));
             WorkoutError::Database(e)
         })?;
-        log::debug!("[DB Init] Database initialized successfully");
+        js_log("[DB Init] Database initialized successfully");
 
         state.set_database(database);
         state.set_file_manager(file_manager);
 
-        // Load exercises from database
         if let Err(e) = Self::sync_exercises(state).await {
-            log::warn!("Failed to load exercises after DB setup: {}", e);
+            js_log(&format!("[DB Init] sync_exercises warning: {}", e));
         }
 
-        // Load the persisted vector clock so sync resumes from the correct
-        // sequence numbers. Done here (not in WorkoutState::new()) to avoid
-        // a Dioxus SSR bug with cross-module calls during signal construction.
         state.load_persisted_clock();
 
         state.set_initialization_state(InitializationState::Ready);
 
-        log::debug!("[DB Init] Setup complete! State is now Ready");
+        js_log("[DB Init] Setup complete! State is now Ready");
         Ok(())
     }
 
@@ -618,21 +614,22 @@ impl WorkoutStateManager {
         database: Database,
         file_manager: Storage,
     ) {
+        js_log("[UI] complete_file_initialization: storing DB and file manager...");
         state.set_database(database);
         state.set_file_manager(file_manager);
 
         if let Err(e) = Self::sync_exercises(state).await {
-            log::warn!("Failed to sync exercises after file initialization: {}", e);
+            js_log(&format!("[UI] sync_exercises warning: {}", e));
         }
 
         state.load_persisted_clock();
         state.set_initialization_state(InitializationState::Ready);
 
-        log::debug!("[UI] Setup complete! State is now Ready");
+        js_log("[UI] complete_file_initialization done → Ready");
     }
 
     pub fn handle_error(state: &WorkoutState, error: WorkoutError) {
-        log::error!("Workout state error: {}", error);
+        js_log(&format!("[ERROR] Workout state error: {}", error));
         state.set_error(Some(error));
         state.set_initialization_state(InitializationState::Error);
     }
@@ -642,7 +639,7 @@ impl WorkoutStateManager {
     ///
     /// This is a no-op when `sync_id` is not configured in LocalStorage
     /// (i.e. the pairing flow has not been run yet).
-    #[cfg(all(not(feature = "test-mode"), not(test)))]
+    #[cfg(not(test))]
     pub async fn trigger_background_sync(state: &WorkoutState) {
         use crate::sync::client::SyncClient;
         use crate::sync::http::wasm::FetchClient;
@@ -720,8 +717,23 @@ impl WorkoutStateManager {
 
     /// Shared helper for `Pulled` and `Merged` sync outcomes: initialise a new
     /// database from the given blob, persist it to OPFS, and sync exercises.
-    #[cfg(all(not(feature = "test-mode"), not(test)))]
+    ///
+    /// On failure the existing in-memory database is left untouched so the
+    /// session remains functional.  The JS `initDatabase` function also guards
+    /// against this: it constructs the new `SQL.Database` before closing the old
+    /// one, so a malformed blob cannot leave `db` as null.
+    #[cfg(not(test))]
     async fn apply_synced_blob(state: &WorkoutState, blob: &[u8], label: &str) {
+        // Rust-layer defence: reject empty blobs before handing them to the JS
+        // layer.  An empty blob is never a valid SQLite database.
+        if blob.is_empty() {
+            log::warn!(
+                "[Sync] Ignoring empty {} blob — existing database left intact",
+                label
+            );
+            return;
+        }
+
         let mut new_db = Database::new();
         match new_db.init(Some(blob.to_vec())).await {
             Ok(_) => {
@@ -736,7 +748,11 @@ impl WorkoutStateManager {
                 }
             }
             Err(e) => {
-                log::warn!("[Sync] Failed to init DB from {} blob: {}", label, e);
+                log::warn!(
+                    "[Sync] Failed to init DB from {} blob (existing DB left intact): {}",
+                    label,
+                    e
+                );
             }
         }
     }

@@ -19,7 +19,7 @@ export default defineConfig({
   webServer: process.env.PLAYWRIGHT_BASE_URL
     ? undefined
     : {
-        command: "dx serve --port 3000 --features test-mode",
+        command: "dx serve --port 3000",
         url: "http://localhost:3000",
         reuseExistingServer: true,
         timeout: 300000,

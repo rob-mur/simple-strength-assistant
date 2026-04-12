@@ -1,10 +1,14 @@
-#![cfg_attr(feature = "test-mode", allow(dead_code, unused_imports))]
-use super::storage::StorageBackend;
-use async_trait::async_trait;
 use thiserror::Error;
 use wasm_bindgen::prelude::*;
 use wasm_bindgen_futures::JsFuture;
 use web_sys::{js_sys, window};
+
+/// Write directly to browser `console.log` – unlike the Rust `log` crate this
+/// is guaranteed to appear in Playwright console output regardless of the
+/// compile profile or tracing filter level.
+fn js_log(msg: &str) {
+    web_sys::console::log_1(&JsValue::from_str(msg));
+}
 
 #[wasm_bindgen(module = "/public/file-handle-storage.js")]
 extern "C" {
@@ -97,11 +101,37 @@ impl FileSystemManager {
     /// Creates a new FileSystemManager, automatically detecting whether OPFS is
     /// available. Browsers without OPFS (iOS Safari < 16.4) use a no-persistence
     /// fallback: the app loads but data does not persist across sessions.
+    ///
+    /// When `window.__TEST_MODE__ === true` (set by the Playwright test fixture),
+    /// the manager forces fallback mode regardless of OPFS availability. This
+    /// makes it behave like `InMemoryStorage`: reads return empty, writes are
+    /// discarded, and no OPFS file picker or user gesture is required.
     pub fn new() -> Self {
+        let test_mode = Self::is_test_mode();
+        let opfs_supported = Self::is_opfs_supported();
+        let use_fallback = test_mode || !opfs_supported;
+
+        js_log(&format!(
+            "[FileSystem] new(): test_mode={}, opfs_supported={}, use_fallback={}",
+            test_mode, opfs_supported, use_fallback
+        ));
+
         Self {
             handle: None,
-            use_fallback: !Self::is_opfs_supported(),
+            use_fallback,
         }
+    }
+
+    /// Returns true when the Playwright test harness has set
+    /// `window.__TEST_MODE__ = true` via `addInitScript`.
+    fn is_test_mode() -> bool {
+        window()
+            .and_then(|w| {
+                js_sys::Reflect::get(&w, &JsValue::from_str("__TEST_MODE__"))
+                    .ok()
+                    .and_then(|v| v.as_bool())
+            })
+            .unwrap_or(false)
     }
 
     fn is_opfs_supported() -> bool {
@@ -119,7 +149,9 @@ impl FileSystemManager {
     /// On the fallback path (no OPFS), always returns true so the app proceeds.
     pub async fn check_cached_handle(&mut self) -> Result<bool, FileSystemError> {
         if self.use_fallback {
-            log::debug!("[FileSystem] OPFS not available — using no-persistence fallback mode");
+            js_log(
+                "[FileSystem] check_cached_handle: fallback mode → returning true (skip file picker)",
+            );
             return Ok(true);
         }
 
@@ -378,13 +410,10 @@ impl FileSystemManager {
     }
 
     async fn read_from_fallback(&self) -> Result<Vec<u8>, FileSystemError> {
-        // OPFS is not available on this browser (iOS Safari < 16.4).
-        // Data does not persist across sessions — return empty so the app
-        // starts fresh without crashing. This matches the documented graceful
-        // fallback behaviour for unsupported platforms.
-        log::debug!(
-            "[FileSystem] Fallback read: OPFS unavailable, returning empty (no persistence)"
-        );
+        // OPFS is not available on this browser (iOS Safari < 16.4) or
+        // __TEST_MODE__ is active.  Return empty so the app starts fresh
+        // with a brand-new in-memory database.
+        js_log("[FileSystem] read_from_fallback: returning empty Vec (new DB will be created)");
         Ok(Vec::new())
     }
 
@@ -524,49 +553,5 @@ impl FileSystemManager {
 impl Default for FileSystemManager {
     fn default() -> Self {
         Self::new()
-    }
-}
-
-// Implement StorageBackend trait for FileSystemManager (OPFS-based storage)
-#[async_trait(?Send)]
-impl StorageBackend for FileSystemManager {
-    fn new() -> Self {
-        FileSystemManager::new()
-    }
-
-    async fn check_cached_handle(&mut self) -> Result<bool, FileSystemError> {
-        FileSystemManager::check_cached_handle(self).await
-    }
-
-    async fn create_new_file(&mut self) -> Result<(), FileSystemError> {
-        FileSystemManager::create_new_file(self).await
-    }
-
-    async fn prompt_for_file(&mut self) -> Result<(), FileSystemError> {
-        FileSystemManager::prompt_for_file(self).await
-    }
-
-    async fn read_file(&self) -> Result<Vec<u8>, FileSystemError> {
-        FileSystemManager::read_file(self).await
-    }
-
-    async fn write_file(&self, data: &[u8]) -> Result<(), FileSystemError> {
-        FileSystemManager::write_file(self, data).await
-    }
-
-    fn has_handle(&self) -> bool {
-        FileSystemManager::has_handle(self)
-    }
-
-    fn is_using_fallback(&self) -> bool {
-        FileSystemManager::is_using_fallback(self)
-    }
-
-    async fn request_permission(&self) -> Result<(), FileSystemError> {
-        FileSystemManager::request_permission(self).await
-    }
-
-    async fn clear_handle(&mut self) -> Result<(), FileSystemError> {
-        FileSystemManager::clear_handle(self).await
     }
 }

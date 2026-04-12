@@ -1,6 +1,6 @@
 use crate::components::conflict_resolution::ConflictResolutionScreen;
 use crate::components::data_management::DataManagementPanel;
-#[cfg(any(debug_assertions, feature = "test-mode"))]
+#[cfg(debug_assertions)]
 use crate::components::debug_panel::DebugPanel;
 use crate::components::exercise_form::ExerciseForm;
 use crate::components::history_view::HistoryView;
@@ -13,11 +13,14 @@ use crate::components::tab_bar::{Tab, TabBar};
 use crate::components::tape_measure::TapeMeasure;
 use crate::components::workout_view::WorkoutView;
 use crate::models::{CompletedSet, SetType, SetTypeConfig};
-#[cfg(feature = "test-mode")]
-use crate::state::StorageBackend;
 use crate::state::{InitializationState, WorkoutError, WorkoutState, WorkoutStateManager};
 use dioxus::prelude::*;
-use wasm_bindgen::JsCast;
+use wasm_bindgen::prelude::*;
+
+/// Write directly to browser `console.log`.
+fn js_log(msg: &str) {
+    web_sys::console::log_1(&JsValue::from_str(msg));
+}
 
 struct ErrorInfo {
     title: String,
@@ -466,16 +469,31 @@ pub fn App() -> Element {
 
     // Trigger background sync once the database transitions to Ready.
     // Sync is non-blocking: the app is fully usable while sync runs.
-    // In test-mode there is no real HTTP client, so we skip this.
+    // Sync short-circuits if no credentials are configured (see SyncCredentials::load),
+    // so it is safe to run even when sync is not set up or in E2E test environments.
     // A `sync_in_progress` guard prevents duplicate sync cycles if the
     // effect re-fires (e.g. due to re-renders or state transitions).
-    #[cfg(all(not(feature = "test-mode"), not(test)))]
+    //
+    // The `#[cfg(not(test))]` guard is needed because `trigger_background_sync`
+    // depends on the real HTTP client module which is excluded from test builds.
+    #[cfg(not(test))]
     {
         let mut sync_in_progress = use_signal(|| false);
         use_effect(move || {
             if workout_state.initialization_state() == InitializationState::Ready
                 && !sync_in_progress()
             {
+                // Skip sync in test mode — the test harness sets __TEST_MODE__
+                // and there is no sync server to talk to. Running sync here would
+                // block the main thread waiting for a network response that never
+                // comes, freezing the page for Playwright.
+                let is_fallback = workout_state
+                    .file_manager()
+                    .map(|fm| fm.is_using_fallback())
+                    .unwrap_or(false);
+                if is_fallback {
+                    return;
+                }
                 sync_in_progress.set(true);
                 spawn(async move {
                     log::debug!("[Sync] App ready — starting background sync");
@@ -614,39 +632,29 @@ pub fn App() -> Element {
                                             class: "btn btn-primary btn-block justify-start h-auto py-4",
                                             onclick: move |_| {
                                                 spawn(async move {
-                                                    log::debug!("[UI] User clicked create new database - has user gesture");
+                                                    js_log("[UI] Create New Database clicked");
                                                     let mut file_manager = crate::state::Storage::new();
 
                                                     match file_manager.create_new_file().await {
                                                         Ok(_) => {
-                                                            log::debug!("[UI] New database file created successfully");
-
-                                                            // Continue initialization inline
+                                                            js_log("[UI] File created, initializing DB...");
                                                             workout_state.set_initialization_state(InitializationState::Initializing);
 
-                                                            // New file is always empty
-                                                            log::debug!("[UI] Initializing new database...");
                                                             let mut database = crate::state::Database::new();
                                                             match database.init(None).await {
                                                                 Ok(_) => {
-                                                                    log::debug!("[UI] New database initialized successfully");
-
-                                                                    // Clear any existing session state to ensure clean slate
-                                                                    log::debug!("[UI] Clearing current_session to ensure fresh start");
+                                                                    js_log("[UI] DB initialized, transitioning to Ready...");
                                                                     workout_state.set_current_session(None);
-                                                                    log::debug!("[UI] current_session cleared, should show StartSessionView");
-
-                                                                    // Store database and file manager in state, sync exercises, transition to Ready
                                                                     WorkoutStateManager::complete_file_initialization(&workout_state, database, file_manager).await;
                                                                 }
                                                                 Err(e) => {
-                                                                    log::error!("Database initialization failed: {}", e);
+                                                                    js_log(&format!("[UI] DB init failed: {}", e));
                                                                     WorkoutStateManager::handle_error(&workout_state, WorkoutError::Database(e));
                                                                 }
                                                             }
                                                         }
                                                         Err(e) => {
-                                                            log::error!("Failed to create new database: {}", e);
+                                                            js_log(&format!("[UI] create_new_file failed: {}", e));
                                                             WorkoutStateManager::handle_error(&workout_state, WorkoutError::FileSystem(e));
                                                         }
                                                     }
@@ -898,12 +906,12 @@ pub fn App() -> Element {
     }
 }
 
-#[cfg(any(debug_assertions, feature = "test-mode"))]
+#[cfg(debug_assertions)]
 fn render_debug_panel() -> Element {
     rsx! { DebugPanel {} }
 }
 
-#[cfg(not(any(debug_assertions, feature = "test-mode")))]
+#[cfg(not(debug_assertions))]
 fn render_debug_panel() -> Element {
     rsx! {}
 }
