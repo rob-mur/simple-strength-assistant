@@ -4,6 +4,7 @@
 /// sets, and workout data, along with validation logic to ensure data integrity.
 pub mod exercise;
 pub mod set;
+pub mod settings;
 pub mod validation;
 
 // Re-export commonly used types for easier access
@@ -12,6 +13,8 @@ pub mod validation;
 pub use exercise::{ExerciseMetadata, SetTypeConfig};
 #[allow(unused_imports)]
 pub use set::{CompletedSet, HistorySet, SetType};
+#[allow(unused_imports)]
+pub use settings::Settings;
 #[allow(unused_imports)]
 pub use validation::{
     ValidationError, validate_completed_set, validate_reps, validate_rpe, validate_set_number,

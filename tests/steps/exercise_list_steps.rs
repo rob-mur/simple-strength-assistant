@@ -99,6 +99,8 @@ async fn following_exercises_exist(world: &mut ExerciseListWorld, step: &cucumbe
                     id: None,
                     name: name.clone(),
                     set_type_config: config,
+                    min_reps: 1,
+                    max_reps: None,
                 });
             }
         }
@@ -153,11 +155,15 @@ async fn database_contains_standard_exercises(world: &mut ExerciseListWorld) {
             min_weight: 20.0,
             increment: 2.5,
         },
+        min_reps: 1,
+        max_reps: None,
     });
     world.exercises.push(ExerciseMetadata {
         id: None,
         name: "Push-up".to_string(),
         set_type_config: SetTypeConfig::Bodyweight,
+        min_reps: 1,
+        max_reps: None,
     });
 }
 

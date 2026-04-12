@@ -51,6 +51,8 @@ mod workout_state_manager_tests {
                 min_weight: 0.0,
                 increment: 5.0,
             },
+            min_reps: 1,
+            max_reps: None,
         };
         WorkoutStateManager::start_session(&state, exercise_a)
             .await
@@ -91,6 +93,8 @@ mod workout_state_manager_tests {
                 min_weight: 0.0,
                 increment: 5.0,
             },
+            min_reps: 1,
+            max_reps: None,
         };
         WorkoutStateManager::start_session(&state, exercise_b)
             .await
@@ -147,6 +151,8 @@ mod workout_state_manager_tests {
                 min_weight: 20.0,
                 increment: 2.5,
             },
+            min_reps: 1,
+            max_reps: None,
         };
         WorkoutStateManager::start_session(&state, exercise)
             .await
@@ -188,6 +194,8 @@ async fn test_database_initialization_with_existing_data() {
             min_weight: 0.0,
             increment: 5.0,
         },
+        min_reps: 1,
+        max_reps: None,
     };
     db1.save_exercise(&exercise)
         .await
@@ -221,6 +229,8 @@ async fn test_log_set_weighted() {
             min_weight: 0.0,
             increment: 5.0,
         },
+        min_reps: 1,
+        max_reps: None,
     };
     let exercise_id = db
         .save_exercise(&exercise)
@@ -249,6 +259,8 @@ async fn test_log_set_bodyweight() {
         id: None,
         name: "Pull-ups".to_string(),
         set_type_config: SetTypeConfig::Bodyweight,
+        min_reps: 1,
+        max_reps: None,
     };
     let exercise_id = db
         .save_exercise(&exercise)
@@ -284,6 +296,8 @@ async fn test_get_sets_for_exercise_pagination() {
             min_weight: 20.0,
             increment: 2.5,
         },
+        min_reps: 1,
+        max_reps: None,
     };
     let exercise_id = db
         .save_exercise(&exercise)
@@ -342,6 +356,8 @@ async fn test_get_sets_for_exercise_isolation() {
             min_weight: 0.0,
             increment: 5.0,
         },
+        min_reps: 1,
+        max_reps: None,
     };
     let id_a = db.save_exercise(&ex_a).await.expect("Save A failed");
 
@@ -352,6 +368,8 @@ async fn test_get_sets_for_exercise_isolation() {
             min_weight: 0.0,
             increment: 5.0,
         },
+        min_reps: 1,
+        max_reps: None,
     };
     let id_b = db.save_exercise(&ex_b).await.expect("Save B failed");
 
@@ -401,6 +419,8 @@ async fn test_get_sets_for_exercise_before_excludes_today() {
             min_weight: 20.0,
             increment: 2.5,
         },
+        min_reps: 1,
+        max_reps: None,
     };
     let exercise_id = db
         .save_exercise(&exercise)
@@ -459,6 +479,8 @@ async fn test_get_all_sets_paginated() {
         id: None,
         name: "Exercise One".to_string(),
         set_type_config: SetTypeConfig::Bodyweight,
+        min_reps: 1,
+        max_reps: None,
     };
     let id1 = db.save_exercise(&ex1).await.expect("Save 1 failed");
 
@@ -466,6 +488,8 @@ async fn test_get_all_sets_paginated() {
         id: None,
         name: "Exercise Two".to_string(),
         set_type_config: SetTypeConfig::Bodyweight,
+        min_reps: 1,
+        max_reps: None,
     };
     let id2 = db.save_exercise(&ex2).await.expect("Save 2 failed");
 
@@ -516,6 +540,8 @@ async fn test_update_set() {
             min_weight: 0.0,
             increment: 2.5,
         },
+        min_reps: 1,
+        max_reps: None,
     };
     let exercise_id = db
         .save_exercise(&exercise)
@@ -564,6 +590,8 @@ async fn test_update_set_recorded_at() {
             min_weight: 0.0,
             increment: 5.0,
         },
+        min_reps: 1,
+        max_reps: None,
     };
     let exercise_id = db
         .save_exercise(&exercise)
@@ -614,6 +642,8 @@ async fn test_delete_set() {
             min_weight: 0.0,
             increment: 5.0,
         },
+        min_reps: 1,
+        max_reps: None,
     };
     let exercise_id = db
         .save_exercise(&exercise)
@@ -656,6 +686,8 @@ async fn test_get_last_set_for_exercise_new_schema() {
             min_weight: 0.0,
             increment: 2.5,
         },
+        min_reps: 1,
+        max_reps: None,
     };
     let exercise_id = db
         .save_exercise(&exercise)
@@ -727,6 +759,8 @@ async fn test_save_exercise() {
             min_weight: 135.0,
             increment: 10.0,
         },
+        min_reps: 1,
+        max_reps: None,
     };
 
     let result = db.save_exercise(&exercise).await;
@@ -742,6 +776,8 @@ async fn test_save_exercise() {
             min_weight: 145.0,
             increment: 5.0,
         },
+        min_reps: 1,
+        max_reps: None,
     };
 
     let result_id_update = db.save_exercise(&updated_exercise_with_id).await;
@@ -763,6 +799,8 @@ async fn test_save_exercise() {
             min_weight: 150.0,
             increment: 10.0,
         },
+        min_reps: 1,
+        max_reps: None,
     };
 
     let result2 = db.save_exercise(&updated_exercise).await;
@@ -784,6 +822,8 @@ async fn test_export_database() {
         id: None,
         name: "Test Exercise".to_string(),
         set_type_config: SetTypeConfig::Bodyweight,
+        min_reps: 1,
+        max_reps: None,
     };
     db.save_exercise(&exercise)
         .await
@@ -826,6 +866,8 @@ async fn test_sql_injection_protection() {
             min_weight: 0.0,
             increment: 5.0,
         },
+        min_reps: 1,
+        max_reps: None,
     };
 
     let result = db.save_exercise(&exercise).await;
@@ -857,6 +899,8 @@ async fn test_export_import_round_trip() {
             min_weight: 0.0,
             increment: 5.0,
         },
+        min_reps: 1,
+        max_reps: None,
     };
     let exercise_id = db1
         .save_exercise(&exercise)
@@ -935,11 +979,15 @@ async fn test_exercises_restored_after_open_existing_database() {
             min_weight: 20.0,
             increment: 2.5,
         },
+        min_reps: 1,
+        max_reps: None,
     };
     let exercise2 = ExerciseMetadata {
         id: None,
         name: "Pull-ups".to_string(),
         set_type_config: SetTypeConfig::Bodyweight,
+        min_reps: 1,
+        max_reps: None,
     };
 
     db1.save_exercise(&exercise1)
@@ -1034,6 +1082,8 @@ async fn test_new_exercise_has_uuid() {
             min_weight: 20.0,
             increment: 2.5,
         },
+        min_reps: 1,
+        max_reps: None,
     };
     let exercise_id = db
         .save_exercise(&exercise)
@@ -1086,6 +1136,8 @@ async fn test_new_set_has_uuid_and_updated_at() {
             min_weight: 0.0,
             increment: 5.0,
         },
+        min_reps: 1,
+        max_reps: None,
     };
     let exercise_id = db
         .save_exercise(&exercise)
@@ -1143,6 +1195,8 @@ async fn test_update_set_updates_updated_at() {
             min_weight: 0.0,
             increment: 2.5,
         },
+        min_reps: 1,
+        max_reps: None,
     };
     let exercise_id = db
         .save_exercise(&exercise)
@@ -1227,6 +1281,8 @@ async fn test_delete_set_is_soft_delete() {
             min_weight: 0.0,
             increment: 5.0,
         },
+        min_reps: 1,
+        max_reps: None,
     };
     let exercise_id = db
         .save_exercise(&exercise)
@@ -1302,6 +1358,8 @@ async fn test_uuids_are_unique_across_records() {
             min_weight: 0.0,
             increment: 5.0,
         },
+        min_reps: 1,
+        max_reps: None,
     };
     let exercise_id = db
         .save_exercise(&exercise)
@@ -1704,6 +1762,8 @@ async fn test_exercises_restored_after_create_new_then_reopen() {
             min_weight: 60.0,
             increment: 5.0,
         },
+        min_reps: 1,
+        max_reps: None,
     };
     db1.save_exercise(&exercise)
         .await
@@ -1743,6 +1803,8 @@ async fn test_edit_exercise_updates_updated_at() {
             min_weight: 20.0,
             increment: 2.5,
         },
+        min_reps: 1,
+        max_reps: None,
     };
     let exercise_id = db.save_exercise(&exercise).await.expect("save failed");
 
@@ -1770,6 +1832,8 @@ async fn test_edit_exercise_updates_updated_at() {
             min_weight: 20.0,
             increment: 5.0, // changed
         },
+        min_reps: 1,
+        max_reps: None,
     };
     db.save_exercise(&updated).await.expect("update failed");
 
@@ -1817,6 +1881,8 @@ async fn test_v2_to_v3_migration_backfills_existing_rows() {
             min_weight: 60.0,
             increment: 5.0,
         },
+        min_reps: 1,
+        max_reps: None,
     };
     let ex_id = db1.save_exercise(&exercise).await.expect("save failed");
     db1.log_set(

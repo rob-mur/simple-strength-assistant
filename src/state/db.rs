@@ -72,7 +72,7 @@ pub struct MergeConflict {
 }
 
 /// Current schema version. Bump this when the schema changes.
-const SCHEMA_VERSION: i64 = 3;
+const SCHEMA_VERSION: i64 = 4;
 
 #[derive(Clone, PartialEq)]
 pub struct Database {
@@ -163,6 +163,12 @@ impl Database {
         if current_version < 3 {
             log::debug!("[DB] Applying v3 migration: adding sync columns");
             self.apply_v3_migration().await?;
+        }
+
+        // ── v4 migration: rep ranges + settings table ───────────────────────────
+        if current_version < 4 {
+            log::debug!("[DB] Applying v4 migration: rep ranges and settings table");
+            self.apply_v4_migration().await?;
         }
 
         // Stamp the new version
@@ -267,6 +273,49 @@ impl Database {
         }
 
         log::debug!("[DB] v3 migration complete");
+        Ok(())
+    }
+
+    /// Adds `min_reps` and `max_reps` columns to the exercises table,
+    /// creates the `settings` table, and auto-seeds a default settings row.
+    async fn apply_v4_migration(&self) -> Result<(), DatabaseError> {
+        // Add rep-range columns to exercises.
+        self.add_column_if_missing(
+            "ALTER TABLE exercises ADD COLUMN min_reps INTEGER NOT NULL DEFAULT 1",
+        )
+        .await?;
+        self.add_column_if_missing("ALTER TABLE exercises ADD COLUMN max_reps INTEGER")
+            .await?;
+
+        // Create settings table.
+        self.execute_internal(
+            r#"
+            CREATE TABLE IF NOT EXISTS settings (
+                id INTEGER PRIMARY KEY CHECK (id = 1),
+                target_rpe REAL NOT NULL DEFAULT 8.0,
+                history_window_days INTEGER NOT NULL DEFAULT 30,
+                today_blend_factor REAL NOT NULL DEFAULT 0.5
+            )
+            "#,
+            &[],
+        )
+        .await?;
+
+        // Seed default settings row if absent.
+        self.seed_settings().await?;
+
+        log::debug!("[DB] v4 migration complete");
+        Ok(())
+    }
+
+    /// Inserts the default settings row if no row exists yet.
+    /// Safe to call multiple times — uses INSERT OR IGNORE.
+    async fn seed_settings(&self) -> Result<(), DatabaseError> {
+        self.execute_internal(
+            "INSERT OR IGNORE INTO settings (id, target_rpe, history_window_days, today_blend_factor) VALUES (1, 8.0, 30, 0.5)",
+            &[],
+        )
+        .await?;
         Ok(())
     }
 
@@ -588,10 +637,15 @@ impl Database {
         };
 
         let now = js_sys::Date::now();
+        let min_reps_val = JsValue::from_f64(exercise.min_reps as f64);
+        let max_reps_val = exercise
+            .max_reps
+            .map(|r| JsValue::from_f64(r as f64))
+            .unwrap_or(JsValue::NULL);
 
         let result = if let Some(id) = exercise.id {
             let sql = r#"
-                UPDATE exercises SET name = ?, is_weighted = ?, min_weight = ?, increment = ?, updated_at = ?
+                UPDATE exercises SET name = ?, is_weighted = ?, min_weight = ?, increment = ?, min_reps = ?, max_reps = ?, updated_at = ?
                 WHERE id = ?
                 RETURNING id
             "#;
@@ -604,6 +658,8 @@ impl Database {
                 increment
                     .map(|i| JsValue::from_f64(i as f64))
                     .unwrap_or(JsValue::NULL),
+                min_reps_val,
+                max_reps_val,
                 JsValue::from_f64(now),
                 JsValue::from_f64(id as f64),
             ];
@@ -611,12 +667,14 @@ impl Database {
         } else {
             let uuid = Self::generate_uuid();
             let sql = r#"
-                INSERT INTO exercises (name, is_weighted, min_weight, increment, uuid, updated_at)
-                VALUES (?, ?, ?, ?, ?, ?)
+                INSERT INTO exercises (name, is_weighted, min_weight, increment, min_reps, max_reps, uuid, updated_at)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?)
                 ON CONFLICT(name) DO UPDATE SET
                     is_weighted = excluded.is_weighted,
                     min_weight = excluded.min_weight,
                     increment = excluded.increment,
+                    min_reps = excluded.min_reps,
+                    max_reps = excluded.max_reps,
                     updated_at = excluded.updated_at
                 RETURNING id
             "#;
@@ -629,6 +687,8 @@ impl Database {
                 increment
                     .map(|i| JsValue::from_f64(i as f64))
                     .unwrap_or(JsValue::NULL),
+                min_reps_val,
+                max_reps_val,
                 JsValue::from_str(&uuid),
                 JsValue::from_f64(now),
             ];
@@ -656,7 +716,7 @@ impl Database {
     }
 
     pub async fn get_exercises(&self) -> Result<Vec<ExerciseMetadata>, DatabaseError> {
-        let sql = "SELECT id, name, is_weighted, min_weight, increment FROM exercises WHERE deleted_at IS NULL ORDER BY name";
+        let sql = "SELECT id, name, is_weighted, min_weight, increment, min_reps, max_reps FROM exercises WHERE deleted_at IS NULL ORDER BY name";
         let result = self.execute(sql, &[]).await?;
 
         let array = result
@@ -704,14 +764,63 @@ impl Database {
                 crate::models::SetTypeConfig::Bodyweight
             };
 
+            let min_reps = js_sys::Reflect::get(&row, &JsValue::from_str("min_reps"))?
+                .as_f64()
+                .unwrap_or(1.0) as i32;
+            let max_reps_val = js_sys::Reflect::get(&row, &JsValue::from_str("max_reps"))?;
+            let max_reps = if max_reps_val.is_null() || max_reps_val.is_undefined() {
+                None
+            } else {
+                max_reps_val.as_f64().map(|v| v as i32)
+            };
+
             exercises.push(ExerciseMetadata {
                 id,
                 name,
                 set_type_config,
+                min_reps,
+                max_reps,
             });
         }
 
         Ok(exercises)
+    }
+
+    /// Returns the current settings, seeding the default row if absent.
+    pub async fn get_settings(&self) -> Result<crate::models::Settings, DatabaseError> {
+        // Ensure the settings row exists (idempotent).
+        self.seed_settings().await?;
+
+        let sql =
+            "SELECT target_rpe, history_window_days, today_blend_factor FROM settings WHERE id = 1";
+        let result = self.execute(sql, &[]).await?;
+
+        let array = result
+            .dyn_ref::<js_sys::Array>()
+            .ok_or_else(|| DatabaseError::QueryError("Expected array result".to_string()))?;
+
+        if array.length() == 0 {
+            return Ok(crate::models::Settings::default());
+        }
+
+        let row = array.get(0);
+        let target_rpe = js_sys::Reflect::get(&row, &JsValue::from_str("target_rpe"))?
+            .as_f64()
+            .unwrap_or(8.0);
+        let history_window_days =
+            js_sys::Reflect::get(&row, &JsValue::from_str("history_window_days"))?
+                .as_f64()
+                .unwrap_or(30.0) as i32;
+        let today_blend_factor =
+            js_sys::Reflect::get(&row, &JsValue::from_str("today_blend_factor"))?
+                .as_f64()
+                .unwrap_or(0.5);
+
+        Ok(crate::models::Settings {
+            target_rpe,
+            history_window_days,
+            today_blend_factor,
+        })
     }
 
     /// Returns the most recent set for the given exercise (used for predictions).
