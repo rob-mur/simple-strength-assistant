@@ -386,6 +386,8 @@ mod tests {
                 min_weight: 20.0,
                 increment: 2.5,
             },
+            min_reps: 1,
+            max_reps: None,
         };
 
         let set = CompletedSet {
@@ -404,6 +406,8 @@ mod tests {
             id: None,
             name: "Pull-ups".to_string(),
             set_type_config: SetTypeConfig::Bodyweight,
+            min_reps: 1,
+            max_reps: None,
         };
 
         let set = CompletedSet {
@@ -425,6 +429,8 @@ mod tests {
                 min_weight: 20.0,
                 increment: 2.5,
             },
+            min_reps: 1,
+            max_reps: None,
         };
 
         let set = CompletedSet {
@@ -450,6 +456,8 @@ mod tests {
             id: None,
             name: "Pull-ups".to_string(),
             set_type_config: SetTypeConfig::Bodyweight,
+            min_reps: 1,
+            max_reps: None,
         };
 
         let set = CompletedSet {
@@ -469,6 +477,8 @@ mod tests {
             id: None,
             name: "Pull-ups".to_string(),
             set_type_config: SetTypeConfig::Bodyweight,
+            min_reps: 1,
+            max_reps: None,
         };
 
         let set = CompletedSet {

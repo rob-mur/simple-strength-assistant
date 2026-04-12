@@ -92,6 +92,8 @@ pub fn ExerciseForm(
             } else {
                 SetTypeConfig::Bodyweight
             },
+            min_reps: initial_exercise.as_ref().map(|e| e.min_reps).unwrap_or(1),
+            max_reps: initial_exercise.as_ref().and_then(|e| e.max_reps),
         };
 
         on_save.call(exercise);

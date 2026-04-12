@@ -943,6 +943,8 @@ mod tests {
                 min_weight: 0.0,
                 increment: 5.0,
             },
+            min_reps: 1,
+            max_reps: None,
         };
 
         let predicted = WorkoutStateManager::calculate_initial_predictions(&exercise, None);
@@ -961,6 +963,8 @@ mod tests {
                 min_weight: 0.0,
                 increment: 5.0,
             },
+            min_reps: 1,
+            max_reps: None,
         };
 
         let last_set = CompletedSet {
@@ -984,6 +988,8 @@ mod tests {
             id: Some(2),
             name: "Pull-ups".to_string(),
             set_type_config: SetTypeConfig::Bodyweight,
+            min_reps: 1,
+            max_reps: None,
         };
 
         let predicted = WorkoutStateManager::calculate_initial_predictions(&exercise, None);
@@ -1002,6 +1008,8 @@ mod tests {
                 min_weight: 0.0,
                 increment: 5.0,
             },
+            min_reps: 1,
+            max_reps: None,
         };
 
         let session = WorkoutSession {

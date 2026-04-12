@@ -32,6 +32,16 @@ pub struct ExerciseMetadata {
     pub name: String,
     /// Configuration for the type of sets this exercise uses
     pub set_type_config: SetTypeConfig,
+    /// Minimum number of reps for this exercise (default: 1)
+    #[serde(default = "default_min_reps")]
+    pub min_reps: i32,
+    /// Maximum number of reps for this exercise (None = unlimited)
+    #[serde(default)]
+    pub max_reps: Option<i32>,
+}
+
+fn default_min_reps() -> i32 {
+    1
 }
 
 #[cfg(test)]
@@ -47,6 +57,8 @@ mod tests {
                 min_weight: 20.0,
                 increment: 2.5,
             },
+            min_reps: 1,
+            max_reps: None,
         };
 
         assert_eq!(exercise.name, "Bench Press");
@@ -68,6 +80,8 @@ mod tests {
             id: None,
             name: "Pull-ups".to_string(),
             set_type_config: SetTypeConfig::Bodyweight,
+            min_reps: 1,
+            max_reps: None,
         };
 
         assert_eq!(exercise.name, "Pull-ups");
@@ -88,6 +102,8 @@ mod tests {
                 min_weight: 20.0,
                 increment: 2.5,
             },
+            min_reps: 1,
+            max_reps: None,
         };
 
         let json = serde_json::to_string(&original).expect("Serialization failed");
@@ -104,6 +120,8 @@ mod tests {
             id: None,
             name: "Push-ups".to_string(),
             set_type_config: SetTypeConfig::Bodyweight,
+            min_reps: 1,
+            max_reps: None,
         };
 
         let json = serde_json::to_string(&original).expect("Serialization failed");
@@ -124,11 +142,46 @@ mod tests {
                 min_weight: 20.0,
                 increment: 2.5,
             },
+            min_reps: 1,
+            max_reps: None,
         };
 
         let cloned = original.clone();
         assert_eq!(cloned.id, original.id);
         assert_eq!(cloned.name, original.name);
         assert_eq!(cloned.set_type_config, original.set_type_config);
+    }
+
+    #[test]
+    fn test_serde_round_trip_with_rep_range() {
+        let original = ExerciseMetadata {
+            id: Some(42),
+            name: "Squat".to_string(),
+            set_type_config: SetTypeConfig::Weighted {
+                min_weight: 20.0,
+                increment: 2.5,
+            },
+            min_reps: 3,
+            max_reps: Some(8),
+        };
+
+        let json = serde_json::to_string(&original).expect("Serialization failed");
+        let deserialized: ExerciseMetadata =
+            serde_json::from_str(&json).expect("Deserialization failed");
+
+        assert_eq!(deserialized.min_reps, 3);
+        assert_eq!(deserialized.max_reps, Some(8));
+        assert_eq!(deserialized, original);
+    }
+
+    #[test]
+    fn test_serde_defaults_for_missing_rep_fields() {
+        // Simulate JSON from older version without rep range fields
+        let json = r#"{"id":1,"name":"Bench","set_type_config":{"Weighted":{"min_weight":20.0,"increment":2.5}}}"#;
+        let deserialized: ExerciseMetadata =
+            serde_json::from_str(json).expect("Deserialization failed");
+
+        assert_eq!(deserialized.min_reps, 1);
+        assert_eq!(deserialized.max_reps, None);
     }
 }

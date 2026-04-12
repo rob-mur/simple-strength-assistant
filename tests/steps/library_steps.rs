@@ -101,6 +101,8 @@ async fn step_save_exercise(world: &mut LibraryWorld) {
             min_weight: 20.0,
             increment: 2.5,
         },
+        min_reps: 1,
+        max_reps: None,
     });
     world.render_component();
 }
@@ -132,6 +134,8 @@ async fn step_exercise_exists(world: &mut LibraryWorld, name: String) {
             min_weight: 20.0,
             increment: 2.5,
         },
+        min_reps: 1,
+        max_reps: None,
     });
 }
 

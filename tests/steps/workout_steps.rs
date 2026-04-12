@@ -74,6 +74,8 @@ async fn step_click_start(world: &mut WorkoutWorld) {
                 min_weight: 0.0,
                 increment: 5.0,
             },
+            min_reps: 1,
+            max_reps: None,
         },
         completed_sets: Vec::new(),
         predicted: PredictedParameters {
@@ -155,6 +157,8 @@ async fn step_active_session_with_sets(world: &mut WorkoutWorld, exercise_name: 
                 min_weight: 0.0,
                 increment: 5.0,
             },
+            min_reps: 1,
+            max_reps: None,
         },
         completed_sets: vec![simple_strength_assistant::models::CompletedSet {
             set_number: 1,
@@ -182,6 +186,8 @@ async fn step_switch_exercise(world: &mut WorkoutWorld, exercise_name: String) {
                 min_weight: 0.0,
                 increment: 2.5,
             },
+            min_reps: 1,
+            max_reps: None,
         },
         completed_sets: Vec::new(),
         predicted: PredictedParameters {

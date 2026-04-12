@@ -87,6 +87,8 @@ async fn following_exercises_exist(
                     id: None,
                     name: name.clone(),
                     set_type_config: config,
+                    min_reps: 1,
+                    max_reps: None,
                 });
             }
         }
