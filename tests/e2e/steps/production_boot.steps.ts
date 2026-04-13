@@ -8,8 +8,22 @@ Given(
 
     // Override the __TEST_MODE__ flag set by the fixtures so this test
     // exercises the real production code path including sync.
+    // Also inject a counter that patches console.debug to count how many
+    // times the sync effect fires — used by the "at most once" assertion.
     await page.addInitScript(() => {
       delete (window as unknown as Record<string, unknown>).__TEST_MODE__;
+
+      (window as any).__syncStartCount = 0;
+      const origDebug = console.debug.bind(console);
+      console.debug = (...args: unknown[]) => {
+        if (
+          typeof args[0] === "string" &&
+          args[0].includes("[Sync] App ready")
+        ) {
+          (window as any).__syncStartCount++;
+        }
+        origDebug(...args);
+      };
     });
 
     await context.clearCookies();
@@ -46,20 +60,25 @@ Then("the sync should start at most once", async ({ page }) => {
     timeout: 10000,
   });
 
-  // Give sync time to complete and any potential re-triggers to fire
-  await page.waitForTimeout(2000);
+  // Wait for the sync-complete log message rather than an arbitrary timeout.
+  // If sync doesn't run (e.g. no credentials), the 5s timeout is a safe upper bound.
+  try {
+    await page.waitForEvent("console", {
+      predicate: (msg) =>
+        msg.text().includes("[Sync] Background sync complete"),
+      timeout: 5000,
+    });
+  } catch {
+    // Sync may not fire at all (no credentials configured) — that's fine.
+  }
 
-  // Collect console logs that match the sync start message.
-  // The app logs "[Sync] App ready — starting background sync" each time
-  // the sync effect fires. If the loop bug is present, we'd see dozens.
-  const syncLogs = await page.evaluate(() => {
-    return (window as any).__syncStartCount ?? 0;
-  });
+  // Read the counter injected by addInitScript that patches console.debug.
+  // Each "[Sync] App ready" log increments __syncStartCount.
+  const count = await page.evaluate(
+    () => (window as any).__syncStartCount ?? 0,
+  );
+  expect(count).toBeLessThanOrEqual(1);
 
-  // We injected a counter via addInitScript — but since we're NOT in test
-  // mode here, we instead check console messages collected during the test.
-  // The console listener was set up in the Given step.
-  // For robustness, we'll just verify the page is still responsive
-  // (not crashed) after 2 seconds — a crashed page would have timed out above.
+  // Also verify the page is still responsive
   await expect(page.getByTestId("tab-workout")).toBeVisible();
 });

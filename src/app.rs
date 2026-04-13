@@ -485,7 +485,9 @@ pub fn App() -> Element {
                 && !sync_attempted()
             {
                 // Skip sync in test mode — the test harness sets __TEST_MODE__
-                // and there is no sync server to talk to.
+                // and there is no sync server to talk to. Running sync here would
+                // attempt a network request that never completes, freezing the
+                // page for Playwright.
                 let is_fallback = workout_state
                     .file_manager()
                     .map(|fm| fm.is_using_fallback())
