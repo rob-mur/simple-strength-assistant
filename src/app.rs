@@ -467,26 +467,25 @@ pub fn App() -> Element {
         }
     });
 
-    // Trigger background sync once the database transitions to Ready.
+    // Trigger background sync exactly once when the database transitions to Ready.
     // Sync is non-blocking: the app is fully usable while sync runs.
     // Sync short-circuits if no credentials are configured (see SyncCredentials::load),
     // so it is safe to run even when sync is not set up or in E2E test environments.
-    // A `sync_in_progress` guard prevents duplicate sync cycles if the
-    // effect re-fires (e.g. due to re-renders or state transitions).
+    // A one-shot `sync_attempted` flag ensures the sync fires at most once per
+    // app load, preventing the infinite re-trigger loop that occurs when a
+    // completion callback resets a guard signal the effect subscribes to.
     //
     // The `#[cfg(not(test))]` guard is needed because `trigger_background_sync`
     // depends on the real HTTP client module which is excluded from test builds.
     #[cfg(not(test))]
     {
-        let mut sync_in_progress = use_signal(|| false);
+        let mut sync_attempted = use_signal(|| false);
         use_effect(move || {
             if workout_state.initialization_state() == InitializationState::Ready
-                && !sync_in_progress()
+                && !sync_attempted()
             {
                 // Skip sync in test mode — the test harness sets __TEST_MODE__
-                // and there is no sync server to talk to. Running sync here would
-                // block the main thread waiting for a network response that never
-                // comes, freezing the page for Playwright.
+                // and there is no sync server to talk to.
                 let is_fallback = workout_state
                     .file_manager()
                     .map(|fm| fm.is_using_fallback())
@@ -494,11 +493,11 @@ pub fn App() -> Element {
                 if is_fallback {
                     return;
                 }
-                sync_in_progress.set(true);
+                sync_attempted.set(true);
                 spawn(async move {
                     log::debug!("[Sync] App ready — starting background sync");
                     WorkoutStateManager::trigger_background_sync(&workout_state).await;
-                    sync_in_progress.set(false);
+                    log::debug!("[Sync] Background sync complete");
                 });
             }
         });
