@@ -1966,3 +1966,303 @@ async fn test_v2_to_v3_migration_backfills_existing_rows() {
         );
     }
 }
+
+// ── History query tests for e1RM calculation (#131) ─────────────────────────
+
+/// Helper: creates a fresh DB with a weighted exercise and returns (db, exercise_id).
+async fn setup_exercise_for_history() -> (Database, i64) {
+    let mut db = Database::new();
+    db.init(None).await.expect("DB init failed");
+
+    let exercise = ExerciseMetadata {
+        id: None,
+        name: "Squat".to_string(),
+        set_type_config: SetTypeConfig::Weighted {
+            min_weight: 20.0,
+            increment: 2.5,
+        },
+        min_reps: 1,
+        max_reps: None,
+    };
+    let id = db
+        .save_exercise(&exercise)
+        .await
+        .expect("save_exercise failed");
+    (db, id)
+}
+
+/// Milliseconds per day constant for test date arithmetic.
+const MS_PER_DAY: f64 = 86_400_000.0;
+
+/// get_best_set_for_exercise returns the set with the highest e1RM in the window.
+#[wasm_bindgen_test]
+async fn test_best_set_returns_highest_e1rm() {
+    let (db, eid) = setup_exercise_for_history().await;
+
+    // "Today" = day 10, history window starts at day 0.
+    let day = |d: i64| d as f64 * MS_PER_DAY;
+    let today_start = day(10);
+    let today_end = day(11);
+
+    // Set A: 100kg x 5 @ RPE 8 on day 3
+    let set_a = CompletedSet {
+        set_number: 1,
+        reps: 5,
+        rpe: 8.0,
+        set_type: SetType::Weighted { weight: 100.0 },
+    };
+    db.log_set_at(eid, &set_a, day(3) + 1000.0)
+        .await
+        .expect("log A");
+
+    // Set B: 120kg x 3 @ RPE 9 on day 5 — higher e1RM
+    let set_b = CompletedSet {
+        set_number: 1,
+        reps: 3,
+        rpe: 9.0,
+        set_type: SetType::Weighted { weight: 120.0 },
+    };
+    db.log_set_at(eid, &set_b, day(5) + 1000.0)
+        .await
+        .expect("log B");
+
+    // Set C: 80kg x 8 @ RPE 7 on day 7 — lower e1RM
+    let set_c = CompletedSet {
+        set_number: 1,
+        reps: 8,
+        rpe: 7.0,
+        set_type: SetType::Weighted { weight: 80.0 },
+    };
+    db.log_set_at(eid, &set_c, day(7) + 1000.0)
+        .await
+        .expect("log C");
+
+    let best = db
+        .get_best_set_for_exercise(eid, day(0), today_start, today_end)
+        .await
+        .expect("query failed");
+
+    assert!(best.is_some(), "Should find a best set");
+    let best = best.unwrap();
+    // Set B (120kg x 3 @ RPE 9) should have highest e1RM
+    assert_eq!(best.reps, 3);
+    if let SetType::Weighted { weight } = best.set_type {
+        assert_eq!(weight, 120.0);
+    } else {
+        panic!("Expected Weighted set");
+    }
+}
+
+/// get_best_set_for_exercise excludes sets that fall on the excluded date.
+#[wasm_bindgen_test]
+async fn test_best_set_excludes_today() {
+    let (db, eid) = setup_exercise_for_history().await;
+
+    let day = |d: i64| d as f64 * MS_PER_DAY;
+    let today_start = day(10);
+    let today_end = day(11);
+
+    // Best set is on "today" — should be excluded
+    let set_today = CompletedSet {
+        set_number: 1,
+        reps: 1,
+        rpe: 10.0,
+        set_type: SetType::Weighted { weight: 200.0 },
+    };
+    db.log_set_at(eid, &set_today, today_start + 5000.0)
+        .await
+        .expect("log today");
+
+    // Weaker set in history — should be returned
+    let set_history = CompletedSet {
+        set_number: 1,
+        reps: 5,
+        rpe: 8.0,
+        set_type: SetType::Weighted { weight: 100.0 },
+    };
+    db.log_set_at(eid, &set_history, day(5) + 1000.0)
+        .await
+        .expect("log history");
+
+    let best = db
+        .get_best_set_for_exercise(eid, day(0), today_start, today_end)
+        .await
+        .expect("query failed");
+
+    assert!(best.is_some());
+    let best = best.unwrap();
+    assert_eq!(best.reps, 5, "Should return historical set, not today's");
+    if let SetType::Weighted { weight } = best.set_type {
+        assert_eq!(weight, 100.0);
+    } else {
+        panic!("Expected Weighted set");
+    }
+}
+
+/// get_best_set_for_exercise returns None when history window is empty.
+#[wasm_bindgen_test]
+async fn test_best_set_empty_history() {
+    let (db, eid) = setup_exercise_for_history().await;
+
+    let day = |d: i64| d as f64 * MS_PER_DAY;
+
+    let best = db
+        .get_best_set_for_exercise(eid, day(0), day(10), day(11))
+        .await
+        .expect("query failed");
+
+    assert!(best.is_none(), "No sets → None");
+}
+
+/// get_best_set_for_exercise returns None when all sets fall on excluded date.
+#[wasm_bindgen_test]
+async fn test_best_set_all_sets_today() {
+    let (db, eid) = setup_exercise_for_history().await;
+
+    let day = |d: i64| d as f64 * MS_PER_DAY;
+    let today_start = day(10);
+    let today_end = day(11);
+
+    // Only set is on today
+    let set = CompletedSet {
+        set_number: 1,
+        reps: 5,
+        rpe: 8.0,
+        set_type: SetType::Weighted { weight: 100.0 },
+    };
+    db.log_set_at(eid, &set, today_start + 1000.0)
+        .await
+        .expect("log");
+
+    let best = db
+        .get_best_set_for_exercise(eid, day(0), today_start, today_end)
+        .await
+        .expect("query failed");
+
+    assert!(best.is_none(), "All sets on excluded date → None");
+}
+
+/// get_best_set_for_exercise respects since_date boundary.
+#[wasm_bindgen_test]
+async fn test_best_set_respects_since_date() {
+    let (db, eid) = setup_exercise_for_history().await;
+
+    let day = |d: i64| d as f64 * MS_PER_DAY;
+
+    // Strong set on day 2 (before window)
+    let old_set = CompletedSet {
+        set_number: 1,
+        reps: 1,
+        rpe: 10.0,
+        set_type: SetType::Weighted { weight: 200.0 },
+    };
+    db.log_set_at(eid, &old_set, day(2) + 1000.0)
+        .await
+        .expect("log old");
+
+    // Weaker set on day 8 (inside window)
+    let recent_set = CompletedSet {
+        set_number: 1,
+        reps: 5,
+        rpe: 8.0,
+        set_type: SetType::Weighted { weight: 100.0 },
+    };
+    db.log_set_at(eid, &recent_set, day(8) + 1000.0)
+        .await
+        .expect("log recent");
+
+    // Window starts at day 5, so old_set (day 2) is excluded
+    let best = db
+        .get_best_set_for_exercise(eid, day(5), day(10), day(11))
+        .await
+        .expect("query failed");
+
+    assert!(best.is_some());
+    let best = best.unwrap();
+    assert_eq!(best.reps, 5, "Should only see set within window");
+}
+
+/// get_latest_set_today returns the most recently logged set today.
+#[wasm_bindgen_test]
+async fn test_latest_set_today_returns_most_recent() {
+    let (db, eid) = setup_exercise_for_history().await;
+
+    let day = |d: i64| d as f64 * MS_PER_DAY;
+    let today_start = day(10);
+    let today_end = day(11);
+
+    // Earlier set today
+    let set_early = CompletedSet {
+        set_number: 1,
+        reps: 5,
+        rpe: 7.0,
+        set_type: SetType::Weighted { weight: 80.0 },
+    };
+    db.log_set_at(eid, &set_early, today_start + 1000.0)
+        .await
+        .expect("log early");
+
+    // Later set today
+    let set_late = CompletedSet {
+        set_number: 2,
+        reps: 3,
+        rpe: 9.0,
+        set_type: SetType::Weighted { weight: 100.0 },
+    };
+    db.log_set_at(eid, &set_late, today_start + 5000.0)
+        .await
+        .expect("log late");
+
+    let latest = db
+        .get_latest_set_today(eid, today_start, today_end)
+        .await
+        .expect("query failed");
+
+    assert!(latest.is_some());
+    let latest = latest.unwrap();
+    assert_eq!(latest.set_number, 2, "Should return most recent set");
+    assert_eq!(latest.reps, 3);
+}
+
+/// get_latest_set_today returns None when no sets logged today.
+#[wasm_bindgen_test]
+async fn test_latest_set_today_none_when_empty() {
+    let (db, eid) = setup_exercise_for_history().await;
+
+    let day = |d: i64| d as f64 * MS_PER_DAY;
+
+    let latest = db
+        .get_latest_set_today(eid, day(10), day(11))
+        .await
+        .expect("query failed");
+
+    assert!(latest.is_none(), "No sets today → None");
+}
+
+/// get_latest_set_today only returns sets from the specified day.
+#[wasm_bindgen_test]
+async fn test_latest_set_today_ignores_other_days() {
+    let (db, eid) = setup_exercise_for_history().await;
+
+    let day = |d: i64| d as f64 * MS_PER_DAY;
+    let today_start = day(10);
+    let today_end = day(11);
+
+    // Set from yesterday — should not appear
+    let yesterday_set = CompletedSet {
+        set_number: 1,
+        reps: 5,
+        rpe: 8.0,
+        set_type: SetType::Weighted { weight: 100.0 },
+    };
+    db.log_set_at(eid, &yesterday_set, day(9) + 5000.0)
+        .await
+        .expect("log yesterday");
+
+    let latest = db
+        .get_latest_set_today(eid, today_start, today_end)
+        .await
+        .expect("query failed");
+
+    assert!(latest.is_none(), "Yesterday's set should not appear");
+}
