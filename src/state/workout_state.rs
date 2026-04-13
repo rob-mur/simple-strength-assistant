@@ -1,4 +1,4 @@
-use crate::models::{CompletedSet, ExerciseMetadata, SetType};
+use crate::models::{CompletedSet, ExerciseMetadata, SetType, Settings};
 use crate::state::{Database, Storage, error::WorkoutError};
 use crate::sync::ConflictRecord;
 use crate::sync::VectorClock;
@@ -96,6 +96,8 @@ pub struct WorkoutState {
     sync_status: Signal<SyncStatus>,
     /// Local vector clock, persisted across sync cycles
     sync_clock: Signal<VectorClock>,
+    /// Global application settings (target RPE, history window, blend factor).
+    settings: Signal<Settings>,
     /// Pending conflicts from a sync merge that the user needs to resolve.
     pending_conflicts: Signal<Vec<ConflictRecord>>,
     /// The merged database blob waiting for conflict resolution before being committed.
@@ -127,6 +129,7 @@ impl WorkoutState {
             file_manager: Signal::new(None),
             last_save_time: Signal::new(0.0),
             exercises: Signal::new(Vec::new()),
+            settings: Signal::new(Settings::default()),
             sync_status: Signal::new(SyncStatus::Idle),
             sync_clock: Signal::new(VectorClock::new()),
             pending_conflicts: Signal::new(Vec::new()),
@@ -214,6 +217,15 @@ impl WorkoutState {
     pub fn set_exercises(&self, exercises: Vec<ExerciseMetadata>) {
         let mut sig = self.exercises;
         sig.set(exercises);
+    }
+
+    pub fn settings(&self) -> Settings {
+        (self.settings)()
+    }
+
+    pub fn set_settings(&self, settings: Settings) {
+        let mut sig = self.settings;
+        sig.set(settings);
     }
 
     pub fn sync_status(&self) -> SyncStatus {
@@ -343,6 +355,10 @@ impl WorkoutStateManager {
 
         if let Err(e) = Self::sync_exercises(state).await {
             js_log(&format!("[DB Init] sync_exercises warning: {}", e));
+        }
+
+        if let Err(e) = Self::load_settings(state).await {
+            js_log(&format!("[DB Init] load_settings warning: {}", e));
         }
 
         state.load_persisted_clock();
@@ -522,6 +538,33 @@ impl WorkoutStateManager {
             exercises.len()
         );
         state.set_exercises(exercises);
+
+        Ok(())
+    }
+
+    /// Load settings from the database into app state.
+    pub async fn load_settings(state: &WorkoutState) -> Result<(), WorkoutError> {
+        let db = state.database().ok_or(WorkoutError::NotInitialized)?;
+        let settings = db.get_settings().await.map_err(WorkoutError::Database)?;
+        state.set_settings(settings);
+        Ok(())
+    }
+
+    /// Persist updated settings to the database and refresh app state.
+    pub async fn update_settings(
+        state: &WorkoutState,
+        settings: Settings,
+    ) -> Result<(), WorkoutError> {
+        let db = state.database().ok_or(WorkoutError::NotInitialized)?;
+        db.update_settings(&settings)
+            .await
+            .map_err(WorkoutError::Database)?;
+        state.set_settings(settings);
+
+        // Auto-save the database file
+        if let Err(e) = Self::save_database(state).await {
+            log::warn!("Auto-save after settings update failed: {}", e);
+        }
 
         Ok(())
     }

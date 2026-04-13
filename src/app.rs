@@ -1,5 +1,4 @@
 use crate::components::conflict_resolution::ConflictResolutionScreen;
-use crate::components::data_management::DataManagementPanel;
 #[cfg(debug_assertions)]
 use crate::components::debug_panel::DebugPanel;
 use crate::components::exercise_form::ExerciseForm;
@@ -7,6 +6,7 @@ use crate::components::history_view::HistoryView;
 use crate::components::library_view::LibraryView;
 use crate::components::previous_sessions::PreviousSessions;
 use crate::components::rpe_slider::RPESlider;
+use crate::components::settings_view::SettingsView;
 use crate::components::step_controls::StepControls;
 use crate::components::sync_status_indicator::SyncStatusIndicator;
 use crate::components::tab_bar::{Tab, TabBar};
@@ -266,24 +266,7 @@ fn LibraryTab() -> Element {
 #[component]
 fn SettingsTab() -> Element {
     let state = consume_context::<WorkoutState>();
-    rsx! {
-        div {
-            class: "max-w-md mx-auto py-6",
-            h2 { class: "text-xl font-black uppercase tracking-tight mb-6", "Settings" }
-            div {
-                class: "card bg-base-100 shadow-xl",
-                div {
-                    class: "card-body",
-                    h3 { class: "card-title text-base font-bold mb-2", "Data Management" }
-                    p {
-                        class: "text-sm text-base-content/60 mb-4",
-                        "Export your workout database for backup or transfer to another device. Import a previously exported database to restore your data."
-                    }
-                    DataManagementPanel { state }
-                }
-            }
-        }
-    }
+    rsx! { SettingsView { state } }
 }
 
 #[component]

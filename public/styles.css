@@ -2410,6 +2410,12 @@ details.collapse summary::-webkit-details-marker {
       var(--focus-shadow, 0 0),
       calc(var(--filler-size) * -1 - var(--filler-offset)) 0 0 var(--filler-size);
 }
+.range-primary {
+  --range-shdw: var(--fallback-p,oklch(var(--p)/1));
+}
+.range-secondary {
+  --range-shdw: var(--fallback-s,oklch(var(--s)/1));
+}
 .range-accent {
   --range-shdw: var(--fallback-a,oklch(var(--a)/1));
 }
@@ -3641,6 +3647,9 @@ details.collapse summary::-webkit-details-marker {
 .text-center {
   text-align: center;
 }
+.font-mono {
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
+}
 .text-2xl {
   font-size: 1.5rem;
   line-height: 2rem;
@@ -3758,6 +3767,9 @@ details.collapse summary::-webkit-details-marker {
 .text-warning-content {
   --tw-text-opacity: 1;
   color: var(--fallback-wac,oklch(var(--wac)/var(--tw-text-opacity, 1)));
+}
+.opacity-60 {
+  opacity: 0.6;
 }
 .opacity-70 {
   opacity: 0.7;

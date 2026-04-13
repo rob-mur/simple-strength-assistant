@@ -1,7 +1,7 @@
 use serde::{Deserialize, Serialize};
 
 /// Global application settings, stored as a single row in the `settings` table.
-#[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
+#[derive(Clone, Copy, Debug, Serialize, Deserialize, PartialEq)]
 pub struct Settings {
     /// Target RPE for auto-programming (default: 8.0)
     pub target_rpe: f64,
