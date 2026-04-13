@@ -1984,7 +1984,10 @@ async fn setup_exercise_for_history() -> (Database, i64) {
         min_reps: 1,
         max_reps: None,
     };
-    let id = db.save_exercise(&exercise).await.expect("save_exercise failed");
+    let id = db
+        .save_exercise(&exercise)
+        .await
+        .expect("save_exercise failed");
     (db, id)
 }
 
@@ -2008,7 +2011,9 @@ async fn test_best_set_returns_highest_e1rm() {
         rpe: 8.0,
         set_type: SetType::Weighted { weight: 100.0 },
     };
-    db.log_set_at(eid, &set_a, day(3) + 1000.0).await.expect("log A");
+    db.log_set_at(eid, &set_a, day(3) + 1000.0)
+        .await
+        .expect("log A");
 
     // Set B: 120kg x 3 @ RPE 9 on day 5 — higher e1RM
     let set_b = CompletedSet {
@@ -2017,7 +2022,9 @@ async fn test_best_set_returns_highest_e1rm() {
         rpe: 9.0,
         set_type: SetType::Weighted { weight: 120.0 },
     };
-    db.log_set_at(eid, &set_b, day(5) + 1000.0).await.expect("log B");
+    db.log_set_at(eid, &set_b, day(5) + 1000.0)
+        .await
+        .expect("log B");
 
     // Set C: 80kg x 8 @ RPE 7 on day 7 — lower e1RM
     let set_c = CompletedSet {
@@ -2026,7 +2033,9 @@ async fn test_best_set_returns_highest_e1rm() {
         rpe: 7.0,
         set_type: SetType::Weighted { weight: 80.0 },
     };
-    db.log_set_at(eid, &set_c, day(7) + 1000.0).await.expect("log C");
+    db.log_set_at(eid, &set_c, day(7) + 1000.0)
+        .await
+        .expect("log C");
 
     let best = db
         .get_best_set_for_exercise(eid, day(0), today_start, today_end)
