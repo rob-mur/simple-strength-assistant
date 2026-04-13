@@ -1,17 +1,4 @@
-import { createBdd } from "playwright-bdd";
-import { test as base } from "playwright-bdd";
-import { expect } from "@playwright/test";
-
-// This test intentionally does NOT inject __TEST_MODE__ = true,
-// so it exercises the real production code path including sync.
-const test = base.extend<{}>({
-  page: async ({ page }, use) => {
-    // No __TEST_MODE__ injection — this is the production path
-    await use(page);
-  },
-});
-
-const { Given, When, Then } = createBdd(test);
+import { Given, When, Then, expect } from "./fixtures";
 
 Given(
   "I open the app without test mode and clear storage",
@@ -20,6 +7,12 @@ Given(
     page.on("pageerror", (error) =>
       console.error("BROWSER ERROR:", error),
     );
+
+    // Override the __TEST_MODE__ flag set by the fixtures so this test
+    // exercises the real production code path including sync.
+    await page.addInitScript(() => {
+      delete (window as unknown as Record<string, unknown>).__TEST_MODE__;
+    });
 
     await context.clearCookies();
     await page.goto("/");
