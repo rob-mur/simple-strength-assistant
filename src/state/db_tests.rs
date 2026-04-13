@@ -2060,7 +2060,9 @@ async fn test_best_set_excludes_today() {
         rpe: 10.0,
         set_type: SetType::Weighted { weight: 200.0 },
     };
-    db.log_set_at(eid, &set_today, today_start + 5000.0).await.expect("log today");
+    db.log_set_at(eid, &set_today, today_start + 5000.0)
+        .await
+        .expect("log today");
 
     // Weaker set in history — should be returned
     let set_history = CompletedSet {
@@ -2069,7 +2071,9 @@ async fn test_best_set_excludes_today() {
         rpe: 8.0,
         set_type: SetType::Weighted { weight: 100.0 },
     };
-    db.log_set_at(eid, &set_history, day(5) + 1000.0).await.expect("log history");
+    db.log_set_at(eid, &set_history, day(5) + 1000.0)
+        .await
+        .expect("log history");
 
     let best = db
         .get_best_set_for_exercise(eid, day(0), today_start, today_end)
@@ -2117,7 +2121,9 @@ async fn test_best_set_all_sets_today() {
         rpe: 8.0,
         set_type: SetType::Weighted { weight: 100.0 },
     };
-    db.log_set_at(eid, &set, today_start + 1000.0).await.expect("log");
+    db.log_set_at(eid, &set, today_start + 1000.0)
+        .await
+        .expect("log");
 
     let best = db
         .get_best_set_for_exercise(eid, day(0), today_start, today_end)
@@ -2141,7 +2147,9 @@ async fn test_best_set_respects_since_date() {
         rpe: 10.0,
         set_type: SetType::Weighted { weight: 200.0 },
     };
-    db.log_set_at(eid, &old_set, day(2) + 1000.0).await.expect("log old");
+    db.log_set_at(eid, &old_set, day(2) + 1000.0)
+        .await
+        .expect("log old");
 
     // Weaker set on day 8 (inside window)
     let recent_set = CompletedSet {
@@ -2150,7 +2158,9 @@ async fn test_best_set_respects_since_date() {
         rpe: 8.0,
         set_type: SetType::Weighted { weight: 100.0 },
     };
-    db.log_set_at(eid, &recent_set, day(8) + 1000.0).await.expect("log recent");
+    db.log_set_at(eid, &recent_set, day(8) + 1000.0)
+        .await
+        .expect("log recent");
 
     // Window starts at day 5, so old_set (day 2) is excluded
     let best = db
@@ -2179,7 +2189,9 @@ async fn test_latest_set_today_returns_most_recent() {
         rpe: 7.0,
         set_type: SetType::Weighted { weight: 80.0 },
     };
-    db.log_set_at(eid, &set_early, today_start + 1000.0).await.expect("log early");
+    db.log_set_at(eid, &set_early, today_start + 1000.0)
+        .await
+        .expect("log early");
 
     // Later set today
     let set_late = CompletedSet {
@@ -2188,7 +2200,9 @@ async fn test_latest_set_today_returns_most_recent() {
         rpe: 9.0,
         set_type: SetType::Weighted { weight: 100.0 },
     };
-    db.log_set_at(eid, &set_late, today_start + 5000.0).await.expect("log late");
+    db.log_set_at(eid, &set_late, today_start + 5000.0)
+        .await
+        .expect("log late");
 
     let latest = db
         .get_latest_set_today(eid, today_start, today_end)
@@ -2232,7 +2246,9 @@ async fn test_latest_set_today_ignores_other_days() {
         rpe: 8.0,
         set_type: SetType::Weighted { weight: 100.0 },
     };
-    db.log_set_at(eid, &yesterday_set, day(9) + 5000.0).await.expect("log yesterday");
+    db.log_set_at(eid, &yesterday_set, day(9) + 5000.0)
+        .await
+        .expect("log yesterday");
 
     let latest = db
         .get_latest_set_today(eid, today_start, today_end)
