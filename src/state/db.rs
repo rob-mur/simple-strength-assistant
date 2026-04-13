@@ -883,6 +883,142 @@ impl Database {
         }))
     }
 
+    /// Returns the set with the highest computed e1RM for the given exercise
+    /// within the history window `[since_ms, now)`, **excluding** sets whose
+    /// `recorded_at` falls in `[exclude_start_ms, exclude_end_ms)`.
+    ///
+    /// e1RM comparison is performed in Rust using `domain::e1rm::e1rm()` so
+    /// that the ranking logic stays in one place.
+    ///
+    /// Bodyweight sets are skipped because e1RM is undefined without a weight.
+    pub async fn get_best_set_for_exercise(
+        &self,
+        exercise_id: i64,
+        since_ms: f64,
+        exclude_start_ms: f64,
+        exclude_end_ms: f64,
+    ) -> Result<Option<CompletedSet>, DatabaseError> {
+        let sql = r#"
+            SELECT set_number, reps, rpe, weight, is_bodyweight
+            FROM completed_sets
+            WHERE exercise_id = ?
+              AND deleted_at IS NULL
+              AND recorded_at >= ?
+              AND (recorded_at < ? OR recorded_at >= ?)
+              AND is_bodyweight = 0
+        "#;
+
+        let params = vec![
+            JsValue::from_f64(exercise_id as f64),
+            JsValue::from_f64(since_ms),
+            JsValue::from_f64(exclude_start_ms),
+            JsValue::from_f64(exclude_end_ms),
+        ];
+
+        let result = self.execute(sql, &params).await?;
+
+        let array = result
+            .dyn_ref::<js_sys::Array>()
+            .ok_or_else(|| DatabaseError::QueryError("Expected array result".to_string()))?;
+
+        let mut best: Option<(CompletedSet, f64)> = None;
+
+        for i in 0..array.length() {
+            let row = array.get(i);
+            let completed = self.parse_completed_set_row(&row)?;
+
+            if let SetType::Weighted { weight } = completed.set_type {
+                let estimate =
+                    crate::domain::e1rm::e1rm(weight as f64, completed.reps, completed.rpe as f64);
+                match &best {
+                    Some((_, best_e1rm)) if estimate <= *best_e1rm => {}
+                    _ => best = Some((completed, estimate)),
+                }
+            }
+        }
+
+        Ok(best.map(|(set, _)| set))
+    }
+
+    /// Returns the most recently logged set for the given exercise on "today",
+    /// defined as the half-open interval `[today_start_ms, today_end_ms)`.
+    ///
+    /// Returns `None` when no sets were logged today for this exercise.
+    pub async fn get_latest_set_today(
+        &self,
+        exercise_id: i64,
+        today_start_ms: f64,
+        today_end_ms: f64,
+    ) -> Result<Option<CompletedSet>, DatabaseError> {
+        let sql = r#"
+            SELECT set_number, reps, rpe, weight, is_bodyweight
+            FROM completed_sets
+            WHERE exercise_id = ?
+              AND deleted_at IS NULL
+              AND recorded_at >= ?
+              AND recorded_at < ?
+            ORDER BY recorded_at DESC, id DESC
+            LIMIT 1
+        "#;
+
+        let params = vec![
+            JsValue::from_f64(exercise_id as f64),
+            JsValue::from_f64(today_start_ms),
+            JsValue::from_f64(today_end_ms),
+        ];
+
+        let result = self.execute(sql, &params).await?;
+
+        let array = result
+            .dyn_ref::<js_sys::Array>()
+            .ok_or_else(|| DatabaseError::QueryError("Expected array result".to_string()))?;
+
+        if array.length() == 0 {
+            return Ok(None);
+        }
+
+        let row = array.get(0);
+        Ok(Some(self.parse_completed_set_row(&row)?))
+    }
+
+    /// Parses a single row (with set_number, reps, rpe, weight, is_bodyweight)
+    /// into a `CompletedSet`.
+    fn parse_completed_set_row(&self, row: &JsValue) -> Result<CompletedSet, DatabaseError> {
+        let set_number = js_sys::Reflect::get(row, &JsValue::from_str("set_number"))?
+            .as_f64()
+            .ok_or_else(|| DatabaseError::QueryError("Failed to get set_number".to_string()))?
+            as u32;
+
+        let reps = js_sys::Reflect::get(row, &JsValue::from_str("reps"))?
+            .as_f64()
+            .ok_or_else(|| DatabaseError::QueryError("Failed to get reps".to_string()))?
+            as u32;
+
+        let rpe = js_sys::Reflect::get(row, &JsValue::from_str("rpe"))?
+            .as_f64()
+            .ok_or_else(|| DatabaseError::QueryError("Failed to get rpe".to_string()))?
+            as f32;
+
+        let is_bodyweight = self.parse_bool_field(row, "is_bodyweight")?;
+
+        let set_type = if is_bodyweight {
+            SetType::Bodyweight
+        } else {
+            let weight = js_sys::Reflect::get(row, &JsValue::from_str("weight"))?
+                .as_f64()
+                .ok_or_else(|| DatabaseError::QueryError("Failed to get weight".to_string()))?
+                as f32;
+            SetType::Weighted { weight }
+        };
+
+        Ok(CompletedSet {
+            set_number,
+            reps,
+            rpe,
+            set_type,
+        })
+    }
+
     /// Execute a raw SQL statement with string parameters.
     ///
     /// Each parameter value is bound as a JsValue string. For NULL handling,
