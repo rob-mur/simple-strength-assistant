@@ -4,9 +4,7 @@ Given(
   "I open the app without test mode and clear storage",
   async ({ page, context }) => {
     page.on("console", (msg) => console.log("BROWSER:", msg.text()));
-    page.on("pageerror", (error) =>
-      console.error("BROWSER ERROR:", error),
-    );
+    page.on("pageerror", (error) => console.error("BROWSER ERROR:", error));
 
     // Override the __TEST_MODE__ flag set by the fixtures so this test
     // exercises the real production code path including sync.
