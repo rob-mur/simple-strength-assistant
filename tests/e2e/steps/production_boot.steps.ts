@@ -36,7 +36,7 @@ Then(
     });
 
     // Verify the page is actually responsive — the workout tab should be visible
-    await expect(page.locator('button:has-text("Workout")')).toBeVisible({
+    await expect(page.getByTestId("tab-workout")).toBeVisible({
       timeout: 5000,
     });
   },
@@ -63,5 +63,5 @@ Then("the sync should start at most once", async ({ page }) => {
   // The console listener was set up in the Given step.
   // For robustness, we'll just verify the page is still responsive
   // (not crashed) after 2 seconds — a crashed page would have timed out above.
-  await expect(page.locator('button:has-text("Workout")')).toBeVisible();
+  await expect(page.getByTestId("tab-workout")).toBeVisible();
 });
