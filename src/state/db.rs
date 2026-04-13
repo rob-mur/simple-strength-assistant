@@ -823,6 +823,24 @@ impl Database {
         })
     }
 
+    /// Updates the settings row in the database.
+    pub async fn update_settings(
+        &self,
+        settings: &crate::models::Settings,
+    ) -> Result<(), DatabaseError> {
+        let sql = "UPDATE settings SET target_rpe = ?, history_window_days = ?, today_blend_factor = ? WHERE id = 1";
+        self.execute(
+            sql,
+            &[
+                JsValue::from_f64(settings.target_rpe),
+                JsValue::from_f64(settings.history_window_days as f64),
+                JsValue::from_f64(settings.today_blend_factor),
+            ],
+        )
+        .await?;
+        Ok(())
+    }
+
     /// Returns the most recent set for the given exercise (used for predictions).
     pub async fn get_last_set_for_exercise(
         &self,
