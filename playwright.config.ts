@@ -10,7 +10,7 @@ import { defineBddConfig } from "playwright-bdd";
 const testDir = defineBddConfig({
   features: "tests/e2e/features/**/*.feature",
   steps: "tests/e2e/steps/**/*.ts",
-  tags: "@e2e",
+  tags: process.env.SYNC_BACKEND ? "@e2e" : "@e2e and not @sync-backend",
 });
 
 const baseURL = process.env.PLAYWRIGHT_BASE_URL || "http://localhost:3000";
