@@ -124,8 +124,13 @@ Then("the sync should complete without errors", async ({ page }) => {
       l.includes("[Sync] Pull for merge failed"),
   );
 
-  // Assert no HTTP errors from sync requests
-  const failedRequests = syncRequests.filter((r) => r.status >= 400);
+  // Assert no HTTP errors from sync requests.
+  // A 404 on /metadata is expected during initial sync (empty server slot) — exclude it.
+  const failedRequests = syncRequests.filter(
+    (r) =>
+      r.status >= 400 &&
+      !(r.status === 404 && r.method === "GET" && r.url.endsWith("/metadata")),
+  );
 
   if (failedRequests.length > 0 || syncErrors.length > 0) {
     const details = [
