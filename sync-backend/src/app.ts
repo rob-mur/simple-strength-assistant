@@ -98,7 +98,12 @@ export function createApp(dataDir: string) {
     cors({
       origin: "*",
       allowMethods: ["GET", "POST", "OPTIONS"],
-      allowHeaders: ["Content-Type", "X-Sync-Secret", "X-Vector-Clock"],
+      allowHeaders: [
+        "Content-Type",
+        "X-Sync-Secret",
+        "X-Vector-Clock",
+        "x-vercel-protection-bypass",
+      ],
       maxAge: 86400,
     }),
   );
