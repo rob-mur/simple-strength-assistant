@@ -12,15 +12,16 @@ pub mod wasm {
 
     fn build_url(sync_id: &str, path: &str) -> String {
         // sync_id is the only path component; sync_secret is NEVER in the URL.
-        // The base URL is expected to come from a compile-time env var or config.
-        // For now we read it from the `SYNC_BASE_URL` JS global set at build time,
-        // falling back to "/api" for local development.
+        // Read `window.SYNC_BASE_URL` which is injected into index.html at build
+        // time by scripts/inject-sync-url.sh.  Falls back to "/api" when the
+        // value is absent, empty, or still contains the un-replaced placeholder.
         let base = js_sys::Reflect::get(
             &web_sys::window().unwrap(),
             &wasm_bindgen::JsValue::from_str("SYNC_BASE_URL"),
         )
         .ok()
         .and_then(|v| v.as_string())
+        .filter(|s| !s.is_empty() && !s.contains("%%"))
         .unwrap_or_else(|| "/api".to_string());
 
         format!("{}/sync/{}{}", base.trim_end_matches('/'), sync_id, path)

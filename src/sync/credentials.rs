@@ -1,7 +1,8 @@
 use serde::{Deserialize, Serialize};
 
 /// Sync credentials read from OPFS/LocalStorage.
-/// These are written by the pairing flow (#90) and read here.
+/// These are written by the pairing flow (#90) or auto-generated on first
+/// launch (#148) and read here.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct SyncCredentials {
     /// UUID identifying the sync slot on the server
@@ -31,6 +32,39 @@ impl SyncCredentials {
             // In unit tests there is no LocalStorage; tests inject credentials directly.
             let _ = CREDS_KEY;
             None
+        }
+    }
+
+    /// Load credentials from LocalStorage, generating and persisting new ones
+    /// if none exist yet.  This is called on first app launch to bootstrap
+    /// sync without user interaction (#148).
+    #[cfg(not(test))]
+    pub fn load_or_generate() -> Self {
+        if let Some(existing) = Self::load() {
+            return existing;
+        }
+        let creds = Self::generate();
+        if let Err(e) = creds.save() {
+            log::warn!("[Sync] Failed to persist auto-generated credentials: {}", e);
+        }
+        creds
+    }
+
+    /// Generate fresh sync credentials using random UUIDs.
+    /// `sync_id` and `device_id` are UUID-v4; `sync_secret` is set to a
+    /// placeholder value because the backend currently uses sync_id-as-credential
+    /// auth (no secret required).
+    pub fn generate() -> Self {
+        let sync_id = uuid::Uuid::new_v4().to_string();
+        let device_id = uuid::Uuid::new_v4().to_string();
+        // The sync_secret field is required by is_valid() but the backend does
+        // not enforce it yet.  Use a generated UUID so the credential passes
+        // validation and is ready when the backend adds secret-based auth.
+        let sync_secret = uuid::Uuid::new_v4().to_string();
+        Self {
+            sync_id,
+            sync_secret,
+            device_id,
         }
     }
 
@@ -196,6 +230,42 @@ mod tests {
             device_id: "device-1".into(),
         };
         assert!(creds.is_valid());
+    }
+
+    #[test]
+    fn test_generate_produces_valid_credentials() {
+        let creds = SyncCredentials::generate();
+        assert!(creds.is_valid(), "Generated credentials must be valid");
+        assert!(!creds.sync_id.is_empty());
+        assert!(!creds.sync_secret.is_empty());
+        assert!(!creds.device_id.is_empty());
+    }
+
+    #[test]
+    fn test_generate_produces_unique_ids() {
+        let a = SyncCredentials::generate();
+        let b = SyncCredentials::generate();
+        assert_ne!(
+            a.sync_id, b.sync_id,
+            "Each call must produce a unique sync_id"
+        );
+        assert_ne!(
+            a.device_id, b.device_id,
+            "Each call must produce a unique device_id"
+        );
+    }
+
+    #[test]
+    fn test_generated_sync_id_is_uuid_format() {
+        let creds = SyncCredentials::generate();
+        // UUID v4 format: 8-4-4-4-12 hex chars separated by hyphens
+        assert_eq!(creds.sync_id.len(), 36);
+        assert!(
+            creds
+                .sync_id
+                .chars()
+                .all(|c| c.is_ascii_hexdigit() || c == '-')
+        );
     }
 
     #[test]
