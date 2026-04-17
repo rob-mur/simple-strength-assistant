@@ -1,4 +1,4 @@
-@e2e
+@e2e @sync-backend
 Feature: Sync integration against real backend
   As a developer debugging sync errors
   I want to verify the app can sync against the real sync server
