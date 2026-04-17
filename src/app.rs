@@ -125,15 +125,15 @@ fn Shell() -> Element {
     // (which re-renders whenever the route changes).
     let current_route = route.clone();
     match current_route.clone() {
-        Route::WorkoutTab | Route::WorkoutHistory | Route::WorkoutHistoryExercise { .. } => {
-            if *navigation_state.last_workout_route.peek() != current_route {
-                navigation_state.last_workout_route.set(current_route);
-            }
+        Route::WorkoutTab | Route::WorkoutHistory | Route::WorkoutHistoryExercise { .. }
+            if *navigation_state.last_workout_route.peek() != current_route =>
+        {
+            navigation_state.last_workout_route.set(current_route);
         }
-        Route::LibraryTab | Route::LibraryExercise { .. } => {
-            if *navigation_state.last_library_route.peek() != current_route {
-                navigation_state.last_library_route.set(current_route);
-            }
+        Route::LibraryTab | Route::LibraryExercise { .. }
+            if *navigation_state.last_library_route.peek() != current_route =>
+        {
+            navigation_state.last_library_route.set(current_route);
         }
         _ => {}
     }
