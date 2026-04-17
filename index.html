@@ -10,6 +10,12 @@
     <meta name="theme-color" content="#ffffff" />
     <link rel="manifest" href="manifest.json" crossorigin="use-credentials" />
     <link rel="stylesheet" href="styles.css" />
+    <!-- Sync backend URL — replaced at build time by scripts/inject-sync-url.sh.
+         When empty or unset, the Wasm client falls back to "/api" (see src/sync/http.rs). -->
+    <script>
+      window.SYNC_BASE_URL = "%%SYNC_BASE_URL%%";
+    </script>
+
     <script src="sql-wasm.js"></script>
     <script type="module" src="file-handle-storage.js"></script>
     <script type="module" src="db-module.js"></script>

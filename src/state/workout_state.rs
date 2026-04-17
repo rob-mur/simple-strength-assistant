@@ -688,13 +688,14 @@ impl WorkoutStateManager {
         use crate::sync::http::wasm::FetchClient;
         use crate::sync::stub_merge;
 
-        // Check credentials first to short-circuit before the expensive
-        // database export when sync is not configured.
-        let credentials = SyncCredentials::load();
-        if credentials.as_ref().is_none_or(|c| !c.is_valid()) {
-            log::debug!("[Sync] Skipped — no valid sync_id configured");
+        // Load existing credentials or auto-generate new ones on first launch.
+        // This ensures a fresh device bootstraps sync without user interaction (#148).
+        let credentials = SyncCredentials::load_or_generate();
+        if !credentials.is_valid() {
+            log::debug!("[Sync] Skipped — credentials failed validation");
             return;
         }
+        let credentials = Some(credentials);
 
         let db = match state.database() {
             Some(db) => db,
