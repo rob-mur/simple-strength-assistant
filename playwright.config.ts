@@ -4,6 +4,8 @@ import { defineBddConfig } from "playwright-bdd";
 // Tag convention: every .feature file must have either @fast or @e2e.
 // @fast → runs in playwright.fast.config.ts against a local dx serve.
 // @e2e → runs here against the Vercel preview URL.
+// @sync-backend → requires live sync backend; excluded from CI by default.
+//   Run manually: SYNC_BACKEND=1 npx playwright test --config playwright.config.ts
 // An untagged feature file will be silently excluded from both suites.
 const testDir = defineBddConfig({
   features: "tests/e2e/features/**/*.feature",
