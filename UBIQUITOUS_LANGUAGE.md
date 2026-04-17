@@ -14,11 +14,11 @@
 
 ## Muscle Groups
 
-| Term                    | Definition                                                                                                            | Aliases to avoid               |
-| ----------------------- | --------------------------------------------------------------------------------------------------------------------- | ------------------------------ |
-| **Muscle Group**        | A named anatomical grouping to which one or more Exercises contribute stimulus                                        | Body part, muscle, target      |
-| **Muscle Group Weight** | A fractional value (0–1) expressing how much of an Exercise's stimulus is directed at a given Muscle Group            | Contribution, split, weighting |
-| **Volume**              | The accumulated training stimulus delivered to a Muscle Group over a time period, measured in Intensity-Adjusted Sets | Work, load, tonnage            |
+| Term                    | Definition                                                                                                                                                                                                                            | Aliases to avoid               |
+| ----------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------ |
+| **Muscle Group**        | A named anatomical grouping to which one or more Exercises contribute stimulus                                                                                                                                                        | Body part, muscle, target      |
+| **Muscle Group Weight** | A user-assigned relative weight expressing an Exercise's stimulus priority for a Muscle Group; weights across all Muscle Groups for one Exercise are normalised by their sum at calculation time (e.g. [1, 1, 0.5] → [0.4, 0.4, 0.2]) | Contribution, split, weighting |
+| **Volume**              | The accumulated training stimulus delivered to a Muscle Group over a time period, measured in Intensity-Adjusted Sets                                                                                                                 | Work, load, tonnage            |
 
 ## Suggestions
 
@@ -38,31 +38,31 @@
 
 ## Progress Detection
 
-| Term                       | Definition                                                                                                                    | Aliases to avoid                      |
-| -------------------------- | ----------------------------------------------------------------------------------------------------------------------------- | ------------------------------------- |
-| **Progress State**         | The three-value signal emitted per Exercise: Progressing, Stalled, or Insufficient Data                                       | Progress signal, trend state          |
-| **Progressing**            | The Progress State when the e1RM Trend slope is positive (> 0)                                                                | Improving, gaining, trending up       |
-| **Stalled**                | The Progress State when the e1RM Trend slope is zero or negative (≤ 0); covers both flat and declining trajectories           | Plateaued, regressing, declining      |
-| **Insufficient Data**      | The Progress State emitted when fewer than Min Sessions containing the Exercise exist within the Training Window              | No data, cold start, sparse           |
-| **e1RM Trend**             | The slope of the linear regression fitted to the Peak e1RM series for an Exercise across Training Days in the Training Window | Progress curve, trendline, regression |
-| **Intensity-Adjusted Set** | A single Set's contribution to Volume: `f(RPE) × Muscle Group Weight`, where `f(RPE) = RPE / 10`                              | Weighted set, effective set           |
-| **Intensity Scalar**       | The value `f(RPE) = RPE / 10`; scales a Set's stimulus contribution by proximity to failure                                   | RPE weight, intensity factor, f(RPE)  |
+| Term                       | Definition                                                                                                                                                                                       | Aliases to avoid                      |
+| -------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | ------------------------------------- |
+| **Progress State**         | The three-value signal emitted per Exercise: Progressing, Stalled, or Insufficient Data                                                                                                          | Progress signal, trend state          |
+| **Progressing**            | The Progress State when the e1RM Trend slope is positive (> 0)                                                                                                                                   | Improving, gaining, trending up       |
+| **Stalled**                | The Progress State when the e1RM Trend slope is zero or negative (≤ 0); covers both flat and declining trajectories                                                                              | Plateaued, regressing, declining      |
+| **Insufficient Data**      | The Progress State emitted when fewer than Min Sessions containing the Exercise exist within the Training Window                                                                                 | No data, cold start, sparse           |
+| **e1RM Trend**             | The slope of the linear regression fitted to the Peak e1RM series for an Exercise across Training Days in the Training Window                                                                    | Progress curve, trendline, regression |
+| **Intensity-Adjusted Set** | A single Set's contribution to Volume: `f(RPE) × normalised_weight`, where `f(RPE) = RPE / 10` and the weight is the **Muscle Group Weight** divided by the sum of all weights for that Exercise | Weighted set, effective set           |
+| **Intensity Scalar**       | The value `f(RPE) = RPE / 10`; scales a Set's stimulus contribution by proximity to failure                                                                                                      | RPE weight, intensity factor, f(RPE)  |
 
 ## Settings
 
-| Term                   | Definition                                                                                                                             | Aliases to avoid                        |
-| ---------------------- | -------------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------- |
-| **Target RPE**         | The RPE the trainee is aiming to work at; used as the RPE input when projecting a Suggestion from e1RM                                 | Goal RPE, working RPE                   |
-| **History Window**     | The number of days back the suggestion algorithm searches for Historical e1RM (default 30); scoped to per-set suggestion logic         | Lookback period, recency window         |
-| **Today Blend Factor** | A 0–1 value controlling how much weight Today's e1RM has in the Blended e1RM (default 0.5); configurable to handle good/bad days       | Recency weight, blend ratio             |
-| **Training Window**    | The rolling lookback period (in weeks, default 12) used for e1RM trend regression and Volume aggregation; distinct from History Window | Progress window, trend window, lookback |
-| **Min Sessions**       | The minimum number of Training Days containing an Exercise required before a Progress State is emitted (default 3); configurable       | Data threshold, session threshold       |
+| Term                   | Definition                                                                                                                                                                                  | Aliases to avoid                        |
+| ---------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------- |
+| **Target RPE**         | The RPE the trainee is aiming to work at; used as the RPE input when projecting a Suggestion from e1RM                                                                                      | Goal RPE, working RPE                   |
+| **History Window**     | The number of days back the suggestion algorithm searches for Historical e1RM (default 30); scoped to per-set suggestion logic                                                              | Lookback period, recency window         |
+| **Today Blend Factor** | A 0–1 value controlling how much weight Today's e1RM has in the Blended e1RM (default 0.5); configurable to handle good/bad days                                                            | Recency weight, blend ratio             |
+| **Training Window**    | The rolling lookback period, configured in **weeks** (default 12), used for e1RM trend regression and Volume aggregation; exposed as weeks in the settings UI; distinct from History Window | Progress window, trend window, lookback |
+| **Min Sessions**       | The minimum number of Training Days containing an Exercise required before a Progress State is emitted (default 3); configurable                                                            | Data threshold, session threshold       |
 
 ## Relationships
 
 - A **Training Day** contains one or more **Sets** across one or more **Exercises**.
 - A **Set** belongs to exactly one **Exercise** and one **Training Day**.
-- An **Exercise** has one or more **Muscle Group Weights** that sum to ≤ 1 (weighted contribution to each **Muscle Group**).
+- An **Exercise** has one or more **Muscle Group Weights**; the system normalises them by their sum so stimulus always adds up to 100% across Muscle Groups.
 - A **Suggestion** is computed per **Exercise** using the **Blended e1RM**, **Rep Range**, and **Target RPE**.
 - **Blended e1RM** = (Today's e1RM × Today Blend Factor) + (Historical e1RM × (1 − Today Blend Factor)).
 - When only Today's e1RM is available (no historical Sets), the Blended e1RM equals Today's e1RM directly.
