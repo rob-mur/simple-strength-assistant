@@ -304,6 +304,41 @@ describe("sync API", () => {
     expect(res.status).toBe(500);
   });
 
+  test("CORS preflight returns 204 with correct headers", async () => {
+    const res = await fetch(`${baseUrl}/sync/cors-test`, {
+      method: "OPTIONS",
+      headers: {
+        Origin: "https://example.com",
+        "Access-Control-Request-Method": "POST",
+        "Access-Control-Request-Headers":
+          "Content-Type, X-Sync-Secret, X-Vector-Clock",
+      },
+    });
+    expect(res.status).toBe(204);
+    expect(res.headers.get("Access-Control-Allow-Origin")).toBe("*");
+    expect(res.headers.get("Access-Control-Allow-Methods")).toContain("POST");
+    expect(res.headers.get("Access-Control-Allow-Headers")).toContain(
+      "X-Sync-Secret",
+    );
+    expect(res.headers.get("Access-Control-Allow-Headers")).toContain(
+      "X-Vector-Clock",
+    );
+  });
+
+  test("POST response includes CORS Access-Control-Allow-Origin header", async () => {
+    const res = await fetch(`${baseUrl}/sync/cors-post-test`, {
+      method: "POST",
+      body: new Uint8Array([1]),
+      headers: {
+        "Content-Type": "application/octet-stream",
+        "X-Vector-Clock": JSON.stringify({ n: 1 }),
+        Origin: "https://example.com",
+      },
+    });
+    expect(res.status).toBe(200);
+    expect(res.headers.get("Access-Control-Allow-Origin")).toBe("*");
+  });
+
   test("separate data directories are isolated from each other", async () => {
     const customDir = await mkdtemp(join(tmpdir(), "sync-custom-"));
     const customServer = startServer(customDir);

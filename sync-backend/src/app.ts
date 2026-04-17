@@ -1,4 +1,5 @@
 import { Hono } from "hono";
+import { cors } from "hono/cors";
 import {
   access,
   mkdir,
@@ -91,6 +92,16 @@ function descendsFromAll(
 
 export function createApp(dataDir: string) {
   const app = new Hono();
+
+  app.use(
+    "/sync/*",
+    cors({
+      origin: "*",
+      allowMethods: ["GET", "POST", "OPTIONS"],
+      allowHeaders: ["Content-Type", "X-Sync-Secret", "X-Vector-Clock"],
+      maxAge: 86400,
+    }),
+  );
 
   app.get("/sync/:sync_id", async (c) => {
     const syncId = c.req.param("sync_id");
