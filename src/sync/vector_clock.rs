@@ -24,6 +24,11 @@ impl VectorClock {
         Self(HashMap::new())
     }
 
+    /// Returns `true` if the clock has no entries (never been incremented).
+    pub fn is_empty(&self) -> bool {
+        self.0.is_empty()
+    }
+
     /// Return the sequence number for a device, defaulting to 0.
     pub fn get(&self, device_id: &str) -> u64 {
         *self.0.get(device_id).unwrap_or(&0)
@@ -186,6 +191,19 @@ mod tests {
         a.merge(&b);
         assert_eq!(a.get("d1"), 5);
         assert_eq!(a.get("d2"), 7);
+    }
+
+    #[test]
+    fn test_is_empty_on_new_clock() {
+        let c = VectorClock::new();
+        assert!(c.is_empty());
+    }
+
+    #[test]
+    fn test_is_empty_false_after_increment() {
+        let mut c = VectorClock::new();
+        c.increment("dev-a");
+        assert!(!c.is_empty());
     }
 
     #[test]

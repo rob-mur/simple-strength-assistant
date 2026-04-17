@@ -734,9 +734,38 @@ impl WorkoutStateManager {
         let mut clock = state.sync_clock();
 
         let client = SyncClient::new(FetchClient);
-        let outcome = client
-            .run(credentials.as_ref(), &local_blob, &mut clock, &stub_merge)
-            .await;
+
+        // If the local clock is empty this is a first-ever sync.  Use the
+        // initial-sync path which inspects the server state first so that
+        // pre-existing local data is never silently overwritten (#149).
+        let outcome = if clock.is_empty() {
+            // Determine whether the local DB actually contains user data.
+            // An empty exercise list means there is nothing worth preserving.
+            let local_has_data = match db.get_exercises().await {
+                Ok(exercises) => !exercises.is_empty(),
+                Err(e) => {
+                    log::warn!(
+                        "[Sync] Could not query exercises for initial sync check: {}",
+                        e
+                    );
+                    // Conservative: assume data exists to avoid silent loss.
+                    true
+                }
+            };
+            client
+                .run_initial_sync(
+                    credentials.as_ref(),
+                    &local_blob,
+                    !local_has_data,
+                    &mut clock,
+                    &stub_merge,
+                )
+                .await
+        } else {
+            client
+                .run(credentials.as_ref(), &local_blob, &mut clock, &stub_merge)
+                .await
+        };
 
         // Only persist the updated clock when the sync cycle actually reached
         // the server.  Persisting after Offline would accumulate meaningless
