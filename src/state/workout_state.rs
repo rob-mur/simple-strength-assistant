@@ -1,9 +1,10 @@
 use crate::models::{CompletedSet, ExerciseMetadata, SetType, Settings};
 use crate::state::{Database, Storage, error::WorkoutError};
 use crate::sync::ConflictRecord;
+use crate::sync::SyncOutcome;
 use crate::sync::VectorClock;
 #[cfg(not(test))]
-use crate::sync::{SyncCredentials, SyncOutcome, save_clock};
+use crate::sync::{SyncCredentials, save_clock};
 use dioxus::prelude::*;
 use wasm_bindgen::JsValue;
 
@@ -677,6 +678,20 @@ impl WorkoutStateManager {
         state.set_initialization_state(InitializationState::Error);
     }
 
+    /// Map a `SyncOutcome` to the corresponding `SyncStatus` for the UI indicator.
+    ///
+    /// This is a pure function so it can be unit-tested without wasm dependencies.
+    pub fn map_sync_outcome_to_status(outcome: &SyncOutcome) -> SyncStatus {
+        match outcome {
+            SyncOutcome::Pushed => SyncStatus::UpToDate,
+            SyncOutcome::Pulled(_) => SyncStatus::UpToDate,
+            SyncOutcome::Merged(_) => SyncStatus::UpToDate,
+            SyncOutcome::Offline => SyncStatus::Error("Server unreachable".into()),
+            SyncOutcome::ConflictDetected { .. } => SyncStatus::ConflictsDetected,
+            SyncOutcome::Skipped => SyncStatus::Idle,
+        }
+    }
+
     /// Trigger a background sync cycle.  Non-blocking: errors are swallowed
     /// except for `ConflictDetected`, which surfaces the conflict resolution UI.
     ///
@@ -713,6 +728,9 @@ impl WorkoutStateManager {
             }
         };
 
+        // Signal the UI that a sync cycle is in progress.
+        state.set_sync_status(SyncStatus::Syncing);
+
         let mut clock = state.sync_clock();
 
         let client = SyncClient::new(FetchClient);
@@ -733,6 +751,9 @@ impl WorkoutStateManager {
                 );
             }
         }
+
+        // Update the sync status indicator based on the outcome.
+        state.set_sync_status(Self::map_sync_outcome_to_status(&outcome));
 
         match outcome {
             SyncOutcome::Skipped => {
@@ -1041,6 +1062,70 @@ mod tests {
         assert_eq!(predicted.weight, None);
         assert_eq!(predicted.reps, 10);
         assert_eq!(predicted.rpe, 7.0);
+    }
+
+    // ── Sync outcome → status mapping tests ───────────────────────────────
+
+    #[test]
+    fn test_pushed_outcome_maps_to_up_to_date() {
+        let status = WorkoutStateManager::map_sync_outcome_to_status(&SyncOutcome::Pushed);
+        assert_eq!(status, SyncStatus::UpToDate);
+    }
+
+    #[test]
+    fn test_pulled_outcome_maps_to_up_to_date() {
+        let status =
+            WorkoutStateManager::map_sync_outcome_to_status(&SyncOutcome::Pulled(vec![1, 2, 3]));
+        assert_eq!(status, SyncStatus::UpToDate);
+    }
+
+    #[test]
+    fn test_merged_outcome_maps_to_up_to_date() {
+        let status =
+            WorkoutStateManager::map_sync_outcome_to_status(&SyncOutcome::Merged(vec![4, 5, 6]));
+        assert_eq!(status, SyncStatus::UpToDate);
+    }
+
+    #[test]
+    fn test_offline_outcome_maps_to_error() {
+        let status = WorkoutStateManager::map_sync_outcome_to_status(&SyncOutcome::Offline);
+        assert_eq!(status, SyncStatus::Error("Server unreachable".to_string()));
+    }
+
+    #[test]
+    fn test_skipped_outcome_maps_to_idle() {
+        let status = WorkoutStateManager::map_sync_outcome_to_status(&SyncOutcome::Skipped);
+        assert_eq!(status, SyncStatus::Idle);
+    }
+
+    #[test]
+    fn test_conflict_detected_outcome_maps_to_conflicts_detected() {
+        use crate::sync::ConflictRecord;
+        let status =
+            WorkoutStateManager::map_sync_outcome_to_status(&SyncOutcome::ConflictDetected {
+                merged: vec![7, 8, 9],
+                conflicts: vec![ConflictRecord {
+                    table: "exercises".into(),
+                    row_id: "row-1".into(),
+                    version_a: "{}".into(),
+                    version_b: "{}".into(),
+                }],
+            });
+        assert_eq!(status, SyncStatus::ConflictsDetected);
+    }
+
+    #[test]
+    fn test_error_then_success_transitions_back_to_up_to_date() {
+        // After an error, a subsequent successful sync should transition back
+        let error_status = WorkoutStateManager::map_sync_outcome_to_status(&SyncOutcome::Offline);
+        assert_eq!(
+            error_status,
+            SyncStatus::Error("Server unreachable".to_string())
+        );
+
+        // Next sync succeeds
+        let success_status = WorkoutStateManager::map_sync_outcome_to_status(&SyncOutcome::Pushed);
+        assert_eq!(success_status, SyncStatus::UpToDate);
     }
 
     #[test]
