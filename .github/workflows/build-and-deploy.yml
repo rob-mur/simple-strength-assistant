@@ -37,6 +37,8 @@ on:
         required: true
       VERCEL_PROJECT_ID:
         required: true
+      SYNC_BASE_URL:
+        required: false
     outputs:
       deployment-url:
         description: "Vercel deployment URL"
@@ -101,6 +103,11 @@ jobs:
 
       - name: Build project
         run: devenv shell ${{ inputs.build-command }}
+
+      - name: Inject SYNC_BASE_URL into build output
+        run: bash scripts/inject-sync-url.sh dist/public/index.html
+        env:
+          SYNC_BASE_URL: ${{ secrets.SYNC_BASE_URL }}
 
       - name: Set artifact name
         id: artifact-info

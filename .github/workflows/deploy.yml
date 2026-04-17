@@ -37,6 +37,11 @@ jobs:
       - name: Build project
         run: devenv shell build
 
+      - name: Inject SYNC_BASE_URL into build output
+        run: bash scripts/inject-sync-url.sh dist/public/index.html
+        env:
+          SYNC_BASE_URL: ${{ secrets.SYNC_BASE_URL }}
+
       - name: Set artifact name
         id: artifact-info
         run: echo "name=build-main-${{ github.sha }}-${{ github.run_id }}" >> $GITHUB_OUTPUT
@@ -113,3 +118,4 @@ jobs:
       VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
       VERCEL_ORG_ID: ${{ secrets.VERCEL_ORG_ID }}
       VERCEL_PROJECT_ID: ${{ secrets.VERCEL_PROJECT_ID }}
+      SYNC_BASE_URL: ${{ secrets.SYNC_BASE_URL }}
