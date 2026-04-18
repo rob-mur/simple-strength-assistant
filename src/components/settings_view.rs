@@ -1,4 +1,4 @@
-use crate::components::pairing::{PairingStep, QrCodeDisplay, QrPayload, QrScanner};
+use crate::components::pairing::{PairingStep, QrCodeDisplay, QrScanner};
 use crate::models::Settings;
 use crate::state::{SyncStatus, WorkoutState, WorkoutStateManager};
 use crate::sync::SyncCredentials;
@@ -153,7 +153,7 @@ pub fn SettingsView(state: WorkoutState) -> Element {
                                         class: "btn btn-primary btn-sm",
                                         "data-testid": "setup-sync-button",
                                         onclick: move |_| {
-                                            // Generate new credentials and show QR
+                                            // Generate new credentials, show QR, and trigger first sync
                                             let new_creds = SyncCredentials::generate();
                                             #[cfg(not(test))]
                                             {
@@ -164,6 +164,16 @@ pub fn SettingsView(state: WorkoutState) -> Element {
                                             credentials.set(Some(new_creds));
                                             state.set_sync_status(SyncStatus::NeverSynced);
                                             pairing_step.set(PairingStep::ShowingQr);
+
+                                            #[cfg(not(test))]
+                                            {
+                                                let state = state;
+                                                spawn(async move {
+                                                    log::info!("[Pairing] Setup complete — triggering initial sync");
+                                                    WorkoutStateManager::trigger_background_sync(&state).await;
+                                                    log::info!("[Pairing] Initial sync after setup complete");
+                                                });
+                                            }
                                         },
                                         "Set up sync"
                                     }
@@ -188,48 +198,58 @@ pub fn SettingsView(state: WorkoutState) -> Element {
                                     "Scan the QR code shown on your other device."
                                 }
                                 QrScanner {
-                                    on_scan: move |scanned_json: String| {
-                                        match QrPayload::from_json(&scanned_json) {
-                                            Ok(payload) => {
-                                                let new_creds = SyncCredentials::from_sync_id(payload.sync_id);
-                                                if !new_creds.is_valid() {
-                                                    pairing_step.set(PairingStep::Error(
-                                                        "Invalid sync code".to_string()
-                                                    ));
-                                                    return;
-                                                }
-                                                #[cfg(not(test))]
-                                                {
-                                                    if let Err(e) = new_creds.save() {
-                                                        pairing_step.set(PairingStep::Error(
-                                                            format!("Failed to save credentials: {}", e)
-                                                        ));
-                                                        return;
-                                                    }
-                                                }
-                                                credentials.set(Some(new_creds));
-                                                state.set_sync_status(SyncStatus::NeverSynced);
-                                                pairing_step.set(PairingStep::Syncing);
+                                    on_scan: move |input: String| {
+                                        // Accept either a plain sync_id or a JSON payload
+                                        let sync_id = match serde_json::from_str::<serde_json::Value>(&input) {
+                                            Ok(val) => val.get("sync_id")
+                                                .and_then(|v| v.as_str())
+                                                .unwrap_or(&input)
+                                                .to_string(),
+                                            Err(_) => input,
+                                        };
 
-                                                // Trigger initial sync in background
-                                                #[cfg(not(test))]
-                                                {
-                                                    let state = state;
-                                                    spawn(async move {
-                                                        log::info!("[Pairing] Scan complete — triggering initial sync");
-                                                        WorkoutStateManager::trigger_background_sync(&state).await;
-                                                        log::info!("[Pairing] Initial sync after pairing complete");
-                                                        pairing_step.set(PairingStep::Done);
-                                                    });
-                                                }
-                                                #[cfg(test)]
-                                                {
-                                                    pairing_step.set(PairingStep::Done);
-                                                }
+                                        let sync_id = sync_id.trim().to_string();
+                                        if sync_id.is_empty() {
+                                            pairing_step.set(PairingStep::Error(
+                                                "Sync code cannot be empty".to_string()
+                                            ));
+                                            return;
+                                        }
+
+                                        let new_creds = SyncCredentials::from_sync_id(sync_id);
+                                        if !new_creds.is_valid() {
+                                            pairing_step.set(PairingStep::Error(
+                                                "Invalid sync code".to_string()
+                                            ));
+                                            return;
+                                        }
+                                        #[cfg(not(test))]
+                                        {
+                                            if let Err(e) = new_creds.save() {
+                                                pairing_step.set(PairingStep::Error(
+                                                    format!("Failed to save credentials: {}", e)
+                                                ));
+                                                return;
                                             }
-                                            Err(e) => {
-                                                pairing_step.set(PairingStep::Error(e));
-                                            }
+                                        }
+                                        credentials.set(Some(new_creds));
+                                        state.set_sync_status(SyncStatus::NeverSynced);
+                                        pairing_step.set(PairingStep::Syncing);
+
+                                        // Trigger initial sync in background
+                                        #[cfg(not(test))]
+                                        {
+                                            let state = state;
+                                            spawn(async move {
+                                                log::info!("[Pairing] Scan complete — triggering initial sync");
+                                                WorkoutStateManager::trigger_background_sync(&state).await;
+                                                log::info!("[Pairing] Initial sync after pairing complete");
+                                                pairing_step.set(PairingStep::Done);
+                                            });
+                                        }
+                                        #[cfg(test)]
+                                        {
+                                            pairing_step.set(PairingStep::Done);
                                         }
                                     }
                                 }

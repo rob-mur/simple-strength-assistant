@@ -703,9 +703,12 @@ impl WorkoutStateManager {
         use crate::sync::http::wasm::FetchClient;
         use crate::sync::stub_merge;
 
-        // Load existing credentials or auto-generate new ones on first launch.
-        // This ensures a fresh device bootstraps sync without user interaction (#148).
-        let credentials = SyncCredentials::load_or_generate();
+        // Load existing credentials. If none are saved, sync is not configured
+        // and we skip silently — the user must explicitly set up sync first.
+        let Some(credentials) = SyncCredentials::load() else {
+            log::debug!("[Sync] No credentials configured — skipping sync");
+            return;
+        };
         if !credentials.is_valid() {
             log::debug!("[Sync] Skipped — credentials failed validation");
             return;

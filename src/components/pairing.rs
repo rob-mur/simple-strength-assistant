@@ -61,6 +61,21 @@ pub enum PairingStep {
     Error(String),
 }
 
+/// Copy text to clipboard via the Web Clipboard API.
+#[cfg(not(test))]
+fn copy_to_clipboard(text: &str) {
+    use wasm_bindgen::JsCast;
+    use wasm_bindgen::JsValue;
+    if let Some(window) = web_sys::window()
+        && let Ok(clipboard) =
+            js_sys::Reflect::get(&window.navigator(), &JsValue::from_str("clipboard"))
+        && let Ok(write_fn) = js_sys::Reflect::get(&clipboard, &JsValue::from_str("writeText"))
+        && let Some(f) = write_fn.dyn_ref::<js_sys::Function>()
+    {
+        let _: Result<JsValue, JsValue> = f.call1(&clipboard, &JsValue::from_str(text));
+    }
+}
+
 /// Component that displays the QR code for the initiating device.
 ///
 /// Shows the sync_id encoded in a QR code along with a warning that
@@ -91,6 +106,19 @@ pub fn QrCodeDisplay(sync_id: String, backend_url: String) -> Element {
                 },
             }
 
+            button {
+                class: "btn btn-outline btn-sm gap-2",
+                "data-testid": "copy-sync-id-button",
+                onclick: {
+                    let sync_id = sync_id.clone();
+                    move |_| {
+                        #[cfg(not(test))]
+                        copy_to_clipboard(&sync_id);
+                    }
+                },
+                "Copy sync code"
+            }
+
             div {
                 class: "alert alert-warning text-sm max-w-xs",
                 "data-testid": "qr-security-warning",
@@ -116,8 +144,7 @@ pub fn QrCodeDisplay(sync_id: String, backend_url: String) -> Element {
 
 /// Component for the QR scanner (joining device).
 ///
-/// Uses the device camera via a JS interop layer to scan a QR code.
-/// On successful scan, stores credentials and triggers initial sync.
+/// Accepts either a QR code scan or a plain sync code pasted manually.
 #[component]
 pub fn QrScanner(on_scan: EventHandler<String>) -> Element {
     let mut scan_result = use_signal(|| Option::<String>::None);
@@ -161,12 +188,13 @@ pub fn QrScanner(on_scan: EventHandler<String>) -> Element {
                     "data-testid": "manual-entry-form",
                     label {
                         class: "label",
-                        span { class: "label-text", "Paste the sync code JSON:" }
+                        span { class: "label-text", "Paste the sync code from your other device:" }
                     }
-                    textarea {
-                        class: "textarea textarea-bordered h-24 font-mono text-xs",
+                    input {
+                        r#type: "text",
+                        class: "input input-bordered w-full font-mono text-sm",
                         "data-testid": "manual-code-input",
-                        placeholder: "Paste sync code JSON here",
+                        placeholder: "e.g. a1b2c3d4-e5f6-...",
                         value: "{manual_input}",
                         oninput: move |evt| manual_input.set(evt.value())
                     }
@@ -174,7 +202,7 @@ pub fn QrScanner(on_scan: EventHandler<String>) -> Element {
                         class: "btn btn-primary btn-sm mt-2",
                         "data-testid": "manual-submit-button",
                         onclick: move |_| {
-                            let input = manual_input();
+                            let input = manual_input().trim().to_string();
                             if !input.is_empty() {
                                 scan_result.set(Some(input.clone()));
                                 on_scan.call(input);
