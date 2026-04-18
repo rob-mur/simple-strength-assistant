@@ -162,6 +162,7 @@ pub fn SettingsView(state: WorkoutState) -> Element {
                                                 }
                                             }
                                             credentials.set(Some(new_creds));
+                                            state.set_sync_status(SyncStatus::NeverSynced);
                                             pairing_step.set(PairingStep::ShowingQr);
                                         },
                                         "Set up sync"
@@ -207,6 +208,7 @@ pub fn SettingsView(state: WorkoutState) -> Element {
                                                     }
                                                 }
                                                 credentials.set(Some(new_creds));
+                                                state.set_sync_status(SyncStatus::NeverSynced);
                                                 pairing_step.set(PairingStep::Syncing);
 
                                                 // Trigger initial sync in background
