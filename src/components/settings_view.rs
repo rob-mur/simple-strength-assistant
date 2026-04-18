@@ -45,7 +45,7 @@ pub fn SettingsView(state: WorkoutState) -> Element {
     let settings = state.settings();
 
     // Load current credentials for the sync section.
-    let mut credentials = use_signal(|| SyncCredentials::load());
+    let mut credentials = use_signal(SyncCredentials::load);
     let mut pairing_step = use_signal(|| PairingStep::Idle);
 
     // Persist a single-field change immediately.
