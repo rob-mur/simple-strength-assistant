@@ -36,39 +36,6 @@ extern "C" {
 
     #[wasm_bindgen(js_name = executeQuery)]
     async fn execute_query(sql: &str, params: JsValue) -> JsValue;
-
-    #[wasm_bindgen(js_name = exportDatabase)]
-    async fn export_database() -> JsValue;
-
-    #[wasm_bindgen(js_name = triggerSqliteDownload)]
-    fn trigger_sqlite_download(data: &[u8], filename: &str);
-
-    /// Pure merge of two SQLite blobs. Returns a JS object:
-    /// `{ merged: Uint8Array, conflicts: Array<{ uuid, table_name, version_a, version_b }> }`
-    #[wasm_bindgen(js_name = mergeDatabases)]
-    async fn merge_databases_js(data_a: Vec<u8>, data_b: Vec<u8>) -> JsValue;
-}
-
-/// The result of a client-side union merge.
-#[derive(Clone, Debug, PartialEq)]
-pub struct MergeResult {
-    /// The merged SQLite database as raw bytes.
-    pub merged: Vec<u8>,
-    /// True conflicts: same UUID, same `updated_at`, different field values.
-    pub conflicts: Vec<MergeConflict>,
-}
-
-/// A single conflict record surfaced by the merge function.
-#[derive(Clone, Debug, PartialEq)]
-pub struct MergeConflict {
-    /// The stable UUID of the conflicting record.
-    pub uuid: String,
-    /// The table in which the conflict was found.
-    pub table_name: String,
-    /// String representation of the row from database A.
-    pub version_a: String,
-    /// String representation of the row from database B.
-    pub version_b: String,
 }
 
 /// Current schema version. Bump this when the schema changes.
@@ -327,7 +294,7 @@ impl Database {
     /// returned by SQLite for `SQLITE_ERROR` on `ALTER TABLE ADD COLUMN` when
     /// the column already exists.  SQLite error messages are not localised, so
     /// this is stable across platforms, but it is version-sensitive in
-    /// principle. The sql.js WASM build pins the SQLite version, mitigating
+    /// principle. The crsqlite-wasm build pins the SQLite version, mitigating
     /// this risk.
     async fn add_column_if_missing(&self, sql: &str) -> Result<(), DatabaseError> {
         match self.execute_internal(sql, &[]).await {
@@ -1064,27 +1031,9 @@ impl Database {
         self.execute_internal(sql, &js_params).await
     }
 
-    pub async fn export(&self) -> Result<Vec<u8>, DatabaseError> {
-        if !self.initialized {
-            return Err(DatabaseError::NotInitialized);
-        }
-
-        let result = export_database().await;
-
-        let uint8_array = js_sys::Uint8Array::new(&result);
-        let mut buffer = vec![0; uint8_array.length() as usize];
-        uint8_array.copy_to(&mut buffer);
-
-        Ok(buffer)
-    }
-
-    /// Exports the database and triggers a browser download of the `.sqlite` file.
-    /// Works on iOS Safari, Chrome Android, and any browser supporting Blob URLs.
-    pub async fn download(&self, filename: &str) -> Result<(), DatabaseError> {
-        let data = self.export().await?;
-        trigger_sqlite_download(&data, filename);
-        Ok(())
-    }
+    // NOTE: export() and download() were removed as part of the crsqlite-wasm
+    // migration (#179). The database is now persisted automatically via
+    // IndexedDB (IDBBatchAtomicVFS) and no longer needs manual byte export.
 
     // ── Private helpers ───────────────────────────────────────────────────────
 
@@ -1193,87 +1142,8 @@ impl Database {
         Ok(sets)
     }
 
-    // ── Merge ─────────────────────────────────────────────────────────────────
-
-    /// Pure union-merge of two SQLite database blobs.
-    ///
-    /// Strategy per UUID:
-    /// - UUID in only one database → insert into the other
-    /// - UUID in both, different `updated_at` → higher `updated_at` wins (all fields)
-    /// - UUID in both, same `updated_at`, different values → true conflict (caller must
-    ///   resolve); the record from database A is kept in the merged output as a placeholder
-    /// - Soft-deleted records (tombstones) are treated as normal rows — `deleted_at` is
-    ///   subject to last-write-wins when it differs
-    /// - Both databases have a tombstone for the same UUID → merged carries the tombstone
-    ///   with the more recent `deleted_at`
-    ///
-    /// This function does **not** write to OPFS or call any backend.
-    pub async fn merge_databases(
-        data_a: Vec<u8>,
-        data_b: Vec<u8>,
-    ) -> Result<MergeResult, DatabaseError> {
-        let js_result = merge_databases_js(data_a, data_b).await;
-
-        // Check for JS-level error (the JS function throws on failure).
-        if let Some(err) = js_result.dyn_ref::<js_sys::Error>() {
-            return Err(DatabaseError::QueryError(
-                err.message().as_string().unwrap_or_default(),
-            ));
-        }
-
-        // Extract `merged` field (Uint8Array).
-        let merged_js = js_sys::Reflect::get(&js_result, &JsValue::from_str("merged"))
-            .map_err(|e| DatabaseError::JsError(format!("missing 'merged' field: {:?}", e)))?;
-
-        let uint8_array = js_sys::Uint8Array::new(&merged_js);
-        let mut merged_bytes = vec![0u8; uint8_array.length() as usize];
-        uint8_array.copy_to(&mut merged_bytes);
-
-        // Extract `conflicts` field (Array).
-        let conflicts_js = js_sys::Reflect::get(&js_result, &JsValue::from_str("conflicts"))
-            .map_err(|e| DatabaseError::JsError(format!("missing 'conflicts' field: {:?}", e)))?;
-
-        let conflicts_array = conflicts_js
-            .dyn_ref::<js_sys::Array>()
-            .ok_or_else(|| DatabaseError::QueryError("'conflicts' is not an array".to_string()))?;
-
-        let mut conflicts = Vec::new();
-        for i in 0..conflicts_array.length() {
-            let item = conflicts_array.get(i);
-
-            let uuid = js_sys::Reflect::get(&item, &JsValue::from_str("uuid"))
-                .ok()
-                .and_then(|v| v.as_string())
-                .unwrap_or_default();
-
-            let table_name = js_sys::Reflect::get(&item, &JsValue::from_str("table_name"))
-                .ok()
-                .and_then(|v| v.as_string())
-                .unwrap_or_default();
-
-            let version_a = js_sys::Reflect::get(&item, &JsValue::from_str("version_a"))
-                .ok()
-                .and_then(|v| v.as_string())
-                .unwrap_or_default();
-
-            let version_b = js_sys::Reflect::get(&item, &JsValue::from_str("version_b"))
-                .ok()
-                .and_then(|v| v.as_string())
-                .unwrap_or_default();
-
-            conflicts.push(MergeConflict {
-                uuid,
-                table_name,
-                version_a,
-                version_b,
-            });
-        }
-
-        Ok(MergeResult {
-            merged: merged_bytes,
-            conflicts,
-        })
-    }
+    // NOTE: merge_databases() was removed as part of the crsqlite-wasm
+    // migration (#179). Merge is now handled by CRR-based CRDT replication.
 
     // ── Test-only helpers ─────────────────────────────────────────────────────
     //

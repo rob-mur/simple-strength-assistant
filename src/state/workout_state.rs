@@ -511,20 +511,9 @@ impl WorkoutStateManager {
         Ok(())
     }
 
-    pub async fn save_database(state: &WorkoutState) -> Result<(), WorkoutError> {
-        let db = state.database().ok_or(WorkoutError::NotInitialized)?;
-
-        let file_manager = state.file_manager().ok_or(WorkoutError::FileSystem(
-            crate::state::FileSystemError::NoHandle,
-        ))?;
-
-        let data = db.export().await.map_err(WorkoutError::Database)?;
-
-        file_manager
-            .write_file(&data)
-            .await
-            .map_err(WorkoutError::FileSystem)?;
-
+    /// No-op: crsqlite-wasm persists automatically via IndexedDB
+    /// (IDBBatchAtomicVFS). Retained as a function for call-site compatibility.
+    pub async fn save_database(_state: &WorkoutState) -> Result<(), WorkoutError> {
         Ok(())
     }
 
@@ -722,13 +711,10 @@ impl WorkoutStateManager {
             }
         };
 
-        let local_blob = match db.export().await {
-            Ok(b) => b,
-            Err(e) => {
-                log::warn!("[Sync] Failed to export database for sync: {}", e);
-                return;
-            }
-        };
+        // With crsqlite-wasm, the database is CRR-backed and merge is handled
+        // by the CRDT layer. We pass an empty blob as a placeholder — the sync
+        // protocol will be updated to use CRR changesets in a follow-up issue.
+        let local_blob: Vec<u8> = vec![];
 
         // Signal the UI that a sync cycle is in progress.
         state.set_sync_status(SyncStatus::Syncing);
@@ -737,34 +723,17 @@ impl WorkoutStateManager {
 
         let client = SyncClient::new(FetchClient);
 
-        // Real merge function: delegates to the JS-backed Database::merge_databases.
-        // Converts from db::MergeResult to sync::MergeResult.
-        let real_merge =
+        // Stub merge: CRR-based replication replaces the old blob-level merge.
+        // The merge function is still required by the SyncClient interface but
+        // will be replaced with CRR changeset exchange in a follow-up issue.
+        let crr_merge =
             |local: Vec<u8>,
-             server: Vec<u8>|
+             _server: Vec<u8>|
              -> std::pin::Pin<Box<dyn std::future::Future<Output = MergeResult>>> {
                 Box::pin(async move {
-                    match Database::merge_databases(local, server).await {
-                        Ok(db_result) => MergeResult {
-                            merged: db_result.merged,
-                            conflicts: db_result
-                                .conflicts
-                                .into_iter()
-                                .map(|c| crate::sync::ConflictRecord {
-                                    table: c.table_name,
-                                    row_id: c.uuid,
-                                    version_a: c.version_a,
-                                    version_b: c.version_b,
-                                })
-                                .collect(),
-                        },
-                        Err(e) => {
-                            log::warn!("[Sync] Merge failed: {} — falling back to local", e);
-                            MergeResult {
-                                merged: vec![],
-                                conflicts: vec![],
-                            }
-                        }
+                    MergeResult {
+                        merged: local,
+                        conflicts: vec![],
                     }
                 })
             };
@@ -792,12 +761,12 @@ impl WorkoutStateManager {
                     &local_blob,
                     !local_has_data,
                     &mut clock,
-                    &real_merge,
+                    &crr_merge,
                 )
                 .await
         } else {
             client
-                .run(credentials.as_ref(), &local_blob, &mut clock, &real_merge)
+                .run(credentials.as_ref(), &local_blob, &mut clock, &crr_merge)
                 .await
         };
 
@@ -851,12 +820,11 @@ impl WorkoutStateManager {
     }
 
     /// Shared helper for `Pulled` and `Merged` sync outcomes: initialise a new
-    /// database from the given blob, persist it to OPFS, and sync exercises.
+    /// database from the given blob and sync exercises.
     ///
+    /// With crsqlite-wasm, persistence is handled automatically via IndexedDB.
     /// On failure the existing in-memory database is left untouched so the
-    /// session remains functional.  The JS `initDatabase` function also guards
-    /// against this: it constructs the new `SQL.Database` before closing the old
-    /// one, so a malformed blob cannot leave `db` as null.
+    /// session remains functional.
     #[cfg(not(test))]
     async fn apply_synced_blob(state: &WorkoutState, blob: &[u8], label: &str) {
         // Rust-layer defence: reject empty blobs before handing them to the JS
@@ -872,11 +840,7 @@ impl WorkoutStateManager {
         let mut new_db = Database::new();
         match new_db.init(Some(blob.to_vec())).await {
             Ok(_) => {
-                if let Some(fm) = state.file_manager()
-                    && let Err(e) = fm.write_file(blob).await
-                {
-                    log::warn!("[Sync] Failed to persist {} blob to OPFS: {}", label, e);
-                }
+                // crsqlite-wasm auto-persists via IndexedDB — no OPFS write needed.
                 state.set_database(new_db);
                 if let Err(e) = Self::sync_exercises(state).await {
                     log::warn!("[Sync] Failed to sync exercises after {}: {}", label, e);
@@ -1037,16 +1001,7 @@ impl WorkoutStateManager {
             }
         }
 
-        // Export the resolved database
-        let resolved_blob = resolved_db.export().await.map_err(WorkoutError::Database)?;
-
-        // Save to OPFS
-        if let Some(fm) = state.file_manager() {
-            fm.write_file(&resolved_blob)
-                .await
-                .map_err(WorkoutError::FileSystem)?;
-            log::info!("[Conflict] Resolved database saved to OPFS");
-        }
+        // crsqlite-wasm auto-persists via IndexedDB — no manual export/write needed.
 
         // Update the active database
         state.set_database(resolved_db);

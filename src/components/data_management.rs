@@ -1,121 +1,29 @@
 use crate::state::WorkoutState;
 use dioxus::prelude::*;
-#[cfg(target_arch = "wasm32")]
-use wasm_bindgen::JsCast;
-#[cfg(target_arch = "wasm32")]
-use web_sys::{Blob, BlobPropertyBag, HtmlAnchorElement, Url, js_sys};
 
 /// The SQLite magic number used to validate imported files.
 const SQLITE_MAGIC: &[u8] = b"SQLite format 3\0";
-
-/// Download filename for exported databases.
-const EXPORT_FILENAME: &str = "workout-data.sqlite";
 
 /// Returns `true` if `data` begins with the SQLite magic header.
 pub(crate) fn is_valid_sqlite(data: &[u8]) -> bool {
     data.len() >= SQLITE_MAGIC.len() && data.starts_with(SQLITE_MAGIC)
 }
 
-/// Triggers a browser download of `bytes` with the given `filename`.
-#[cfg(target_arch = "wasm32")]
-fn trigger_download(bytes: &[u8], filename: &str) -> Result<(), String> {
-    let uint8_array = js_sys::Uint8Array::from(bytes);
-    let array = js_sys::Array::new();
-    array.push(&uint8_array);
-
-    let options = BlobPropertyBag::new();
-    options.set_type("application/octet-stream");
-    let blob = Blob::new_with_u8_array_sequence_and_options(&array, &options)
-        .map_err(|e| format!("{:?}", e))?;
-
-    let url = Url::create_object_url_with_blob(&blob).map_err(|e| format!("{:?}", e))?;
-
-    let document = web_sys::window()
-        .ok_or_else(|| "no window".to_string())?
-        .document()
-        .ok_or_else(|| "no document".to_string())?;
-
-    let anchor: HtmlAnchorElement = document
-        .create_element("a")
-        .map_err(|e| format!("{:?}", e))?
-        .dyn_into::<HtmlAnchorElement>()
-        .map_err(|e| format!("{:?}", e))?;
-
-    anchor.set_href(&url);
-    anchor.set_download(filename);
-    anchor.click();
-
-    Url::revoke_object_url(&url).map_err(|e| format!("{:?}", e))?;
-    Ok(())
-}
-
-#[cfg(not(target_arch = "wasm32"))]
-fn trigger_download(_bytes: &[u8], _filename: &str) -> Result<(), String> {
-    Ok(()) // no-op outside browser
-}
-
-/// Panel with Export and Import buttons for the workout database.
+/// Panel with Import button for the workout database.
 ///
-/// - Export: serialises the SQLite database and triggers a browser download.
 /// - Import: presents a file picker, validates the file, calls `initDatabase()`,
-///   and persists to OPFS.
+///   and persists via crsqlite-wasm's IndexedDB backend.
 #[component]
 pub fn DataManagementPanel(state: WorkoutState) -> Element {
     let mut import_error = use_signal(|| Option::<String>::None);
-    let mut is_exporting = use_signal(|| false);
     let mut is_importing = use_signal(|| false);
 
     rsx! {
         div {
             class: "flex gap-2 mt-4",
 
-            // ── Export button ──────────────────────────────────────────────────
-            button {
-                class: if *is_exporting.read() {
-                    "btn btn-outline btn-sm loading"
-                } else {
-                    "btn btn-outline btn-sm"
-                },
-                "data-testid": "export-db-btn",
-                disabled: *is_exporting.read(),
-                onclick: move |_| {
-                    spawn(async move {
-                        is_exporting.set(true);
-                        match state.database() {
-                            Some(db) => match db.export().await {
-                                Ok(bytes) => {
-                                    if let Err(e) = trigger_download(&bytes, EXPORT_FILENAME) {
-                                        log::error!("[DataManagement] Download failed: {:?}", e);
-                                    } else {
-                                        log::debug!("[DataManagement] Database exported successfully");
-                                    }
-                                }
-                                Err(e) => {
-                                    log::error!("[DataManagement] Export failed: {}", e);
-                                }
-                            },
-                            None => {
-                                log::error!("[DataManagement] Export failed: database not initialized");
-                            }
-                        }
-                        is_exporting.set(false);
-                    });
-                },
-                svg {
-                    xmlns: "http://www.w3.org/2000/svg",
-                    fill: "none",
-                    view_box: "0 0 24 24",
-                    stroke_width: "1.5",
-                    stroke: "currentColor",
-                    class: "w-4 h-4 mr-1",
-                    path {
-                        stroke_linecap: "round",
-                        stroke_linejoin: "round",
-                        d: "M3 16.5v2.25A2.25 2.25 0 005.25 21h13.5A2.25 2.25 0 0021 18.75V16.5M16.5 12L12 16.5m0 0L7.5 12m4.5 4.5V3"
-                    }
-                }
-                "Export"
-            }
+            // NOTE: Export button removed — crsqlite-wasm uses IndexedDB
+            // persistence and does not support byte-level database export (#179).
 
             // ── Import button (triggers hidden file input) ─────────────────────
             div {
@@ -194,19 +102,7 @@ pub fn DataManagementPanel(state: WorkoutState) -> Element {
                                     Ok(_) => {
                                         log::debug!("[DataManagement] Database re-initialized from import");
 
-                                        // Persist to OPFS/storage
-                                        let file_manager = state.file_manager();
-                                        if let Some(fm) = file_manager
-                                            && let Err(e) = fm.write_file(&data).await
-                                        {
-                                            log::error!("[DataManagement] Failed to persist imported data: {}", e);
-                                            import_error.set(Some(format!(
-                                                "Import succeeded but failed to persist: {}",
-                                                e
-                                            )));
-                                            is_importing.set(false);
-                                            return;
-                                        }
+                                        // crsqlite-wasm auto-persists via IndexedDB — no OPFS write needed.
 
                                         // Update app state with new database
                                         state.set_database(database);
