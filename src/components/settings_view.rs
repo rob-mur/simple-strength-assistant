@@ -130,6 +130,13 @@ pub fn SettingsView(state: WorkoutState) -> Element {
                                     sync_id: creds.sync_id.clone(),
                                     backend_url: read_backend_url()
                                 }
+                                div {
+                                    class: "alert alert-info text-sm max-w-xs mt-2",
+                                    "data-testid": "sync-backup-reminder",
+                                    span {
+                                        "Save your sync code somewhere safe. If you lose your device and haven't exported your data, this code is the only way to recover your workouts."
+                                    }
+                                }
                                 button {
                                     class: "btn btn-ghost btn-sm mt-4",
                                     "data-testid": "done-qr-button",
