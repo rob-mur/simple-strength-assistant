@@ -268,7 +268,17 @@ When("I clear storage and reload as a new device", async ({ page }) => {
   // Save the sync code before clearing
   const syncCode = (page as any).__copiedSyncCode;
 
-  await page.evaluate(() => localStorage.clear());
+  // Clear both LocalStorage and OPFS to fully simulate a new device
+  await page.evaluate(async () => {
+    localStorage.clear();
+    // Clear OPFS database file
+    try {
+      const root = await navigator.storage.getDirectory();
+      await root.removeEntry("workout-data.sqlite").catch(() => {});
+    } catch {
+      // OPFS may not be available
+    }
+  });
   await page.reload();
   await page.waitForLoadState("networkidle");
 
