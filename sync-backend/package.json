@@ -1,10 +1,9 @@
 {
   "name": "sync-backend",
-  "module": "index.ts",
   "type": "module",
   "private": true,
   "scripts": {
-    "start": "bun run src/index.ts",
+    "start": "node --import tsx src/index.ts",
     "test": "bun test"
   },
   "devDependencies": {
@@ -14,6 +13,7 @@
     "typescript": "^5"
   },
   "dependencies": {
-    "hono": "^4.12.12"
+    "@vlcn.io/ws-server": "^0.2.2",
+    "tsx": "^4"
   }
 }
