@@ -228,9 +228,9 @@ When("I set up sync and copy the sync code", async ({ page }) => {
   await expect(setupBtn).toBeVisible({ timeout: 10000 });
   await setupBtn.click();
 
-  // Wait for QR display and extract the sync_id from the payload
-  const qrSection = page.locator('[data-testid="qr-display-section"]');
-  await expect(qrSection).toBeVisible({ timeout: 5000 });
+  // Wait for sync code display
+  const codeSection = page.locator('[data-testid="sync-code-display-section"]');
+  await expect(codeSection).toBeVisible({ timeout: 5000 });
 
   // Read sync_id from LocalStorage
   const syncId = await page.evaluate(() => {
@@ -243,8 +243,8 @@ When("I set up sync and copy the sync code", async ({ page }) => {
   (page as any).__copiedSyncCode = syncId;
   console.log(`Copied sync code: ${syncId}`);
 
-  // Dismiss QR display
-  await page.locator('[data-testid="done-qr-button"]').click();
+  // Dismiss sync code display
+  await page.locator('[data-testid="done-setup-button"]').click();
 });
 
 When("I wait for sync to complete", async ({ page }) => {
