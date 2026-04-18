@@ -5,7 +5,7 @@
 /// TODO: upgrade to HMAC-SHA256 of the request body if the server supports it.
 #[cfg(not(test))]
 pub mod wasm {
-    use super::super::client::{HttpClient, PushRequest, SyncError, SyncMetadata};
+    use super::super::client::{HttpClient, PushRequest, SyncError, SyncMetadata, base64_decode};
     use wasm_bindgen::JsCast;
     use wasm_bindgen_futures::JsFuture;
     use web_sys::{Request, RequestInit, RequestMode, Response, js_sys};
@@ -37,21 +37,36 @@ pub mod wasm {
             sync_secret: &str,
             body: &PushRequest,
         ) -> Result<(), SyncError> {
-            let body_json = serde_json::to_string(body)
+            // Decode the base64 blob to raw bytes for the server.
+            let blob_bytes =
+                base64_decode(&body.blob_b64).map_err(SyncError::SerializationError)?;
+
+            // Serialize the vector clock as JSON for the X-Vector-Clock header.
+            let clock_json = serde_json::to_string(&body.vector_clock)
                 .map_err(|e| SyncError::SerializationError(e.to_string()))?;
 
             let url = build_url(sync_id, "");
             let opts = RequestInit::new();
             opts.set_method("POST");
             opts.set_mode(RequestMode::Cors);
-            opts.set_body(&wasm_bindgen::JsValue::from_str(&body_json));
+
+            // Send raw blob bytes as the body (server reads arrayBuffer directly).
+            let uint8 = js_sys::Uint8Array::new_with_length(blob_bytes.len() as u32);
+            uint8.copy_from(&blob_bytes);
+            opts.set_body(&uint8.into());
 
             let request = Request::new_with_str_and_init(&url, &opts)
                 .map_err(|e| SyncError::NetworkError(format!("{:?}", e)))?;
 
             request
                 .headers()
-                .set("Content-Type", "application/json")
+                .set("Content-Type", "application/octet-stream")
+                .map_err(|e| SyncError::NetworkError(format!("{:?}", e)))?;
+
+            // Vector clock in header, as the server expects.
+            request
+                .headers()
+                .set("X-Vector-Clock", &clock_json)
                 .map_err(|e| SyncError::NetworkError(format!("{:?}", e)))?;
 
             // Pass sync_secret as a header, never in the URL

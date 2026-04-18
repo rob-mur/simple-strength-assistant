@@ -13,3 +13,9 @@ Feature: Production boot without test mode
     Given I open the app without test mode and clear storage
     When I click "Create New Database"
     Then the sync should start at most once
+
+  Scenario: Sync indicator stays idle when sync is not configured
+    Given I open the app without test mode and clear storage
+    When I click "Create New Database"
+    Then the app should reach the workout view within 10 seconds
+    And the sync status indicator should show the idle state

@@ -1,5 +1,7 @@
+use crate::components::pairing::PairingStep;
 use crate::models::Settings;
-use crate::state::{WorkoutState, WorkoutStateManager};
+use crate::state::{SyncStatus, WorkoutState, WorkoutStateManager};
+use crate::sync::SyncCredentials;
 use dioxus::prelude::*;
 
 /// Clamp and round a value to a given step within [min, max].
@@ -8,9 +10,38 @@ fn clamp_step(value: f64, min: f64, max: f64, step: f64) -> f64 {
     (clamped / step).round() * step
 }
 
+/// Copy text to clipboard via the Web Clipboard API.
+#[cfg(not(test))]
+fn copy_to_clipboard(text: &str) {
+    use wasm_bindgen::JsCast;
+    use wasm_bindgen::JsValue;
+    if let Some(window) = web_sys::window()
+        && let Ok(clipboard) =
+            js_sys::Reflect::get(&window.navigator(), &JsValue::from_str("clipboard"))
+        && let Ok(write_fn) = js_sys::Reflect::get(&clipboard, &JsValue::from_str("writeText"))
+        && let Some(f) = write_fn.dyn_ref::<js_sys::Function>()
+    {
+        let _: Result<JsValue, JsValue> = f.call1(&clipboard, &JsValue::from_str(text));
+    }
+}
+
+/// Truncate a sync_id to `n` chars + ellipsis for display.
+fn truncate_id(id: &str, n: usize) -> String {
+    if id.len() <= n {
+        id.to_string()
+    } else {
+        format!("{}...", &id[..n])
+    }
+}
+
 #[component]
 pub fn SettingsView(state: WorkoutState) -> Element {
     let settings = state.settings();
+
+    // Load current credentials for the sync section.
+    let mut credentials = use_signal(SyncCredentials::load);
+    let mut pairing_step = use_signal(|| PairingStep::Idle);
+    let mut join_input = use_signal(String::new);
 
     // Persist a single-field change immediately.
     let persist = move |updated: Settings| {
@@ -26,6 +57,298 @@ pub fn SettingsView(state: WorkoutState) -> Element {
             class: "max-w-md mx-auto py-6",
             "data-testid": "settings-view",
             h2 { class: "text-xl font-black uppercase tracking-tight mb-6", "Settings" }
+
+            // ── Sync section ──────────────────────────────────────────────────
+            div {
+                class: "card bg-base-100 shadow-xl mb-6",
+                "data-testid": "sync-section",
+                div {
+                    class: "card-body",
+                    h3 { class: "card-title text-base font-bold mb-4", "Sync" }
+
+                    match (credentials(), pairing_step()) {
+                        // ── Paired state ──────────────────────────────────────
+                        (Some(creds), PairingStep::Idle) => rsx! {
+                            div {
+                                "data-testid": "sync-paired-status",
+                                div {
+                                    class: "flex items-center gap-2 mb-3",
+                                    span {
+                                        class: "badge badge-success badge-sm",
+                                        "Paired"
+                                    }
+                                    span {
+                                        class: "text-sm font-mono opacity-70",
+                                        "data-testid": "sync-id-display",
+                                        "{truncate_id(&creds.sync_id, 12)}"
+                                    }
+                                }
+
+                                div {
+                                    class: "flex flex-col gap-2",
+                                    button {
+                                        class: "btn btn-outline btn-sm gap-2",
+                                        "data-testid": "copy-sync-id-button",
+                                        onclick: {
+                                            let sync_id = creds.sync_id.clone();
+                                            move |_| {
+                                                #[cfg(not(test))]
+                                                copy_to_clipboard(&sync_id);
+                                            }
+                                        },
+                                        "Copy sync code"
+                                    }
+                                    button {
+                                        class: "btn btn-outline btn-error btn-sm",
+                                        "data-testid": "unpair-button",
+                                        onclick: move |_| {
+                                            #[cfg(not(test))]
+                                            {
+                                                SyncCredentials::delete();
+                                                crate::sync::delete_clock();
+                                            }
+                                            credentials.set(None);
+                                            state.set_sync_status(SyncStatus::Idle);
+                                            state.set_sync_clock(crate::sync::VectorClock::new());
+                                        },
+                                        "Unpair"
+                                    }
+                                }
+                            }
+                        },
+
+                        // ── Showing sync code after setup ──────────────────
+                        (Some(creds), PairingStep::ShowingCode) => rsx! {
+                            div {
+                                "data-testid": "sync-code-display-section",
+                                p {
+                                    class: "text-sm text-base-content/60 mb-4",
+                                    "Your sync code is ready. Share it with your other device to sync workout data."
+                                }
+                                div {
+                                    class: "bg-base-200 rounded-lg p-4 mb-4 text-center",
+                                    p {
+                                        class: "font-mono text-sm select-all break-all",
+                                        "data-testid": "sync-code-value",
+                                        "{creds.sync_id}"
+                                    }
+                                }
+                                button {
+                                    class: "btn btn-outline btn-sm gap-2 mb-4 w-full",
+                                    "data-testid": "copy-sync-id-button",
+                                    onclick: {
+                                        let sync_id = creds.sync_id.clone();
+                                        move |_| {
+                                            #[cfg(not(test))]
+                                            copy_to_clipboard(&sync_id);
+                                        }
+                                    },
+                                    "Copy sync code"
+                                }
+                                div {
+                                    class: "alert alert-info text-sm mb-4",
+                                    "data-testid": "sync-backup-reminder",
+                                    span {
+                                        "Save this code somewhere safe. If you lose your device and haven't exported your data, this code is the only way to recover your workouts."
+                                    }
+                                }
+                                button {
+                                    class: "btn btn-ghost btn-sm",
+                                    "data-testid": "done-setup-button",
+                                    onclick: move |_| pairing_step.set(PairingStep::Idle),
+                                    "Done"
+                                }
+                            }
+                        },
+
+                        // ── Unpaired: set up sync ────────────────────────────
+                        (None, PairingStep::Idle) => rsx! {
+                            div {
+                                "data-testid": "sync-unpaired-status",
+                                p {
+                                    class: "text-sm text-base-content/60 mb-4",
+                                    "Sync your workouts across devices. No account required."
+                                }
+                                div {
+                                    class: "flex flex-col gap-2",
+                                    button {
+                                        class: "btn btn-primary btn-sm",
+                                        "data-testid": "setup-sync-button",
+                                        onclick: move |_| {
+                                            let new_creds = SyncCredentials::generate();
+                                            #[cfg(not(test))]
+                                            {
+                                                if let Err(e) = new_creds.save() {
+                                                    log::warn!("Failed to save new credentials: {}", e);
+                                                }
+                                            }
+                                            credentials.set(Some(new_creds));
+                                            state.set_sync_status(SyncStatus::NeverSynced);
+                                            pairing_step.set(PairingStep::ShowingCode);
+
+                                            #[cfg(not(test))]
+                                            {
+                                                let state = state;
+                                                spawn(async move {
+                                                    log::info!("[Pairing] Setup complete — triggering initial sync");
+                                                    WorkoutStateManager::trigger_background_sync(&state).await;
+                                                    log::info!("[Pairing] Initial sync after setup complete");
+                                                });
+                                            }
+                                        },
+                                        "Set up sync"
+                                    }
+                                    button {
+                                        class: "btn btn-outline btn-sm",
+                                        "data-testid": "scan-code-button",
+                                        onclick: move |_| {
+                                            pairing_step.set(PairingStep::Joining);
+                                        },
+                                        "Join with a code"
+                                    }
+                                }
+                            }
+                        },
+
+                        // ── Joining: enter sync code ────────────────────────
+                        (_, PairingStep::Joining) => rsx! {
+                            div {
+                                "data-testid": "qr-scan-section",
+                                div {
+                                    class: "form-control w-full",
+                                    "data-testid": "manual-entry-form",
+                                    p {
+                                        class: "text-sm text-base-content/60 mb-2",
+                                        "Enter the sync code from your other device."
+                                    }
+                                    label {
+                                        class: "label",
+                                        span { class: "label-text", "Sync code" }
+                                    }
+                                    input {
+                                        r#type: "text",
+                                        class: "input input-bordered w-full font-mono text-sm",
+                                        "data-testid": "manual-code-input",
+                                        placeholder: "e.g. a1b2c3d4-e5f6-...",
+                                        value: "{join_input}",
+                                        oninput: move |evt| join_input.set(evt.value())
+                                    }
+                                    button {
+                                        class: "btn btn-primary btn-sm mt-2",
+                                        "data-testid": "manual-submit-button",
+                                        onclick: move |_| {
+                                            let sync_id = join_input().trim().to_string();
+                                            if sync_id.is_empty() {
+                                                pairing_step.set(PairingStep::Error(
+                                                    "Sync code cannot be empty".to_string()
+                                                ));
+                                                return;
+                                            }
+
+                                            let new_creds = SyncCredentials::from_sync_id(sync_id);
+                                            if !new_creds.is_valid() {
+                                                pairing_step.set(PairingStep::Error(
+                                                    "Invalid sync code".to_string()
+                                                ));
+                                                return;
+                                            }
+                                            #[cfg(not(test))]
+                                            {
+                                                if let Err(e) = new_creds.save() {
+                                                    pairing_step.set(PairingStep::Error(
+                                                        format!("Failed to save credentials: {}", e)
+                                                    ));
+                                                    return;
+                                                }
+                                            }
+                                            credentials.set(Some(new_creds));
+                                            state.set_sync_status(SyncStatus::NeverSynced);
+                                            pairing_step.set(PairingStep::Syncing);
+
+                                            #[cfg(not(test))]
+                                            {
+                                                let state = state;
+                                                spawn(async move {
+                                                    log::info!("[Pairing] Join complete — triggering initial sync");
+                                                    WorkoutStateManager::trigger_background_sync(&state).await;
+                                                    log::info!("[Pairing] Initial sync after pairing complete");
+                                                    pairing_step.set(PairingStep::Done);
+                                                });
+                                            }
+                                            #[cfg(test)]
+                                            {
+                                                pairing_step.set(PairingStep::Done);
+                                            }
+                                        },
+                                        "Connect"
+                                    }
+                                }
+                                button {
+                                    class: "btn btn-ghost btn-sm mt-4",
+                                    "data-testid": "cancel-scan-button",
+                                    onclick: move |_| pairing_step.set(PairingStep::Idle),
+                                    "Cancel"
+                                }
+                            }
+                        },
+
+                        // ── Syncing after join ─────────────────────────────
+                        (_, PairingStep::Syncing) => rsx! {
+                            div {
+                                class: "flex flex-col items-center gap-3",
+                                "data-testid": "pairing-syncing",
+                                div { class: "loading loading-spinner loading-md text-primary" }
+                                p { class: "text-sm", "Performing initial sync..." }
+                            }
+                        },
+
+                        // ── Pairing complete ─────────────────────────────────
+                        (_, PairingStep::Done) => rsx! {
+                            div {
+                                "data-testid": "pairing-done",
+                                div {
+                                    class: "alert alert-success mb-3",
+                                    "Pairing complete. Your devices are now synced."
+                                }
+                                button {
+                                    class: "btn btn-primary btn-sm",
+                                    "data-testid": "pairing-done-button",
+                                    onclick: move |_| pairing_step.set(PairingStep::Idle),
+                                    "Done"
+                                }
+                            }
+                        },
+
+                        // ── Error state ──────────────────────────────────────
+                        (_, PairingStep::Error(ref msg)) => {
+                            let msg = msg.clone();
+                            rsx! {
+                                div {
+                                    "data-testid": "pairing-error",
+                                    div {
+                                        class: "alert alert-error mb-3",
+                                        "{msg}"
+                                    }
+                                    button {
+                                        class: "btn btn-ghost btn-sm",
+                                        "data-testid": "pairing-retry-button",
+                                        onclick: move |_| pairing_step.set(PairingStep::Idle),
+                                        "Try again"
+                                    }
+                                }
+                            }
+                        },
+
+                        // ── Fallback ─────────────────────────────────────────
+                        (None, PairingStep::ShowingCode) => rsx! {
+                            div {
+                                class: "alert alert-warning",
+                                "No credentials available. Please set up sync first."
+                            }
+                        },
+                    }
+                }
+            }
 
             // ── Algorithm settings card ──────────────────────────────────────
             div {

@@ -1,6 +1,12 @@
 use super::credentials::SyncCredentials;
 use super::vector_clock::{ClockRelation, VectorClock};
 use serde::{Deserialize, Serialize};
+use std::future::Future;
+use std::pin::Pin;
+
+/// Async merge function signature. Takes (local_blob, server_blob) and returns
+/// a merged result. This is async because the real SQLite merge requires JS FFI.
+pub type MergeFn<'a> = &'a dyn Fn(Vec<u8>, Vec<u8>) -> Pin<Box<dyn Future<Output = MergeResult>>>;
 
 // ── Types returned / sent by the server ──────────────────────────────────────
 
@@ -116,7 +122,7 @@ impl<H: HttpClient> SyncClient<H> {
         credentials: Option<&SyncCredentials>,
         local_blob: &[u8],
         local_clock: &mut VectorClock,
-        merge_fn: &dyn Fn(&[u8], &[u8]) -> MergeResult,
+        merge_fn: MergeFn<'_>,
     ) -> SyncOutcome {
         let Some(creds) = credentials else {
             return SyncOutcome::Skipped;
@@ -126,60 +132,90 @@ impl<H: HttpClient> SyncClient<H> {
             return SyncOutcome::Skipped;
         }
 
-        // Step 1: build push request with a tentative clock increment.
-        // We only commit the increment to local_clock after a successful push.
-        let mut tentative_clock = local_clock.clone();
-        tentative_clock.increment(&creds.device_id);
-
-        let push_req = PushRequest {
-            vector_clock: tentative_clock.clone(),
-            blob_b64: base64_encode(local_blob),
-        };
-
-        if let Err(e) = self
-            .http
-            .push(&creds.sync_id, &creds.sync_secret, &push_req)
-            .await
-        {
-            log::warn!("[Sync] Push failed (offline?): {}", e);
-            // Clock is NOT incremented — tentative_clock is discarded
-            return SyncOutcome::Offline;
-        }
-
-        // Push succeeded — commit the increment
-        *local_clock = tentative_clock;
-
-        // Step 2: fetch server metadata
-        let metadata = match self
+        // Step 1: fetch server metadata BEFORE pushing, so we can detect
+        // divergence against the server's current state.
+        let server_state = match self
             .http
             .get_metadata(&creds.sync_id, &creds.sync_secret)
             .await
         {
-            Ok(m) => m,
+            Ok(m) => Some(m),
+            Err(SyncError::ServerError(404)) => None,
             Err(e) => {
                 log::warn!("[Sync] Metadata fetch failed (offline?): {}", e);
                 return SyncOutcome::Offline;
             }
         };
 
-        let server_clock = &metadata.vector_clock;
+        let server_clock = server_state
+            .as_ref()
+            .map(|m| &m.vector_clock)
+            .cloned()
+            .unwrap_or_default();
 
-        // Step 3: compare clocks
-        match local_clock.compare(server_clock) {
-            ClockRelation::Equal | ClockRelation::AheadOf => {
-                // Server is at or behind us — our push was sufficient
+        // Step 2: compare local clock with server clock to decide strategy.
+        let relation = local_clock.compare(&server_clock);
+
+        match relation {
+            ClockRelation::Equal => {
+                // Clocks match — nothing to sync.
+                SyncOutcome::Pushed
+            }
+            ClockRelation::AheadOf | ClockRelation::BehindOf | ClockRelation::Concurrent
+                if server_state.is_none() =>
+            {
+                // No server slot yet — just push.
+                let mut tentative_clock = local_clock.clone();
+                tentative_clock.increment(&creds.device_id);
+
+                let push_req = PushRequest {
+                    vector_clock: tentative_clock.clone(),
+                    blob_b64: base64_encode(local_blob),
+                };
+
+                if let Err(e) = self
+                    .http
+                    .push(&creds.sync_id, &creds.sync_secret, &push_req)
+                    .await
+                {
+                    log::warn!("[Sync] Push failed (offline?): {}", e);
+                    return SyncOutcome::Offline;
+                }
+
+                *local_clock = tentative_clock;
+                SyncOutcome::Pushed
+            }
+            ClockRelation::AheadOf => {
+                // We're ahead — push our data.
+                let mut tentative_clock = local_clock.clone();
+                tentative_clock.increment(&creds.device_id);
+
+                let push_req = PushRequest {
+                    vector_clock: tentative_clock.clone(),
+                    blob_b64: base64_encode(local_blob),
+                };
+
+                if let Err(e) = self
+                    .http
+                    .push(&creds.sync_id, &creds.sync_secret, &push_req)
+                    .await
+                {
+                    log::warn!("[Sync] Push failed (offline?): {}", e);
+                    return SyncOutcome::Offline;
+                }
+
+                *local_clock = tentative_clock;
                 SyncOutcome::Pushed
             }
             ClockRelation::BehindOf => {
-                // Server is ahead — pull and replace
+                // Server is ahead — pull and replace.
                 match self
                     .http
                     .pull_blob(&creds.sync_id, &creds.sync_secret)
                     .await
                 {
                     Ok(blob) => {
-                        // Advance local clock to match server
-                        local_clock.merge(server_clock);
+                        local_clock.merge(&server_clock);
                         SyncOutcome::Pulled(blob)
                     }
                     Err(e) => {
@@ -189,7 +225,7 @@ impl<H: HttpClient> SyncClient<H> {
                 }
             }
             ClockRelation::Concurrent => {
-                // Diverged — pull server blob and merge
+                // Diverged — pull server blob, merge, push merged result.
                 let server_blob = match self
                     .http
                     .pull_blob(&creds.sync_id, &creds.sync_secret)
@@ -202,8 +238,9 @@ impl<H: HttpClient> SyncClient<H> {
                     }
                 };
 
-                let merge_result = merge_fn(local_blob, &server_blob);
-                local_clock.merge(server_clock);
+                let merge_result = merge_fn(local_blob.to_vec(), server_blob).await;
+                local_clock.merge(&server_clock);
+                local_clock.increment(&creds.device_id);
 
                 if !merge_result.conflicts.is_empty() {
                     return SyncOutcome::ConflictDetected {
@@ -255,7 +292,7 @@ impl<H: HttpClient> SyncClient<H> {
         local_blob: &[u8],
         local_blob_is_empty: bool,
         local_clock: &mut VectorClock,
-        merge_fn: &dyn Fn(&[u8], &[u8]) -> MergeResult,
+        merge_fn: MergeFn<'_>,
     ) -> SyncOutcome {
         let Some(creds) = credentials else {
             return SyncOutcome::Skipped;
@@ -332,97 +369,54 @@ impl<H: HttpClient> SyncClient<H> {
                 }
             }
 
-            // ── Case 4: both have data → push-then-merge ────────────────
-            (false, Some(_metadata)) => {
+            // ── Case 4: both have data → pull, merge locally, push merged ─
+            (false, Some(metadata)) => {
                 log::info!(
-                    "[Sync] Initial sync: both local and server have data → push-then-merge"
+                    "[Sync] Initial sync: both local and server have data → pull-merge-push"
                 );
 
-                // Step A: push local blob with our clock to force divergence
-                let mut tentative_clock = local_clock.clone();
-                tentative_clock.increment(&creds.device_id);
-
-                let push_req = PushRequest {
-                    vector_clock: tentative_clock.clone(),
-                    blob_b64: base64_encode(local_blob),
-                };
-
-                if let Err(e) = self
+                // Step A: pull the server blob BEFORE pushing, so we don't
+                // create a server-side conflict.
+                let server_blob = match self
                     .http
-                    .push(&creds.sync_id, &creds.sync_secret, &push_req)
+                    .pull_blob(&creds.sync_id, &creds.sync_secret)
                     .await
                 {
-                    log::warn!("[Sync] Initial sync push (for merge) failed: {}", e);
-                    return SyncOutcome::Offline;
-                }
-
-                *local_clock = tentative_clock;
-
-                // Step B: re-fetch metadata to get the server's updated state
-                let metadata = match self
-                    .http
-                    .get_metadata(&creds.sync_id, &creds.sync_secret)
-                    .await
-                {
-                    Ok(m) => m,
+                    Ok(b) => b,
                     Err(e) => {
-                        log::warn!("[Sync] Initial sync metadata re-fetch failed: {}", e);
+                        log::warn!("[Sync] Initial sync pull for merge failed: {}", e);
                         return SyncOutcome::Offline;
                     }
                 };
 
-                let server_clock = &metadata.vector_clock;
+                // Step B: merge locally
+                let merge_result = merge_fn(local_blob.to_vec(), server_blob).await;
+                local_clock.merge(&metadata.vector_clock);
+                local_clock.increment(&creds.device_id);
 
-                // Step C: compare clocks and handle accordingly
-                match local_clock.compare(server_clock) {
-                    ClockRelation::Equal | ClockRelation::AheadOf => {
-                        // Server accepted our push as-is; no merge needed.
-                        // This can happen if the server had already incorporated
-                        // our push into its clock.
-                        SyncOutcome::Pushed
-                    }
-                    ClockRelation::BehindOf | ClockRelation::Concurrent => {
-                        // Diverged or server ahead — pull and merge
-                        let server_blob = match self
-                            .http
-                            .pull_blob(&creds.sync_id, &creds.sync_secret)
-                            .await
-                        {
-                            Ok(b) => b,
-                            Err(e) => {
-                                log::warn!("[Sync] Initial sync pull for merge failed: {}", e);
-                                return SyncOutcome::Offline;
-                            }
-                        };
-
-                        let merge_result = merge_fn(local_blob, &server_blob);
-                        local_clock.merge(server_clock);
-
-                        if !merge_result.conflicts.is_empty() {
-                            return SyncOutcome::ConflictDetected {
-                                merged: merge_result.merged,
-                                conflicts: merge_result.conflicts,
-                            };
-                        }
-
-                        // Push merged result back
-                        let merged_push = PushRequest {
-                            vector_clock: local_clock.clone(),
-                            blob_b64: base64_encode(&merge_result.merged),
-                        };
-
-                        if let Err(e) = self
-                            .http
-                            .push(&creds.sync_id, &creds.sync_secret, &merged_push)
-                            .await
-                        {
-                            log::warn!("[Sync] Initial sync push of merged result failed: {}", e);
-                            return SyncOutcome::Offline;
-                        }
-
-                        SyncOutcome::Merged(merge_result.merged)
-                    }
+                if !merge_result.conflicts.is_empty() {
+                    return SyncOutcome::ConflictDetected {
+                        merged: merge_result.merged,
+                        conflicts: merge_result.conflicts,
+                    };
                 }
+
+                // Step C: push the merged result to the server
+                let merged_push = PushRequest {
+                    vector_clock: local_clock.clone(),
+                    blob_b64: base64_encode(&merge_result.merged),
+                };
+
+                if let Err(e) = self
+                    .http
+                    .push(&creds.sync_id, &creds.sync_secret, &merged_push)
+                    .await
+                {
+                    log::warn!("[Sync] Initial sync push of merged result failed: {}", e);
+                    return SyncOutcome::Offline;
+                }
+
+                SyncOutcome::Merged(merge_result.merged)
             }
         }
     }
@@ -488,6 +482,40 @@ pub fn base64_encode(data: &[u8]) -> String {
         }
     }
     out
+}
+
+/// Minimal base-64 decoder (standard alphabet).
+pub fn base64_decode(input: &str) -> Result<Vec<u8>, String> {
+    fn val(c: u8) -> Result<u8, String> {
+        match c {
+            b'A'..=b'Z' => Ok(c - b'A'),
+            b'a'..=b'z' => Ok(c - b'a' + 26),
+            b'0'..=b'9' => Ok(c - b'0' + 52),
+            b'+' => Ok(62),
+            b'/' => Ok(63),
+            _ => Err(format!("Invalid base64 character: {}", c as char)),
+        }
+    }
+
+    let input = input.trim_end_matches('=');
+    let bytes = input.as_bytes();
+    let mut out = Vec::with_capacity(bytes.len() * 3 / 4);
+
+    for chunk in bytes.chunks(4) {
+        let a = val(chunk[0])?;
+        let b = if chunk.len() > 1 { val(chunk[1])? } else { 0 };
+        let c = if chunk.len() > 2 { val(chunk[2])? } else { 0 };
+        let d = if chunk.len() > 3 { val(chunk[3])? } else { 0 };
+
+        out.push((a << 2) | (b >> 4));
+        if chunk.len() > 2 {
+            out.push((b << 4) | (c >> 2));
+        }
+        if chunk.len() > 3 {
+            out.push((c << 6) | d);
+        }
+    }
+    Ok(out)
 }
 
 // ── Tests ─────────────────────────────────────────────────────────────────
@@ -586,23 +614,27 @@ mod tests {
         }
     }
 
-    fn no_op_merge(a: &[u8], _b: &[u8]) -> MergeResult {
-        MergeResult {
-            merged: a.to_vec(),
-            conflicts: vec![],
-        }
+    fn no_op_merge(a: Vec<u8>, _b: Vec<u8>) -> Pin<Box<dyn Future<Output = MergeResult>>> {
+        Box::pin(async move {
+            MergeResult {
+                merged: a,
+                conflicts: vec![],
+            }
+        })
     }
 
-    fn conflict_merge(a: &[u8], _b: &[u8]) -> MergeResult {
-        MergeResult {
-            merged: a.to_vec(),
-            conflicts: vec![ConflictRecord {
-                table: "exercises".into(),
-                row_id: "row-1".into(),
-                version_a: r#"{"uuid":"row-1","name":"Bench Press","updated_at":"2025-01-01T00:00:00Z"}"#.into(),
-                version_b: r#"{"uuid":"row-1","name":"Flat Bench Press","updated_at":"2025-01-01T00:00:00Z"}"#.into(),
-            }],
-        }
+    fn conflict_merge(a: Vec<u8>, _b: Vec<u8>) -> Pin<Box<dyn Future<Output = MergeResult>>> {
+        Box::pin(async move {
+            MergeResult {
+                merged: a,
+                conflicts: vec![ConflictRecord {
+                    table: "exercises".into(),
+                    row_id: "row-1".into(),
+                    version_a: r#"{"uuid":"row-1","name":"Bench Press","updated_at":"2025-01-01T00:00:00Z"}"#.into(),
+                    version_b: r#"{"uuid":"row-1","name":"Flat Bench Press","updated_at":"2025-01-01T00:00:00Z"}"#.into(),
+                }],
+            }
+        })
     }
 
     // ── QA checklist behaviour 1 ─────────────────────────────────────────
@@ -686,10 +718,9 @@ mod tests {
         let push_calls = http.push_calls.clone();
         let client = SyncClient::new(http);
 
+        // Local clock already has device-a=1, server has device-b=1 → Concurrent
         let mut local_clock = VectorClock::new();
-        // Note: device-a will be incremented inside run()
-        // but server has device-b=1, we have device-a=0 initially
-        // After increment, local = {device-a:1}, server = {device-b:1} → Concurrent
+        local_clock.increment("device-a");
 
         let outcome = client
             .run(Some(&creds()), b"local", &mut local_clock, &no_op_merge)
@@ -700,8 +731,8 @@ mod tests {
             other => panic!("Expected Merged, got {:?}", other),
         }
 
-        // Should push twice: initial push + merged result push
-        assert_eq!(*push_calls.borrow(), 2);
+        // Should push the merged result
+        assert_eq!(*push_calls.borrow(), 1);
     }
 
     // ── QA checklist behaviour 5 ─────────────────────────────────────────
@@ -715,7 +746,9 @@ mod tests {
         let http = MockHttp::new(server_clock, b"server".to_vec());
         let client = SyncClient::new(http);
 
+        // Local has device-a=1, server has device-b=1 → Concurrent
         let mut local_clock = VectorClock::new();
+        local_clock.increment("device-a");
 
         let outcome = client
             .run(Some(&creds()), b"local", &mut local_clock, &conflict_merge)
@@ -973,13 +1006,15 @@ mod tests {
 
         // Use a merge function that concatenates both blobs to prove both
         // are passed into the merge
-        fn union_merge(a: &[u8], b: &[u8]) -> MergeResult {
-            let mut merged = a.to_vec();
-            merged.extend_from_slice(b);
-            MergeResult {
-                merged,
-                conflicts: vec![],
-            }
+        fn union_merge(a: Vec<u8>, b: Vec<u8>) -> Pin<Box<dyn Future<Output = MergeResult>>> {
+            Box::pin(async move {
+                let mut merged = a;
+                merged.extend_from_slice(&b);
+                MergeResult {
+                    merged,
+                    conflicts: vec![],
+                }
+            })
         }
 
         let outcome = client
@@ -1010,8 +1045,8 @@ mod tests {
             other => panic!("Expected Merged, got {:?}", other),
         }
 
-        // Should have pushed twice: initial push + merged result push
-        assert_eq!(http.push_call_count(), 2);
+        // Should have pushed once: only the merged result
+        assert_eq!(http.push_call_count(), 1);
 
         // Clock should reflect both devices
         assert!(clock.get("device-a") >= 1);
@@ -1040,8 +1075,8 @@ mod tests {
             other => panic!("Expected ConflictDetected, got {:?}", other),
         }
 
-        // Only the initial push, no merged push (conflicts paused the cycle)
-        assert_eq!(http.push_call_count(), 1);
+        // No push at all — conflicts paused the cycle before pushing
+        assert_eq!(http.push_call_count(), 0);
     }
 
     // Initial sync: no credentials → Skipped

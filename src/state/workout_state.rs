@@ -699,13 +699,15 @@ impl WorkoutStateManager {
     /// (i.e. the pairing flow has not been run yet).
     #[cfg(not(test))]
     pub async fn trigger_background_sync(state: &WorkoutState) {
-        use crate::sync::client::SyncClient;
+        use crate::sync::client::{MergeResult, SyncClient};
         use crate::sync::http::wasm::FetchClient;
-        use crate::sync::stub_merge;
 
-        // Load existing credentials or auto-generate new ones on first launch.
-        // This ensures a fresh device bootstraps sync without user interaction (#148).
-        let credentials = SyncCredentials::load_or_generate();
+        // Load existing credentials. If none are saved, sync is not configured
+        // and we skip silently — the user must explicitly set up sync first.
+        let Some(credentials) = SyncCredentials::load() else {
+            log::debug!("[Sync] No credentials configured — skipping sync");
+            return;
+        };
         if !credentials.is_valid() {
             log::debug!("[Sync] Skipped — credentials failed validation");
             return;
@@ -735,6 +737,38 @@ impl WorkoutStateManager {
 
         let client = SyncClient::new(FetchClient);
 
+        // Real merge function: delegates to the JS-backed Database::merge_databases.
+        // Converts from db::MergeResult to sync::MergeResult.
+        let real_merge =
+            |local: Vec<u8>,
+             server: Vec<u8>|
+             -> std::pin::Pin<Box<dyn std::future::Future<Output = MergeResult>>> {
+                Box::pin(async move {
+                    match Database::merge_databases(local, server).await {
+                        Ok(db_result) => MergeResult {
+                            merged: db_result.merged,
+                            conflicts: db_result
+                                .conflicts
+                                .into_iter()
+                                .map(|c| crate::sync::ConflictRecord {
+                                    table: c.table_name,
+                                    row_id: c.uuid,
+                                    version_a: c.version_a,
+                                    version_b: c.version_b,
+                                })
+                                .collect(),
+                        },
+                        Err(e) => {
+                            log::warn!("[Sync] Merge failed: {} — falling back to local", e);
+                            MergeResult {
+                                merged: vec![],
+                                conflicts: vec![],
+                            }
+                        }
+                    }
+                })
+            };
+
         // If the local clock is empty this is a first-ever sync.  Use the
         // initial-sync path which inspects the server state first so that
         // pre-existing local data is never silently overwritten (#149).
@@ -758,12 +792,12 @@ impl WorkoutStateManager {
                     &local_blob,
                     !local_has_data,
                     &mut clock,
-                    &stub_merge,
+                    &real_merge,
                 )
                 .await
         } else {
             client
-                .run(credentials.as_ref(), &local_blob, &mut clock, &stub_merge)
+                .run(credentials.as_ref(), &local_blob, &mut clock, &real_merge)
                 .await
         };
 
@@ -782,11 +816,18 @@ impl WorkoutStateManager {
         }
 
         // Update the sync status indicator based on the outcome.
-        state.set_sync_status(Self::map_sync_outcome_to_status(&outcome));
+        // Credentials were validated above, so Skipped here means "nothing to
+        // sync" (empty local + empty server), not "no credentials configured".
+        // Show UpToDate rather than reverting to Idle.
+        let status = match &outcome {
+            SyncOutcome::Skipped => SyncStatus::UpToDate,
+            other => Self::map_sync_outcome_to_status(other),
+        };
+        state.set_sync_status(status);
 
         match outcome {
             SyncOutcome::Skipped => {
-                log::debug!("[Sync] Skipped — no sync_id configured");
+                log::debug!("[Sync] Skipped — nothing to sync (empty local + empty server)");
             }
             SyncOutcome::Offline => {
                 log::debug!("[Sync] Server unreachable, continuing offline");

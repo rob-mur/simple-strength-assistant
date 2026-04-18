@@ -82,3 +82,28 @@ Then("the sync should start at most once", async ({ page }) => {
   // Also verify the page is still responsive
   await expect(page.getByTestId("tab-workout")).toBeVisible();
 });
+
+Then(
+  "the sync status indicator should not show idle after sync completes",
+  async ({ page }) => {
+    // Wait for background sync to finish (log message or timeout).
+    try {
+      await page.waitForEvent("console", {
+        predicate: (msg) =>
+          msg.text().includes("[Sync] Background sync complete"),
+        timeout: 10000,
+      });
+    } catch {
+      // Sync may complete before we start listening — fall through and
+      // check the indicator state directly.
+    }
+
+    const indicator = page.locator('[data-testid="sync-status-indicator"]');
+    await expect(indicator).toBeVisible({ timeout: 5000 });
+    // After sync completes, the indicator must not be "idle" (No sync).
+    // Valid end states: up-to-date, error, never-synced — anything but idle.
+    await expect(indicator).not.toHaveAttribute("data-sync-status", "idle", {
+      timeout: 5000,
+    });
+  },
+);

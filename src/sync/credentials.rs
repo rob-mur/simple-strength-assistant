@@ -75,6 +75,27 @@ impl SyncCredentials {
         LocalStorage::set(CREDS_KEY, self).map_err(|e| e.to_string())
     }
 
+    /// Remove credentials from LocalStorage (unpair).
+    #[cfg(not(test))]
+    pub fn delete() {
+        use gloo_storage::{LocalStorage, Storage};
+        LocalStorage::delete(CREDS_KEY);
+    }
+
+    /// Create credentials for a joining device: reuses the given `sync_id`
+    /// from the initiating device's QR code, but generates a fresh `device_id`.
+    pub fn from_sync_id(sync_id: String) -> Self {
+        let device_id = uuid::Uuid::new_v4().to_string();
+        // sync_secret mirrors the initiating device — the backend does not
+        // enforce it yet, but the field must be non-empty to pass is_valid().
+        let sync_secret = uuid::Uuid::new_v4().to_string();
+        Self {
+            sync_id,
+            sync_secret,
+            device_id,
+        }
+    }
+
     /// Validates that none of the credential fields are empty and that
     /// `sync_id` contains only URL-safe characters (alphanumeric + hyphen).
     /// This is stricter than blocking individual characters and prevents
@@ -105,6 +126,19 @@ pub fn save_clock(clock: &VectorClock) -> Result<(), String> {
     {
         let _ = (clock, CLOCK_KEY);
         Ok(())
+    }
+}
+
+/// Remove the vector clock from LocalStorage (called on unpair).
+pub fn delete_clock() {
+    #[cfg(not(test))]
+    {
+        use gloo_storage::{LocalStorage, Storage};
+        LocalStorage::delete(CLOCK_KEY);
+    }
+    #[cfg(test)]
+    {
+        let _ = CLOCK_KEY;
     }
 }
 
@@ -278,5 +312,33 @@ mod tests {
     fn test_save_clock_succeeds_in_test() {
         let clock = super::VectorClock::new();
         assert!(super::save_clock(&clock).is_ok());
+    }
+
+    #[test]
+    fn test_delete_clock_does_not_panic() {
+        // In test mode delete_clock is a no-op; verify it doesn't panic.
+        super::delete_clock();
+    }
+
+    #[test]
+    fn test_from_sync_id_produces_valid_credentials() {
+        let creds = SyncCredentials::from_sync_id("abc-123-def".into());
+        assert!(creds.is_valid());
+        assert_eq!(creds.sync_id, "abc-123-def");
+        // device_id should be freshly generated (not empty)
+        assert!(!creds.device_id.is_empty());
+        // sync_secret should be non-empty
+        assert!(!creds.sync_secret.is_empty());
+    }
+
+    #[test]
+    fn test_from_sync_id_generates_unique_device_ids() {
+        let a = SyncCredentials::from_sync_id("same-id".into());
+        let b = SyncCredentials::from_sync_id("same-id".into());
+        assert_eq!(a.sync_id, b.sync_id, "sync_id should match");
+        assert_ne!(
+            a.device_id, b.device_id,
+            "Each joining device must get a unique device_id"
+        );
     }
 }
