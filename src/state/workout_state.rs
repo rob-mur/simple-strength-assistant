@@ -782,11 +782,18 @@ impl WorkoutStateManager {
         }
 
         // Update the sync status indicator based on the outcome.
-        state.set_sync_status(Self::map_sync_outcome_to_status(&outcome));
+        // Credentials were validated above, so Skipped here means "nothing to
+        // sync" (empty local + empty server), not "no credentials configured".
+        // Show UpToDate rather than reverting to Idle.
+        let status = match &outcome {
+            SyncOutcome::Skipped => SyncStatus::UpToDate,
+            other => Self::map_sync_outcome_to_status(other),
+        };
+        state.set_sync_status(status);
 
         match outcome {
             SyncOutcome::Skipped => {
-                log::debug!("[Sync] Skipped — no sync_id configured");
+                log::debug!("[Sync] Skipped — nothing to sync (empty local + empty server)");
             }
             SyncOutcome::Offline => {
                 log::debug!("[Sync] Server unreachable, continuing offline");
