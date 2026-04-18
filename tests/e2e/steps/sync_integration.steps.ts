@@ -1,4 +1,5 @@
-import { Given, Then } from "./fixtures";
+import { Given, When, Then, expect } from "./fixtures";
+import { setDioxusInput } from "./dioxus_helpers";
 
 const SYNC_BASE_URL = process.env.SYNC_BASE_URL || "https://sync.clarob.uk";
 
@@ -192,5 +193,123 @@ Then(
     for (const req of syncRequests) {
       console.log(`  ${req.method} ${req.url} → ${req.status}`);
     }
+  },
+);
+
+// ── Two-device sync steps ──────────────────────────────────────────────
+
+When(
+  "I add an exercise called {string}",
+  async ({ page }, exerciseName: string) => {
+    await page.click('[data-testid="tab-library"]');
+    // Click Add Exercise or Add First Exercise
+    const addBtn = page
+      .locator(
+        'button:has-text("Add First Exercise"), button:has-text("Add New Exercise")',
+      )
+      .first();
+    if (await addBtn.isVisible()) {
+      await addBtn.click();
+    } else {
+      await page.locator("button.btn-circle.btn-primary").click();
+    }
+    await setDioxusInput(page, "#exercise-name-input", exerciseName);
+    await page.click('button:has-text("Save Exercise")');
+    // Wait for the exercise to appear in the list
+    await expect(
+      page.locator("div.card", { hasText: exerciseName }),
+    ).toBeVisible({ timeout: 5000 });
+  },
+);
+
+When("I set up sync and copy the sync code", async ({ page }) => {
+  await page.click('[data-testid="tab-settings"]');
+  const setupBtn = page.locator('[data-testid="setup-sync-button"]');
+  await expect(setupBtn).toBeVisible({ timeout: 10000 });
+  await setupBtn.click();
+
+  // Wait for QR display and extract the sync_id from the payload
+  const qrSection = page.locator('[data-testid="qr-display-section"]');
+  await expect(qrSection).toBeVisible({ timeout: 5000 });
+
+  // Read sync_id from LocalStorage
+  const syncId = await page.evaluate(() => {
+    const creds = localStorage.getItem("sync_credentials");
+    if (!creds) return null;
+    return JSON.parse(creds).sync_id;
+  });
+
+  if (!syncId) throw new Error("sync_id not found in LocalStorage");
+  (page as any).__copiedSyncCode = syncId;
+  console.log(`Copied sync code: ${syncId}`);
+
+  // Dismiss QR display
+  await page.locator('[data-testid="done-qr-button"]').click();
+});
+
+When("I wait for sync to complete", async ({ page }) => {
+  try {
+    await page.waitForEvent("console", {
+      predicate: (msg) =>
+        msg.text().includes("[Sync] Background sync complete") ||
+        msg.text().includes("[Sync] Periodic sync complete") ||
+        msg.text().includes("[Sync] Initial sync after setup complete") ||
+        msg.text().includes("[Pairing] Initial sync after pairing complete"),
+      timeout: 15000,
+    });
+  } catch {
+    // Sync may have already completed before we started listening
+  }
+  // Extra wait to ensure data is persisted
+  await page.waitForTimeout(2000);
+});
+
+When("I clear storage and reload as a new device", async ({ page }) => {
+  // Save the sync code before clearing
+  const syncCode = (page as any).__copiedSyncCode;
+
+  await page.evaluate(() => localStorage.clear());
+  await page.reload();
+  await page.waitForLoadState("networkidle");
+
+  // Restore the sync code reference
+  (page as any).__copiedSyncCode = syncCode;
+});
+
+When("I join sync with the copied sync code", async ({ page }) => {
+  const syncCode = (page as any).__copiedSyncCode;
+  if (!syncCode) throw new Error("No sync code was copied earlier");
+
+  await page.click('[data-testid="tab-settings"]');
+
+  // Should show unpaired state since we cleared storage
+  const scanBtn = page.locator('[data-testid="scan-code-button"]');
+  await expect(scanBtn).toBeVisible({ timeout: 10000 });
+  await scanBtn.click();
+
+  // Toggle manual entry
+  const manualToggle = page.locator('[data-testid="manual-entry-toggle"]');
+  await expect(manualToggle).toBeVisible({ timeout: 5000 });
+  await manualToggle.click();
+
+  // Enter the sync code as plain text
+  const input = page.locator('[data-testid="manual-code-input"]');
+  await expect(input).toBeVisible({ timeout: 5000 });
+  await input.fill(syncCode);
+
+  // Click Connect
+  await page.click('[data-testid="manual-submit-button"]');
+
+  // Wait for pairing to complete
+  const doneBanner = page.locator('[data-testid="pairing-done"]');
+  await expect(doneBanner).toBeVisible({ timeout: 15000 });
+});
+
+Then(
+  "I should see the exercise {string} in the library",
+  async ({ page }, exerciseName: string) => {
+    await page.click('[data-testid="tab-library"]');
+    const exerciseCard = page.locator("div.card", { hasText: exerciseName });
+    await expect(exerciseCard).toBeVisible({ timeout: 10000 });
   },
 );
