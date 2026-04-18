@@ -369,97 +369,54 @@ impl<H: HttpClient> SyncClient<H> {
                 }
             }
 
-            // ── Case 4: both have data → push-then-merge ────────────────
-            (false, Some(_metadata)) => {
+            // ── Case 4: both have data → pull, merge locally, push merged ─
+            (false, Some(metadata)) => {
                 log::info!(
-                    "[Sync] Initial sync: both local and server have data → push-then-merge"
+                    "[Sync] Initial sync: both local and server have data → pull-merge-push"
                 );
 
-                // Step A: push local blob with our clock to force divergence
-                let mut tentative_clock = local_clock.clone();
-                tentative_clock.increment(&creds.device_id);
-
-                let push_req = PushRequest {
-                    vector_clock: tentative_clock.clone(),
-                    blob_b64: base64_encode(local_blob),
-                };
-
-                if let Err(e) = self
+                // Step A: pull the server blob BEFORE pushing, so we don't
+                // create a server-side conflict.
+                let server_blob = match self
                     .http
-                    .push(&creds.sync_id, &creds.sync_secret, &push_req)
+                    .pull_blob(&creds.sync_id, &creds.sync_secret)
                     .await
                 {
-                    log::warn!("[Sync] Initial sync push (for merge) failed: {}", e);
-                    return SyncOutcome::Offline;
-                }
-
-                *local_clock = tentative_clock;
-
-                // Step B: re-fetch metadata to get the server's updated state
-                let metadata = match self
-                    .http
-                    .get_metadata(&creds.sync_id, &creds.sync_secret)
-                    .await
-                {
-                    Ok(m) => m,
+                    Ok(b) => b,
                     Err(e) => {
-                        log::warn!("[Sync] Initial sync metadata re-fetch failed: {}", e);
+                        log::warn!("[Sync] Initial sync pull for merge failed: {}", e);
                         return SyncOutcome::Offline;
                     }
                 };
 
-                let server_clock = &metadata.vector_clock;
+                // Step B: merge locally
+                let merge_result = merge_fn(local_blob.to_vec(), server_blob).await;
+                local_clock.merge(&metadata.vector_clock);
+                local_clock.increment(&creds.device_id);
 
-                // Step C: compare clocks and handle accordingly
-                match local_clock.compare(server_clock) {
-                    ClockRelation::Equal | ClockRelation::AheadOf => {
-                        // Server accepted our push as-is; no merge needed.
-                        // This can happen if the server had already incorporated
-                        // our push into its clock.
-                        SyncOutcome::Pushed
-                    }
-                    ClockRelation::BehindOf | ClockRelation::Concurrent => {
-                        // Diverged or server ahead — pull and merge
-                        let server_blob = match self
-                            .http
-                            .pull_blob(&creds.sync_id, &creds.sync_secret)
-                            .await
-                        {
-                            Ok(b) => b,
-                            Err(e) => {
-                                log::warn!("[Sync] Initial sync pull for merge failed: {}", e);
-                                return SyncOutcome::Offline;
-                            }
-                        };
-
-                        let merge_result = merge_fn(local_blob.to_vec(), server_blob).await;
-                        local_clock.merge(server_clock);
-
-                        if !merge_result.conflicts.is_empty() {
-                            return SyncOutcome::ConflictDetected {
-                                merged: merge_result.merged,
-                                conflicts: merge_result.conflicts,
-                            };
-                        }
-
-                        // Push merged result back
-                        let merged_push = PushRequest {
-                            vector_clock: local_clock.clone(),
-                            blob_b64: base64_encode(&merge_result.merged),
-                        };
-
-                        if let Err(e) = self
-                            .http
-                            .push(&creds.sync_id, &creds.sync_secret, &merged_push)
-                            .await
-                        {
-                            log::warn!("[Sync] Initial sync push of merged result failed: {}", e);
-                            return SyncOutcome::Offline;
-                        }
-
-                        SyncOutcome::Merged(merge_result.merged)
-                    }
+                if !merge_result.conflicts.is_empty() {
+                    return SyncOutcome::ConflictDetected {
+                        merged: merge_result.merged,
+                        conflicts: merge_result.conflicts,
+                    };
                 }
+
+                // Step C: push the merged result to the server
+                let merged_push = PushRequest {
+                    vector_clock: local_clock.clone(),
+                    blob_b64: base64_encode(&merge_result.merged),
+                };
+
+                if let Err(e) = self
+                    .http
+                    .push(&creds.sync_id, &creds.sync_secret, &merged_push)
+                    .await
+                {
+                    log::warn!("[Sync] Initial sync push of merged result failed: {}", e);
+                    return SyncOutcome::Offline;
+                }
+
+                SyncOutcome::Merged(merge_result.merged)
             }
         }
     }
@@ -1088,8 +1045,8 @@ mod tests {
             other => panic!("Expected Merged, got {:?}", other),
         }
 
-        // Should have pushed twice: initial push + merged result push
-        assert_eq!(http.push_call_count(), 2);
+        // Should have pushed once: only the merged result
+        assert_eq!(http.push_call_count(), 1);
 
         // Clock should reflect both devices
         assert!(clock.get("device-a") >= 1);
@@ -1118,8 +1075,8 @@ mod tests {
             other => panic!("Expected ConflictDetected, got {:?}", other),
         }
 
-        // Only the initial push, no merged push (conflicts paused the cycle)
-        assert_eq!(http.push_call_count(), 1);
+        // No push at all — conflicts paused the cycle before pushing
+        assert_eq!(http.push_call_count(), 0);
     }
 
     // Initial sync: no credentials → Skipped
