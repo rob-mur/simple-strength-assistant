@@ -6,6 +6,7 @@ pub mod edit_set_modal;
 pub mod exercise_form;
 pub mod history_view;
 pub mod library_view;
+pub mod pairing;
 pub mod previous_sessions;
 pub mod rpe_slider;
 pub mod settings_view;

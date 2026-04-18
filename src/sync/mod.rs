@@ -6,7 +6,7 @@ pub mod vector_clock;
 pub mod http;
 
 pub use client::{ConflictRecord, MergeResult, SyncClient, SyncOutcome};
-pub use credentials::{SyncCredentials, load_clock, save_clock};
+pub use credentials::{SyncCredentials, delete_clock, load_clock, save_clock};
 pub use vector_clock::VectorClock;
 
 /// Trivial merge stub used until the real union-merge (#89) is implemented.
