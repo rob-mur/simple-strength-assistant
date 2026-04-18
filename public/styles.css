@@ -3028,6 +3028,9 @@ details.collapse summary::-webkit-details-marker {
     text-shadow: 0 1px rgb(0 0 0 / var(--glass-text-shadow-opacity, 5%));
   }
 }
+.artboard.phone {
+  width: 320px;
+}
 .badge-sm {
   height: 1rem;
   font-size: 0.75rem;
@@ -3521,14 +3524,14 @@ details.collapse summary::-webkit-details-marker {
 .h-6 {
   height: 1.5rem;
 }
-.h-64 {
-  height: 16rem;
-}
 .h-\[100dvh\] {
   height: 100dvh;
 }
 .h-auto {
   height: auto;
+}
+.h-screen {
+  height: 100vh;
 }
 .max-h-\[90dvh\] {
   max-height: 90dvh;
@@ -3556,9 +3559,6 @@ details.collapse summary::-webkit-details-marker {
 }
 .w-6 {
   width: 1.5rem;
-}
-.w-64 {
-  width: 16rem;
 }
 .w-full {
   width: 100%;
@@ -3703,9 +3703,6 @@ details.collapse summary::-webkit-details-marker {
 }
 .border-t-4 {
   border-top-width: 4px;
-}
-.border-dashed {
-  border-style: dashed;
 }
 .border-base-200 {
   --tw-border-opacity: 1;

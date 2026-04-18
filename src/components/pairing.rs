@@ -76,15 +76,29 @@ fn copy_to_clipboard(text: &str) {
     }
 }
 
+/// Read the app's origin URL (e.g. `https://app.example.com`).
+fn read_app_origin() -> String {
+    #[cfg(not(test))]
+    {
+        web_sys::window()
+            .and_then(|w| w.location().origin().ok())
+            .unwrap_or_else(|| "https://localhost".to_string())
+    }
+    #[cfg(test)]
+    {
+        "https://localhost".to_string()
+    }
+}
+
 /// Component that displays the QR code for the initiating device.
 ///
 /// Shows the sync_id encoded in a QR code along with a warning that
 /// the code is equivalent to a password.
 #[component]
 pub fn QrCodeDisplay(sync_id: String, backend_url: String) -> Element {
-    let payload = QrPayload::new(sync_id.clone(), backend_url);
-    let payload_json = payload.to_json().unwrap_or_default();
-    let svg_result = generate_qr_svg(&payload_json);
+    // Encode a deeplink URL so native phone QR scanners open the app directly.
+    let deeplink = format!("{}/join/{}", read_app_origin(), sync_id);
+    let svg_result = generate_qr_svg(&deeplink);
 
     rsx! {
         div {
@@ -142,74 +156,48 @@ pub fn QrCodeDisplay(sync_id: String, backend_url: String) -> Element {
     }
 }
 
-/// Component for the QR scanner (joining device).
+/// Component for joining sync from another device.
 ///
-/// Accepts either a QR code scan or a plain sync code pasted manually.
+/// Users either scan the QR with their phone's native scanner (which opens a
+/// deeplink) or paste the sync code manually here.
 #[component]
 pub fn QrScanner(on_scan: EventHandler<String>) -> Element {
-    let mut scan_result = use_signal(|| Option::<String>::None);
     let mut manual_input = use_signal(String::new);
-    let mut show_manual = use_signal(|| false);
 
     rsx! {
         div {
             class: "flex flex-col items-center gap-4",
             "data-testid": "qr-scanner",
 
-            if scan_result().is_some() {
-                div {
-                    class: "alert alert-success",
-                    "Scanned successfully"
-                }
-            }
-
-            // Camera-based scanning placeholder — the actual camera access
-            // requires JS interop which we wire up via a simple paste/input
-            // fallback for now, since camera APIs need user gesture + HTTPS.
             div {
-                class: "w-64 h-64 bg-base-300 rounded-lg flex items-center justify-center border-2 border-dashed border-base-content/20",
-                "data-testid": "camera-viewfinder",
+                class: "form-control w-full max-w-xs",
+                "data-testid": "manual-entry-form",
                 p {
-                    class: "text-center text-sm opacity-60 px-4",
-                    "Camera scanning requires HTTPS. Use manual entry below."
+                    class: "text-sm text-base-content/60 mb-2",
+                    "Scan the QR code with your phone's camera to open the app automatically, or paste the sync code below."
                 }
-            }
-
-            button {
-                class: "btn btn-outline btn-sm",
-                "data-testid": "manual-entry-toggle",
-                onclick: move |_| show_manual.set(!show_manual()),
-                if show_manual() { "Hide manual entry" } else { "Enter code manually" }
-            }
-
-            if show_manual() {
-                div {
-                    class: "form-control w-full max-w-xs",
-                    "data-testid": "manual-entry-form",
-                    label {
-                        class: "label",
-                        span { class: "label-text", "Paste the sync code from your other device:" }
-                    }
-                    input {
-                        r#type: "text",
-                        class: "input input-bordered w-full font-mono text-sm",
-                        "data-testid": "manual-code-input",
-                        placeholder: "e.g. a1b2c3d4-e5f6-...",
-                        value: "{manual_input}",
-                        oninput: move |evt| manual_input.set(evt.value())
-                    }
-                    button {
-                        class: "btn btn-primary btn-sm mt-2",
-                        "data-testid": "manual-submit-button",
-                        onclick: move |_| {
-                            let input = manual_input().trim().to_string();
-                            if !input.is_empty() {
-                                scan_result.set(Some(input.clone()));
-                                on_scan.call(input);
-                            }
-                        },
-                        "Connect"
-                    }
+                label {
+                    class: "label",
+                    span { class: "label-text", "Sync code" }
+                }
+                input {
+                    r#type: "text",
+                    class: "input input-bordered w-full font-mono text-sm",
+                    "data-testid": "manual-code-input",
+                    placeholder: "e.g. a1b2c3d4-e5f6-...",
+                    value: "{manual_input}",
+                    oninput: move |evt| manual_input.set(evt.value())
+                }
+                button {
+                    class: "btn btn-primary btn-sm mt-2",
+                    "data-testid": "manual-submit-button",
+                    onclick: move |_| {
+                        let input = manual_input().trim().to_string();
+                        if !input.is_empty() {
+                            on_scan.call(input);
+                        }
+                    },
+                    "Connect"
                 }
             }
         }

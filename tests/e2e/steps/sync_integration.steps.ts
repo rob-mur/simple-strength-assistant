@@ -293,16 +293,11 @@ When("I join sync with the copied sync code", async ({ page }) => {
   await page.click('[data-testid="tab-settings"]');
 
   // Should show unpaired state since we cleared storage
-  const scanBtn = page.locator('[data-testid="scan-code-button"]');
-  await expect(scanBtn).toBeVisible({ timeout: 10000 });
-  await scanBtn.click();
+  const joinBtn = page.locator('[data-testid="scan-code-button"]');
+  await expect(joinBtn).toBeVisible({ timeout: 10000 });
+  await joinBtn.click();
 
-  // Toggle manual entry
-  const manualToggle = page.locator('[data-testid="manual-entry-toggle"]');
-  await expect(manualToggle).toBeVisible({ timeout: 5000 });
-  await manualToggle.click();
-
-  // Enter the sync code as plain text
+  // Manual entry is shown directly (no toggle needed)
   const input = page.locator('[data-testid="manual-code-input"]');
   await expect(input).toBeVisible({ timeout: 5000 });
   await input.fill(syncCode);

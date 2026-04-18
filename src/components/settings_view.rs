@@ -124,7 +124,7 @@ pub fn SettingsView(state: WorkoutState) -> Element {
                                 "data-testid": "qr-display-section",
                                 p {
                                     class: "text-sm text-base-content/60 mb-4",
-                                    "Scan this code on your other device to sync workout data."
+                                    "Scan this code with your other device's camera to sync workout data."
                                 }
                                 QrCodeDisplay {
                                     sync_id: creds.sync_id.clone(),
@@ -190,7 +190,7 @@ pub fn SettingsView(state: WorkoutState) -> Element {
                                         onclick: move |_| {
                                             pairing_step.set(PairingStep::Scanning);
                                         },
-                                        "Scan a code"
+                                        "Join with a code"
                                     }
                                 }
                             }
@@ -206,13 +206,23 @@ pub fn SettingsView(state: WorkoutState) -> Element {
                                 }
                                 QrScanner {
                                     on_scan: move |input: String| {
-                                        // Accept either a plain sync_id or a JSON payload
-                                        let sync_id = match serde_json::from_str::<serde_json::Value>(&input) {
-                                            Ok(val) => val.get("sync_id")
+                                        // Accept a plain sync_id, a /join/ deeplink URL, or JSON
+                                        let input = input.trim().to_string();
+                                        let sync_id = if input.contains("/join/") {
+                                            // Extract sync_id from deeplink URL
+                                            input
+                                                .rsplit("/join/")
+                                                .next()
+                                                .unwrap_or(&input)
+                                                .trim_end_matches('/')
+                                                .to_string()
+                                        } else if let Ok(val) = serde_json::from_str::<serde_json::Value>(&input) {
+                                            val.get("sync_id")
                                                 .and_then(|v| v.as_str())
                                                 .unwrap_or(&input)
-                                                .to_string(),
-                                            Err(_) => input,
+                                                .to_string()
+                                        } else {
+                                            input
                                         };
 
                                         let sync_id = sync_id.trim().to_string();
