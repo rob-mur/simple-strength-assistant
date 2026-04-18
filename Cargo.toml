@@ -50,7 +50,6 @@ tracing = "0.1"
 async-trait = "0.1"
 uuid = { version = "1", features = ["v4", "js"] }
 base64 = "0.22"
-qrcode = "0.14"
 
 [dev-dependencies]
 wasm-bindgen-test = "0.3"

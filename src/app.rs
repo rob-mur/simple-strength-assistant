@@ -98,8 +98,6 @@ pub enum Route {
     #[route("/settings")]
     SettingsTab,
     #[end_layout]
-    #[route("/join/:sync_id")]
-    JoinSync { sync_id: String },
     #[route("/:..path")]
     NotFound { path: Vec<String> },
 }
@@ -394,40 +392,6 @@ fn LibraryExercise(exercise_id: i64) -> Element {
                 state: workout_state,
                 exercise_id: Some(exercise_id)
             }
-        }
-    }
-}
-
-/// Deeplink handler for `/join/:sync_id`.
-///
-/// When a user scans a QR code with their phone's native camera, the URL
-/// opens the app at this route. It saves the sync credentials, triggers
-/// an initial sync, and redirects to the settings tab.
-#[component]
-fn JoinSync(sync_id: String) -> Element {
-    let nav = use_navigator();
-
-    use_effect(move || {
-        let sync_id = sync_id.clone();
-        spawn(async move {
-            let creds = crate::sync::SyncCredentials::from_sync_id(sync_id);
-            if creds.is_valid() {
-                #[cfg(not(test))]
-                {
-                    if let Err(e) = creds.save() {
-                        log::warn!("[Join] Failed to save credentials: {}", e);
-                    }
-                }
-                log::info!("[Join] Credentials saved via deeplink, redirecting to settings");
-            }
-            nav.replace(Route::SettingsTab);
-        });
-    });
-
-    rsx! {
-        div {
-            class: "flex items-center justify-center h-screen",
-            div { class: "loading loading-spinner loading-lg text-primary" }
         }
     }
 }
