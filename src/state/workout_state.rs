@@ -699,9 +699,8 @@ impl WorkoutStateManager {
     /// (i.e. the pairing flow has not been run yet).
     #[cfg(not(test))]
     pub async fn trigger_background_sync(state: &WorkoutState) {
-        use crate::sync::client::SyncClient;
+        use crate::sync::client::{MergeResult, SyncClient};
         use crate::sync::http::wasm::FetchClient;
-        use crate::sync::stub_merge;
 
         // Load existing credentials. If none are saved, sync is not configured
         // and we skip silently — the user must explicitly set up sync first.
@@ -738,6 +737,38 @@ impl WorkoutStateManager {
 
         let client = SyncClient::new(FetchClient);
 
+        // Real merge function: delegates to the JS-backed Database::merge_databases.
+        // Converts from db::MergeResult to sync::MergeResult.
+        let real_merge =
+            |local: Vec<u8>,
+             server: Vec<u8>|
+             -> std::pin::Pin<Box<dyn std::future::Future<Output = MergeResult>>> {
+                Box::pin(async move {
+                    match Database::merge_databases(local, server).await {
+                        Ok(db_result) => MergeResult {
+                            merged: db_result.merged,
+                            conflicts: db_result
+                                .conflicts
+                                .into_iter()
+                                .map(|c| crate::sync::ConflictRecord {
+                                    table: c.table_name,
+                                    row_id: c.uuid,
+                                    version_a: c.version_a,
+                                    version_b: c.version_b,
+                                })
+                                .collect(),
+                        },
+                        Err(e) => {
+                            log::warn!("[Sync] Merge failed: {} — falling back to local", e);
+                            MergeResult {
+                                merged: vec![],
+                                conflicts: vec![],
+                            }
+                        }
+                    }
+                })
+            };
+
         // If the local clock is empty this is a first-ever sync.  Use the
         // initial-sync path which inspects the server state first so that
         // pre-existing local data is never silently overwritten (#149).
@@ -761,12 +792,12 @@ impl WorkoutStateManager {
                     &local_blob,
                     !local_has_data,
                     &mut clock,
-                    &stub_merge,
+                    &real_merge,
                 )
                 .await
         } else {
             client
-                .run(credentials.as_ref(), &local_blob, &mut clock, &stub_merge)
+                .run(credentials.as_ref(), &local_blob, &mut clock, &real_merge)
                 .await
         };
 

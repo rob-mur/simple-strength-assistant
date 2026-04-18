@@ -9,13 +9,16 @@ pub use client::{ConflictRecord, MergeResult, SyncClient, SyncOutcome};
 pub use credentials::{SyncCredentials, delete_clock, load_clock, save_clock};
 pub use vector_clock::VectorClock;
 
-/// Trivial merge stub used until the real union-merge (#89) is implemented.
-/// It returns the local blob unchanged with no conflicts.
-/// This means diverged-clock cases will push the local blob back as the
-/// "merged" result — a safe fallback until the full merge lands.
-pub fn stub_merge(local: &[u8], _server: &[u8]) -> MergeResult {
-    MergeResult {
-        merged: local.to_vec(),
-        conflicts: vec![],
-    }
+/// Trivial merge stub for tests. Returns the local blob unchanged.
+#[cfg(test)]
+pub fn stub_merge(
+    local: Vec<u8>,
+    _server: Vec<u8>,
+) -> std::pin::Pin<Box<dyn std::future::Future<Output = MergeResult>>> {
+    Box::pin(async move {
+        MergeResult {
+            merged: local,
+            conflicts: vec![],
+        }
+    })
 }

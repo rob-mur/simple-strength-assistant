@@ -483,6 +483,14 @@ pub fn App() -> Element {
                     log::debug!("[Sync] App ready — starting background sync");
                     WorkoutStateManager::trigger_background_sync(&workout_state).await;
                     log::debug!("[Sync] Background sync complete");
+
+                    // Periodic sync every 30 seconds while the app is open.
+                    loop {
+                        gloo_timers::future::sleep(std::time::Duration::from_secs(30)).await;
+                        log::debug!("[Sync] Periodic sync tick");
+                        WorkoutStateManager::trigger_background_sync(&workout_state).await;
+                        log::debug!("[Sync] Periodic sync complete");
+                    }
                 });
             }
         });

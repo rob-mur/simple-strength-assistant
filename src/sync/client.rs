@@ -1,6 +1,12 @@
 use super::credentials::SyncCredentials;
 use super::vector_clock::{ClockRelation, VectorClock};
 use serde::{Deserialize, Serialize};
+use std::future::Future;
+use std::pin::Pin;
+
+/// Async merge function signature. Takes (local_blob, server_blob) and returns
+/// a merged result. This is async because the real SQLite merge requires JS FFI.
+pub type MergeFn<'a> = &'a dyn Fn(Vec<u8>, Vec<u8>) -> Pin<Box<dyn Future<Output = MergeResult>>>;
 
 // ── Types returned / sent by the server ──────────────────────────────────────
 
@@ -116,7 +122,7 @@ impl<H: HttpClient> SyncClient<H> {
         credentials: Option<&SyncCredentials>,
         local_blob: &[u8],
         local_clock: &mut VectorClock,
-        merge_fn: &dyn Fn(&[u8], &[u8]) -> MergeResult,
+        merge_fn: MergeFn<'_>,
     ) -> SyncOutcome {
         let Some(creds) = credentials else {
             return SyncOutcome::Skipped;
@@ -202,7 +208,7 @@ impl<H: HttpClient> SyncClient<H> {
                     }
                 };
 
-                let merge_result = merge_fn(local_blob, &server_blob);
+                let merge_result = merge_fn(local_blob.to_vec(), server_blob).await;
                 local_clock.merge(server_clock);
 
                 if !merge_result.conflicts.is_empty() {
@@ -255,7 +261,7 @@ impl<H: HttpClient> SyncClient<H> {
         local_blob: &[u8],
         local_blob_is_empty: bool,
         local_clock: &mut VectorClock,
-        merge_fn: &dyn Fn(&[u8], &[u8]) -> MergeResult,
+        merge_fn: MergeFn<'_>,
     ) -> SyncOutcome {
         let Some(creds) = credentials else {
             return SyncOutcome::Skipped;
@@ -395,7 +401,7 @@ impl<H: HttpClient> SyncClient<H> {
                             }
                         };
 
-                        let merge_result = merge_fn(local_blob, &server_blob);
+                        let merge_result = merge_fn(local_blob.to_vec(), server_blob).await;
                         local_clock.merge(server_clock);
 
                         if !merge_result.conflicts.is_empty() {
@@ -586,23 +592,27 @@ mod tests {
         }
     }
 
-    fn no_op_merge(a: &[u8], _b: &[u8]) -> MergeResult {
-        MergeResult {
-            merged: a.to_vec(),
-            conflicts: vec![],
-        }
+    fn no_op_merge(a: Vec<u8>, _b: Vec<u8>) -> Pin<Box<dyn Future<Output = MergeResult>>> {
+        Box::pin(async move {
+            MergeResult {
+                merged: a,
+                conflicts: vec![],
+            }
+        })
     }
 
-    fn conflict_merge(a: &[u8], _b: &[u8]) -> MergeResult {
-        MergeResult {
-            merged: a.to_vec(),
-            conflicts: vec![ConflictRecord {
-                table: "exercises".into(),
-                row_id: "row-1".into(),
-                version_a: r#"{"uuid":"row-1","name":"Bench Press","updated_at":"2025-01-01T00:00:00Z"}"#.into(),
-                version_b: r#"{"uuid":"row-1","name":"Flat Bench Press","updated_at":"2025-01-01T00:00:00Z"}"#.into(),
-            }],
-        }
+    fn conflict_merge(a: Vec<u8>, _b: Vec<u8>) -> Pin<Box<dyn Future<Output = MergeResult>>> {
+        Box::pin(async move {
+            MergeResult {
+                merged: a,
+                conflicts: vec![ConflictRecord {
+                    table: "exercises".into(),
+                    row_id: "row-1".into(),
+                    version_a: r#"{"uuid":"row-1","name":"Bench Press","updated_at":"2025-01-01T00:00:00Z"}"#.into(),
+                    version_b: r#"{"uuid":"row-1","name":"Flat Bench Press","updated_at":"2025-01-01T00:00:00Z"}"#.into(),
+                }],
+            }
+        })
     }
 
     // ── QA checklist behaviour 1 ─────────────────────────────────────────
@@ -973,13 +983,15 @@ mod tests {
 
         // Use a merge function that concatenates both blobs to prove both
         // are passed into the merge
-        fn union_merge(a: &[u8], b: &[u8]) -> MergeResult {
-            let mut merged = a.to_vec();
-            merged.extend_from_slice(b);
-            MergeResult {
-                merged,
-                conflicts: vec![],
-            }
+        fn union_merge(a: Vec<u8>, b: Vec<u8>) -> Pin<Box<dyn Future<Output = MergeResult>>> {
+            Box::pin(async move {
+                let mut merged = a;
+                merged.extend_from_slice(&b);
+                MergeResult {
+                    merged,
+                    conflicts: vec![],
+                }
+            })
         }
 
         let outcome = client
