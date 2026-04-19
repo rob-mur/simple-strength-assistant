@@ -1,4 +1,4 @@
-# Stage 1: Build TypeScript and install production dependencies
+# Stage 1: Install deps and build TypeScript
 FROM node:20 AS build
 WORKDIR /app
 COPY package.json package-lock.json ./
@@ -6,15 +6,16 @@ RUN npm ci
 COPY tsconfig.json tsconfig.build.json ./
 COPY src ./src
 RUN npx tsc -p tsconfig.build.json
+# Prune devDependencies so only production deps remain for the runtime image
+RUN npm prune --production
 
 # Stage 2: Production image (only production deps + compiled JS)
 FROM node:20-slim
 WORKDIR /app
 
-COPY package.json package-lock.json ./
-RUN npm ci --production
-
+COPY --from=build /app/node_modules ./node_modules
 COPY --from=build /app/dist ./dist
+COPY package.json ./
 
 ENV DATA_DIR=/data
 ENV SCHEMA_DIR=/schemas
