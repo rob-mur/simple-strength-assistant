@@ -54,6 +54,19 @@ describe("vlcn.io sync server", () => {
     expect(res.status).toBe(404);
   });
 
+  test("CORS preflight returns 204 with correct headers", async () => {
+    const res = await fetch(`${baseUrl}/sync/test-slot`, {
+      method: "OPTIONS",
+    });
+    expect(res.status).toBe(204);
+    expect(res.headers.get("access-control-allow-origin")).toBe("*");
+  });
+
+  test("HTTP responses include CORS headers", async () => {
+    const res = await fetch(`${baseUrl}/sync/test-slot`);
+    expect(res.headers.get("access-control-allow-origin")).toBe("*");
+  });
+
   test("WebSocket connection to /sync/:sync_id opens and closes cleanly", async () => {
     const wsUrl = `ws://localhost:${port}/sync/test-room`;
 

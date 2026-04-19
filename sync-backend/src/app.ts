@@ -1,5 +1,16 @@
-import { createServer, type Server } from "node:http";
+import {
+  createServer,
+  type IncomingMessage,
+  type ServerResponse,
+  type Server,
+} from "node:http";
 import { attachWebsocketServer, type Config } from "@vlcn.io/ws-server";
+
+function setCorsHeaders(res: ServerResponse): void {
+  res.setHeader("Access-Control-Allow-Origin", "*");
+  res.setHeader("Access-Control-Allow-Methods", "GET, POST, OPTIONS");
+  res.setHeader("Access-Control-Allow-Headers", "Content-Type");
+}
 
 /**
  * Create and configure the vlcn.io sync server.
@@ -9,7 +20,16 @@ import { attachWebsocketServer, type Config } from "@vlcn.io/ws-server";
  * providing per-room isolation with changesets persisted to `dataDir`.
  */
 export function createApp(dataDir: string, schemaDir: string): Server {
-  const server = createServer((_req, res) => {
+  const server = createServer((req: IncomingMessage, res: ServerResponse) => {
+    setCorsHeaders(res);
+
+    // Handle CORS preflight requests.
+    if (req.method === "OPTIONS") {
+      res.writeHead(204);
+      res.end();
+      return;
+    }
+
     // No HTTP endpoints — only WebSocket upgrades are served.
     res.writeHead(404);
     res.end("Not found");
