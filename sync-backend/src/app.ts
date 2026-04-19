@@ -50,5 +50,10 @@ export function createApp(dataDir: string, schemaDir: string): Server {
 
   attachWebsocketServer(server, config);
 
+  server.on("error", (err) => {
+    console.error("Server error:", err);
+    process.exit(1);
+  });
+
   return server;
 }
