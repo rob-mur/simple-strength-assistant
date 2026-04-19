@@ -8,7 +8,7 @@
 
 // Vendored @vlcn.io/crsqlite-wasm@0.16.0 — no external runtime dependency.
 // The .mjs bundle and .wasm binary live in public/vendor/crsqlite/.
-const CRSQLITE_WASM_URL = "vendor/crsqlite/crsqlite-wasm.mjs";
+const CRSQLITE_WASM_URL = "./vendor/crsqlite/crsqlite-wasm.mjs";
 const DB_NAME = "workout-data";
 
 // Tables that must be marked as CRRs for CRDT-based replication.
