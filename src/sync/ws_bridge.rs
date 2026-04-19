@@ -1,20 +1,20 @@
-/// WebSocket-based CRR changeset sync bridge.
-///
-/// This module provides the Rust-to-JS FFI layer for the new vlcn.io/crsqlite
-/// WebSocket sync protocol.  It imports functions from `sync-module.js` via
-/// `wasm_bindgen` and exposes a high-level `run_ws_sync()` function that
-/// `trigger_background_sync()` calls.
-///
-/// The JS module handles:
-///   - Opening a WebSocket connection to the sync server
-///   - Extracting local changesets via `crsql_changes()`
-///   - Sending changesets and applying received ones
-///   - Closing the connection after the exchange
-///
-/// This Rust module handles:
-///   - Calling the JS sync function with credentials
-///   - Interpreting the result string into a `WsSyncOutcome`
-///   - Logging and error handling
+// WebSocket-based CRR changeset sync bridge.
+//
+// This module provides the Rust-to-JS FFI layer for the new vlcn.io/crsqlite
+// WebSocket sync protocol.  It imports functions from `sync-module.js` via
+// `wasm_bindgen` and exposes a high-level `run_ws_sync()` function that
+// `trigger_background_sync()` calls.
+//
+// The JS module handles:
+//   - Opening a WebSocket connection to the sync server
+//   - Extracting local changesets via `crsql_changes()`
+//   - Sending changesets and applying received ones
+//   - Closing the connection after the exchange
+//
+// This Rust module handles:
+//   - Calling the JS sync function with credentials
+//   - Interpreting the result string into a `WsSyncOutcome`
+//   - Logging and error handling
 
 // ── JS FFI bindings (WASM-only) ─────────────────────────────────────────────
 
