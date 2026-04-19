@@ -1,8 +1,5 @@
 import { createServer, type Server } from "node:http";
-import {
-  attachWebsocketServer,
-  type Config,
-} from "@vlcn.io/ws-server";
+import { attachWebsocketServer, type Config } from "@vlcn.io/ws-server";
 
 /**
  * Create and configure the vlcn.io sync server.
