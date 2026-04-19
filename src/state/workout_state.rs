@@ -710,11 +710,8 @@ impl WorkoutStateManager {
 
         state.set_sync_status(SyncStatus::Syncing);
 
-        let outcome = ws_bridge::run_ws_sync(
-            &credentials.sync_id,
-            &credentials.sync_secret,
-        )
-        .await;
+        let outcome =
+            ws_bridge::run_ws_sync(&credentials.sync_id, &credentials.sync_secret).await;
 
         match outcome {
             crate::sync::WsSyncOutcome::Synced => {
@@ -733,9 +730,7 @@ impl WorkoutStateManager {
             }
             crate::sync::WsSyncOutcome::Offline => {
                 log::warn!("[Sync] Server unreachable — continuing offline");
-                state.set_sync_status(SyncStatus::Error(
-                    "Server unreachable".to_string(),
-                ));
+                state.set_sync_status(SyncStatus::Error("Server unreachable".to_string()));
             }
             crate::sync::WsSyncOutcome::Error(msg) => {
                 log::warn!("[Sync] Sync error: {}", msg);

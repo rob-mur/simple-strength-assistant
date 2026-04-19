@@ -76,7 +76,9 @@ pub async fn run_ws_sync(sync_id: &str, sync_secret: &str) -> WsSyncOutcome {
 
     let result = ffi::run_sync_cycle_js(sync_id, sync_secret, SYNC_TIMEOUT_MS).await;
 
-    let outcome_str = result.as_string().unwrap_or_else(|| "error:unknown".to_string());
+    let outcome_str = result
+        .as_string()
+        .unwrap_or_else(|| "error:unknown".to_string());
 
     let outcome = parse_outcome(&outcome_str);
 
@@ -105,9 +107,7 @@ pub fn parse_outcome(s: &str) -> WsSyncOutcome {
         "synced" => WsSyncOutcome::Synced,
         "no_changes" => WsSyncOutcome::NoChanges,
         "offline" => WsSyncOutcome::Offline,
-        other if other.starts_with("error:") => {
-            WsSyncOutcome::Error(other[6..].to_string())
-        }
+        other if other.starts_with("error:") => WsSyncOutcome::Error(other[6..].to_string()),
         other => WsSyncOutcome::Error(format!("unexpected outcome: {}", other)),
     }
 }
