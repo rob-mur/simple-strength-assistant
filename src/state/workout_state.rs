@@ -1,10 +1,10 @@
 use crate::models::{CompletedSet, ExerciseMetadata, SetType, Settings};
 use crate::state::{Database, Storage, error::WorkoutError};
 use crate::sync::ConflictRecord;
-use crate::sync::SyncOutcome;
-use crate::sync::VectorClock;
 #[cfg(not(test))]
 use crate::sync::SyncCredentials;
+use crate::sync::SyncOutcome;
+use crate::sync::VectorClock;
 use dioxus::prelude::*;
 use wasm_bindgen::JsValue;
 
