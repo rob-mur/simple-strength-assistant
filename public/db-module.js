@@ -105,7 +105,9 @@ export async function executeQuery(sql, params) {
     const trimmed = sql.trimStart().toUpperCase();
 
     // Determine whether this statement returns rows.
+    const hasReturning = /\bRETURNING\b/i.test(sql);
     const returnsRows =
+      hasReturning ||
       trimmed.startsWith("SELECT") ||
       trimmed.startsWith("PRAGMA") ||
       trimmed.startsWith("WITH") ||
