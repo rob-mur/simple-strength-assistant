@@ -3,17 +3,18 @@
   "type": "module",
   "private": true,
   "scripts": {
-    "start": "node --import tsx src/index.ts",
+    "build": "tsc -p tsconfig.build.json",
+    "start": "node dist/index.js",
+    "dev": "node --import tsx src/index.ts",
     "test": "bun test"
   },
   "devDependencies": {
-    "@types/bun": "latest"
-  },
-  "peerDependencies": {
+    "@types/bun": "latest",
+    "@types/node": "^22",
+    "tsx": "^4",
     "typescript": "^5"
   },
   "dependencies": {
-    "@vlcn.io/ws-server": "^0.2.2",
-    "tsx": "^4"
+    "@vlcn.io/ws-server": "^0.2.2"
   }
 }

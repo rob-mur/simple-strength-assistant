@@ -60,11 +60,17 @@ describe("vlcn.io sync server", () => {
     });
     expect(res.status).toBe(204);
     expect(res.headers.get("access-control-allow-origin")).toBe("*");
+    expect(res.headers.get("access-control-allow-methods")).toBe(
+      "GET, POST, OPTIONS",
+    );
   });
 
   test("HTTP responses include CORS headers", async () => {
     const res = await fetch(`${baseUrl}/sync/test-slot`);
     expect(res.headers.get("access-control-allow-origin")).toBe("*");
+    expect(res.headers.get("access-control-allow-methods")).toBe(
+      "GET, POST, OPTIONS",
+    );
   });
 
   test("WebSocket connection to /sync/:sync_id opens and closes cleanly", async () => {

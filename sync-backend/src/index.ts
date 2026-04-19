@@ -1,4 +1,4 @@
-import { createApp } from "./app.ts";
+import { createApp } from "./app.js";
 
 const dataDir = process.env["DATA_DIR"] ?? "/data";
 const schemaDir = process.env["SCHEMA_DIR"] ?? "/schemas";
@@ -8,6 +8,6 @@ const server = createApp(dataDir, schemaDir);
 
 server.listen(port, () => {
   console.log(
-    `vlcn.io sync server listening on port ${port}, DATA_DIR=${dataDir}`,
+    `vlcn.io sync server listening on port ${port}, DATA_DIR=${dataDir}, SCHEMA_DIR=${schemaDir}`,
   );
 });

@@ -38,7 +38,7 @@ export function createApp(dataDir: string, schemaDir: string): Server {
   const config: Config = {
     dbFolder: dataDir,
     schemaFolder: schemaDir,
-    pathPattern: /\/sync\/[a-zA-Z0-9_-]+/,
+    pathPattern: /^\/sync\/[a-zA-Z0-9_-]+$/,
   };
 
   attachWebsocketServer(server, config);
