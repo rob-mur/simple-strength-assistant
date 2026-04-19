@@ -13,8 +13,8 @@ const DB_NAME = "workout-data";
 // Tables that must be marked as CRRs for CRDT-based replication.
 const CRR_TABLES = ["exercises", "completed_sets", "settings"];
 
-// Migration sentinel: stored in localStorage after a successful OPFS→crsqlite
-// migration so it never runs twice.
+// Migration sentinel key — checked in both localStorage (legacy) and in the DB
+// itself (new: stored atomically with the migrated data).
 const MIGRATION_KEY = "crsqlite_migration_done";
 
 let db = null;
@@ -58,14 +58,20 @@ export async function initDatabase(fileData) {
     // ── One-time migration from OPFS (sql.js) data ─────────────────────────
     // If the caller provided file data AND we haven't migrated yet, read the
     // old database with sql.js and replay its rows into the new crsqlite DB.
+    // The sentinel is stored inside the DB itself (in a _meta table) so it is
+    // committed atomically with the migrated data.  We also check localStorage
+    // for backwards compat with any user who already migrated before this fix.
+    const alreadyMigrated =
+      localStorage.getItem(MIGRATION_KEY) ||
+      (await isMigrationDone());
+
     const needsMigration =
-      fileData &&
-      fileData.length > 0 &&
-      !localStorage.getItem(MIGRATION_KEY);
+      fileData && fileData.length > 0 && !alreadyMigrated;
 
     if (needsMigration) {
       console.log("[DB] Migrating existing OPFS data into crsqlite...");
       await migrateFromSqlJs(new Uint8Array(fileData));
+      // Also set localStorage so the check short-circuits on next launch.
       localStorage.setItem(MIGRATION_KEY, Date.now().toString());
       console.log("[DB] Migration complete.");
     }
@@ -107,22 +113,16 @@ export async function executeQuery(sql, params) {
     // Determine whether this statement returns rows.
     const hasReturning = /\bRETURNING\b/i.test(sql);
 
-    // A WITH (CTE) clause only returns rows when the final statement is a
-    // SELECT.  CTEs that end with INSERT/UPDATE/DELETE are mutations and must
-    // go through the exec path.
-    let withIsSelect = false;
-    if (trimmed.startsWith("WITH")) {
-      // Strip everything up to the last closing paren of the CTE list and
-      // check whether the remainder begins with SELECT.
-      const afterCte = sql.replace(/^WITH[\s\S]+?\)\s*/i, "");
-      withIsSelect = afterCte.trimStart().toUpperCase().startsWith("SELECT");
-    }
-
+    // A WITH (CTE) clause returns rows only when the final statement is a
+    // SELECT.  Parsing CTEs reliably (nested parens, subqueries) is hard, so
+    // we use a conservative approach: treat WITH as a mutation unless
+    // RETURNING is present.  All CTE-SELECT queries in this app can be
+    // rewritten without WITH if needed; misrouting a mutation through execO
+    // would cause silent data loss.
     const returnsRows =
       hasReturning ||
       trimmed.startsWith("SELECT") ||
       trimmed.startsWith("PRAGMA") ||
-      withIsSelect ||
       trimmed.startsWith("EXPLAIN");
 
     if (returnsRows) {
@@ -194,6 +194,16 @@ export async function importDatabase(fileData) {
 
     db = await sqlite.open(DB_NAME);
 
+    // Clear all user-data tables so the import fully replaces existing data
+    // rather than silently dropping rows with conflicting primary keys.
+    for (const table of CRR_TABLES) {
+      try {
+        await db.exec(`DELETE FROM "${table}"`);
+      } catch {
+        // Table may not exist yet — that's fine, migration will create it.
+      }
+    }
+
     console.log("[DB] Importing user-supplied database...");
     await migrateFromSqlJs(new Uint8Array(fileData));
     console.log("[DB] Import complete.");
@@ -206,6 +216,40 @@ export async function importDatabase(fileData) {
     console.error("Failed to import database:", error);
     return false;
   }
+}
+
+// ── Migration sentinel helpers ────────────────────────────────────────────────
+
+/**
+ * Check whether the one-time OPFS migration has already been committed.
+ * The sentinel lives in a `_meta` key-value table inside the crsqlite DB so
+ * that it is written atomically with the migrated data.
+ */
+async function isMigrationDone() {
+  try {
+    const rows = await db.execO(
+      "SELECT value FROM _meta WHERE key = ?",
+      [MIGRATION_KEY],
+    );
+    return rows.length > 0;
+  } catch {
+    // Table doesn't exist yet — migration has never run.
+    return false;
+  }
+}
+
+/**
+ * Record the migration sentinel inside the current transaction.
+ * Must be called while a BEGIN…COMMIT is active.
+ */
+async function setMigrationDone() {
+  await db.exec(
+    "CREATE TABLE IF NOT EXISTS _meta (key TEXT PRIMARY KEY, value TEXT)",
+  );
+  await db.exec("INSERT OR REPLACE INTO _meta (key, value) VALUES (?, ?)", [
+    MIGRATION_KEY,
+    Date.now().toString(),
+  ]);
 }
 
 // ── Internal helpers ──────────────────────────────────────────────────────────
@@ -336,6 +380,10 @@ async function migrateFromSqlJs(fileData) {
       }
     }
     idxStmt.free();
+
+    // Store the migration sentinel inside the same transaction so it commits
+    // atomically with the migrated data.
+    await setMigrationDone();
 
     await db.exec("COMMIT");
   } catch (migrationError) {

@@ -4,7 +4,7 @@ use crate::sync::ConflictRecord;
 use crate::sync::SyncOutcome;
 use crate::sync::VectorClock;
 #[cfg(not(test))]
-use crate::sync::{SyncCredentials, save_clock};
+use crate::sync::SyncCredentials;
 use dioxus::prelude::*;
 use wasm_bindgen::JsValue;
 
@@ -690,9 +690,6 @@ impl WorkoutStateManager {
     /// (i.e. the pairing flow has not been run yet).
     #[cfg(not(test))]
     pub async fn trigger_background_sync(state: &WorkoutState) {
-        use crate::sync::client::{MergeResult, SyncClient};
-        use crate::sync::http::wasm::FetchClient;
-
         // Load existing credentials. If none are saved, sync is not configured
         // and we skip silently — the user must explicitly set up sync first.
         let Some(credentials) = SyncCredentials::load() else {
@@ -703,124 +700,25 @@ impl WorkoutStateManager {
             log::debug!("[Sync] Skipped — credentials failed validation");
             return;
         }
-        let credentials = Some(credentials);
 
-        let db = match state.database() {
-            Some(db) => db,
-            None => {
-                log::debug!("[Sync] Database not ready, skipping sync");
-                return;
-            }
-        };
-
-        // TODO(sync): Sync is effectively disabled. The empty blob and stub
-        // merge below mean that local data is never sent to the server and
-        // server data is never applied locally. This is intentional — the sync
-        // protocol must be reworked to exchange CRR changesets (via
-        // `crsql_changes()`) instead of whole-database blobs. Remove this
-        // stub once CRR changeset exchange is implemented.
-        let local_blob: Vec<u8> = vec![];
-
-        // Signal the UI that a sync cycle is in progress.
-        state.set_sync_status(SyncStatus::Syncing);
-
-        let mut clock = state.sync_clock();
-
-        let client = SyncClient::new(FetchClient);
-
-        // TODO(sync): Stub merge — always returns local unchanged, so server
-        // data is never merged. Replace with CRR changeset exchange.
-        let crr_merge =
-            |local: Vec<u8>,
-             _server: Vec<u8>|
-             -> std::pin::Pin<Box<dyn std::future::Future<Output = MergeResult>>> {
-                Box::pin(async move {
-                    MergeResult {
-                        merged: local,
-                        conflicts: vec![],
-                    }
-                })
-            };
-
-        // If the local clock is empty this is a first-ever sync.  Use the
-        // initial-sync path which inspects the server state first so that
-        // pre-existing local data is never silently overwritten (#149).
-        let outcome = if clock.is_empty() {
-            // Determine whether the local DB actually contains user data.
-            // An empty exercise list means there is nothing worth preserving.
-            let local_has_data = match db.get_exercises().await {
-                Ok(exercises) => !exercises.is_empty(),
-                Err(e) => {
-                    log::warn!(
-                        "[Sync] Could not query exercises for initial sync check: {}",
-                        e
-                    );
-                    // Conservative: assume data exists to avoid silent loss.
-                    true
-                }
-            };
-            client
-                .run_initial_sync(
-                    credentials.as_ref(),
-                    &local_blob,
-                    !local_has_data,
-                    &mut clock,
-                    &crr_merge,
-                )
-                .await
-        } else {
-            client
-                .run(credentials.as_ref(), &local_blob, &mut clock, &crr_merge)
-                .await
-        };
-
-        // Only persist the updated clock when the sync cycle actually reached
-        // the server.  Persisting after Offline would accumulate meaningless
-        // sequence numbers (the server never saw the increment).
-        let should_persist_clock = !matches!(outcome, SyncOutcome::Skipped | SyncOutcome::Offline);
-        if should_persist_clock {
-            state.set_sync_clock(clock.clone());
-            if let Err(e) = save_clock(&clock) {
-                log::warn!(
-                    "[Sync] Failed to persist vector clock to LocalStorage: {}",
-                    e
-                );
-            }
-        }
-
-        // Update the sync status indicator based on the outcome.
-        // Credentials were validated above, so Skipped here means "nothing to
-        // sync" (empty local + empty server), not "no credentials configured".
-        // Show UpToDate rather than reverting to Idle.
-        let status = match &outcome {
-            SyncOutcome::Skipped => SyncStatus::UpToDate,
-            other => Self::map_sync_outcome_to_status(other),
-        };
-        state.set_sync_status(status);
-
-        match outcome {
-            SyncOutcome::Skipped => {
-                log::debug!("[Sync] Skipped — nothing to sync (empty local + empty server)");
-            }
-            SyncOutcome::Offline => {
-                log::debug!("[Sync] Server unreachable, continuing offline");
-            }
-            SyncOutcome::Pushed => {
-                log::debug!("[Sync] Push complete");
-            }
-            SyncOutcome::Pulled(blob) => {
-                log::info!("[Sync] Fast-forward pull complete, reloading database");
-                Self::apply_synced_blob(state, &blob, "pull").await;
-            }
-            SyncOutcome::Merged(blob) => {
-                log::info!("[Sync] Merge complete, reloading database");
-                Self::apply_synced_blob(state, &blob, "merge").await;
-            }
-            SyncOutcome::ConflictDetected { merged, conflicts } => {
-                log::warn!("[Sync] Conflicts detected — user action required");
-                Self::set_conflict_state(state, conflicts, merged);
-            }
-        }
+        // Sync is disabled: the old blob-level protocol is incompatible with
+        // the new CRR-backed database.  Rather than silently running no-op
+        // network calls, we short-circuit here and surface the state to the
+        // user.  Remove this gate once CRR changeset exchange is implemented.
+        let _ = credentials; // validated above; will be used by CRR sync
+        log::info!(
+            "[Sync] Sync is temporarily disabled while the protocol is migrated to CRR changesets"
+        );
+        state.set_sync_status(SyncStatus::Error(
+            "Sync is temporarily unavailable — update in progress".to_string(),
+        ));
+        // TODO(sync): Once CRR changeset exchange is implemented, replace this
+        // early return with:
+        // 1. Extract local changesets via `crsql_changes()`
+        // 2. Send changesets to server via SyncClient
+        // 3. Apply server changesets locally
+        // 4. Update vector clock and sync status
+        // See git history for the previous blob-level sync implementation.
     }
 
     /// Shared helper for `Pulled` and `Merged` sync outcomes: initialise a new
@@ -829,7 +727,9 @@ impl WorkoutStateManager {
     /// With crsqlite-wasm, persistence is handled automatically via IndexedDB.
     /// On failure the existing in-memory database is left untouched so the
     /// session remains functional.
+    // TODO(sync): Re-enable when CRR changeset exchange is implemented.
     #[cfg(not(test))]
+    #[allow(dead_code)]
     async fn apply_synced_blob(state: &WorkoutState, blob: &[u8], label: &str) {
         // Rust-layer defence: reject empty blobs before handing them to the JS
         // layer.  An empty blob is never a valid SQLite database.
