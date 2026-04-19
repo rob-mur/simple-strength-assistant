@@ -710,8 +710,7 @@ impl WorkoutStateManager {
 
         state.set_sync_status(SyncStatus::Syncing);
 
-        let outcome =
-            ws_bridge::run_ws_sync(&credentials.sync_id, &credentials.sync_secret).await;
+        let outcome = ws_bridge::run_ws_sync(&credentials.sync_id, &credentials.sync_secret).await;
 
         match outcome {
             crate::sync::WsSyncOutcome::Synced => {
