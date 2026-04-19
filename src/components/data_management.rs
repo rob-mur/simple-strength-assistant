@@ -4,26 +4,72 @@ use dioxus::prelude::*;
 /// The SQLite magic number used to validate imported files.
 const SQLITE_MAGIC: &[u8] = b"SQLite format 3\0";
 
+/// Download filename for exported databases.
+const EXPORT_FILENAME: &str = "workout-data.sqlite";
+
 /// Returns `true` if `data` begins with the SQLite magic header.
 pub(crate) fn is_valid_sqlite(data: &[u8]) -> bool {
     data.len() >= SQLITE_MAGIC.len() && data.starts_with(SQLITE_MAGIC)
 }
 
-/// Panel with Import button for the workout database.
+/// Panel with Export and Import buttons for the workout database.
 ///
-/// - Import: presents a file picker, validates the file, calls `initDatabase()`,
+/// - Export: serialises the SQLite database and triggers a browser download.
+/// - Import: presents a file picker, validates the file, calls `importDatabase()`,
 ///   and persists via crsqlite-wasm's IndexedDB backend.
 #[component]
 pub fn DataManagementPanel(state: WorkoutState) -> Element {
     let mut import_error = use_signal(|| Option::<String>::None);
+    let mut is_exporting = use_signal(|| false);
     let mut is_importing = use_signal(|| false);
 
     rsx! {
         div {
             class: "flex gap-2 mt-4",
 
-            // NOTE: Export button removed — crsqlite-wasm uses IndexedDB
-            // persistence and does not support byte-level database export (#179).
+            // ── Export button ──────────────────────────────────────────────────
+            button {
+                class: if *is_exporting.read() {
+                    "btn btn-outline btn-sm loading"
+                } else {
+                    "btn btn-outline btn-sm"
+                },
+                "data-testid": "export-db-btn",
+                disabled: *is_exporting.read(),
+                onclick: move |_| {
+                    spawn(async move {
+                        is_exporting.set(true);
+                        match state.database() {
+                            Some(db) => match db.download(EXPORT_FILENAME).await {
+                                Ok(_) => {
+                                    log::debug!("[DataManagement] Database exported successfully");
+                                }
+                                Err(e) => {
+                                    log::error!("[DataManagement] Export failed: {}", e);
+                                }
+                            },
+                            None => {
+                                log::error!("[DataManagement] Export failed: database not initialized");
+                            }
+                        }
+                        is_exporting.set(false);
+                    });
+                },
+                svg {
+                    xmlns: "http://www.w3.org/2000/svg",
+                    fill: "none",
+                    view_box: "0 0 24 24",
+                    stroke_width: "1.5",
+                    stroke: "currentColor",
+                    class: "w-4 h-4 mr-1",
+                    path {
+                        stroke_linecap: "round",
+                        stroke_linejoin: "round",
+                        d: "M3 16.5v2.25A2.25 2.25 0 005.25 21h13.5A2.25 2.25 0 0021 18.75V16.5M16.5 12L12 16.5m0 0L7.5 12m4.5 4.5V3"
+                    }
+                }
+                "Export"
+            }
 
             // ── Import button (triggers hidden file input) ─────────────────────
             div {

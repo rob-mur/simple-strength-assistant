@@ -181,8 +181,38 @@ async fn test_database_initialization() {
     assert!(result.is_ok(), "Database initialization should succeed");
 }
 
-// test_database_initialization_with_existing_data removed — relied on
-// export()/import round-trip which is no longer supported with crsqlite-wasm (#179).
+#[wasm_bindgen_test]
+async fn test_database_initialization_with_existing_data() {
+    // Create a database, add data, export, then re-import
+    let mut db1 = Database::new();
+    db1.init(None).await.expect("Initial db init failed");
+
+    let exercise = ExerciseMetadata {
+        id: None,
+        name: "Test Exercise".to_string(),
+        set_type_config: SetTypeConfig::Weighted {
+            min_weight: 0.0,
+            increment: 5.0,
+        },
+        min_reps: 1,
+        max_reps: None,
+    };
+    db1.save_exercise(&exercise)
+        .await
+        .expect("Save exercise failed");
+
+    // Export the database
+    let exported_data = db1.export().await.expect("Export failed");
+
+    // Create a new database instance and load the exported data
+    let mut db2 = Database::new();
+    let result = db2.init(Some(exported_data)).await;
+
+    assert!(
+        result.is_ok(),
+        "Database should initialize with existing data"
+    );
+}
 
 // ── TASK-2.1: New schema tests ────────────────────────────────────────────────
 
@@ -783,7 +813,34 @@ async fn test_save_exercise() {
     );
 }
 
-// test_export_database removed — export() is no longer available with crsqlite-wasm (#179).
+#[wasm_bindgen_test]
+async fn test_export_database() {
+    let mut db = Database::new();
+    db.init(None).await.expect("Database init failed");
+
+    let exercise = ExerciseMetadata {
+        id: None,
+        name: "Test Exercise".to_string(),
+        set_type_config: SetTypeConfig::Bodyweight,
+        min_reps: 1,
+        max_reps: None,
+    };
+    db.save_exercise(&exercise)
+        .await
+        .expect("Save exercise failed");
+
+    let exported = db.export().await;
+
+    assert!(exported.is_ok(), "Export should succeed");
+    let data = exported.unwrap();
+    assert!(!data.is_empty(), "Exported data should not be empty");
+
+    // Verify SQLite magic number
+    assert!(
+        data.starts_with(b"SQLite format 3\0"),
+        "Exported data should be valid SQLite"
+    );
+}
 
 #[wasm_bindgen_test]
 async fn test_database_not_initialized_error() {
@@ -829,11 +886,184 @@ async fn test_sql_injection_protection() {
     );
 }
 
-// test_export_import_round_trip removed — export() is no longer available with crsqlite-wasm (#179).
+#[wasm_bindgen_test]
+async fn test_export_import_round_trip() {
+    // Create database with data
+    let mut db1 = Database::new();
+    db1.init(None).await.expect("DB1 init failed");
 
-// test_exercises_restored_after_open_existing_database and
-// test_empty_exercise_list_after_open_existing_database_with_no_exercises
-// removed — relied on export()/import round-trip (#179).
+    let exercise = ExerciseMetadata {
+        id: None,
+        name: "Bench Press".to_string(),
+        set_type_config: SetTypeConfig::Weighted {
+            min_weight: 0.0,
+            increment: 5.0,
+        },
+        min_reps: 1,
+        max_reps: None,
+    };
+    let exercise_id = db1
+        .save_exercise(&exercise)
+        .await
+        .expect("Save exercise failed");
+
+    let set = CompletedSet {
+        set_number: 1,
+        reps: 8,
+        rpe: 7.5,
+        set_type: SetType::Weighted { weight: 135.0 },
+    };
+    db1.log_set(exercise_id, &set)
+        .await
+        .expect("log_set failed");
+
+    // Export and re-import
+    let exported = db1.export().await.expect("Export failed");
+
+    let mut db2 = Database::new();
+    db2.init(Some(exported)).await.expect("Import failed");
+
+    // Verify imported data
+    let result = db2
+        .execute("SELECT count(*) as count FROM completed_sets", &[])
+        .await
+        .expect("Select query failed");
+    use wasm_bindgen::JsCast;
+    let array = result
+        .dyn_ref::<js_sys::Array>()
+        .expect("Result should be an array");
+    let first_row = array.get(0);
+    let count = js_sys::Reflect::get(&first_row, &wasm_bindgen::JsValue::from_str("count"))
+        .expect("Failed to get count property")
+        .as_f64()
+        .expect("Count should be a number") as i64;
+    assert_eq!(count, 1, "Expected exactly 1 set in the imported database");
+
+    // Verify we can log another set in the imported database
+    let new_set_id = db2
+        .log_set(
+            exercise_id,
+            &CompletedSet {
+                set_number: 2,
+                reps: 6,
+                rpe: 8.0,
+                set_type: SetType::Weighted { weight: 140.0 },
+            },
+        )
+        .await;
+
+    assert!(
+        new_set_id.is_ok(),
+        "Should be able to log a set in imported database"
+    );
+}
+
+// ── Issue 71: exercises not restored after clearing site data and reselecting database file ──
+
+/// RED: Opening an existing database file restores exercises.
+///
+/// Simulates the "open existing database" path: create a DB with exercises,
+/// export it, then re-import it (as if the user reselected their file after
+/// clearing site data). After re-import, `get_exercises` must return all
+/// exercises that were present before the export.
+#[wasm_bindgen_test]
+async fn test_exercises_restored_after_open_existing_database() {
+    // Create a database with custom exercises
+    let mut db1 = Database::new();
+    db1.init(None).await.expect("Initial db init failed");
+
+    let exercise1 = ExerciseMetadata {
+        id: None,
+        name: "Squat".to_string(),
+        set_type_config: SetTypeConfig::Weighted {
+            min_weight: 20.0,
+            increment: 2.5,
+        },
+        min_reps: 1,
+        max_reps: None,
+    };
+    let exercise2 = ExerciseMetadata {
+        id: None,
+        name: "Pull-ups".to_string(),
+        set_type_config: SetTypeConfig::Bodyweight,
+        min_reps: 1,
+        max_reps: None,
+    };
+
+    db1.save_exercise(&exercise1)
+        .await
+        .expect("Save exercise1 failed");
+    db1.save_exercise(&exercise2)
+        .await
+        .expect("Save exercise2 failed");
+
+    // Verify exercises exist before export
+    let exercises_before = db1
+        .get_exercises()
+        .await
+        .expect("get_exercises before export failed");
+    assert_eq!(
+        exercises_before.len(),
+        2,
+        "Should have 2 exercises before export"
+    );
+
+    // Simulate "clear site data": export the database bytes
+    let exported_data = db1.export().await.expect("Export failed");
+
+    // Simulate "reopen the same file": re-import the exported bytes into a fresh DB instance
+    let mut db2 = Database::new();
+    db2.init(Some(exported_data))
+        .await
+        .expect("Re-import failed");
+
+    // Assert: exercises are restored
+    let exercises_after = db2
+        .get_exercises()
+        .await
+        .expect("get_exercises after re-import failed");
+    assert_eq!(
+        exercises_after.len(),
+        2,
+        "Exercises should be restored after opening existing database file"
+    );
+
+    let names: Vec<&str> = exercises_after.iter().map(|e| e.name.as_str()).collect();
+    assert!(
+        names.contains(&"Squat"),
+        "Squat exercise should be restored"
+    );
+    assert!(
+        names.contains(&"Pull-ups"),
+        "Pull-ups exercise should be restored"
+    );
+}
+
+/// RED: Opening an existing database with no exercises returns empty list (not an error).
+#[wasm_bindgen_test]
+async fn test_empty_exercise_list_after_open_existing_database_with_no_exercises() {
+    // Create a database with no exercises (only workout history)
+    let mut db1 = Database::new();
+    db1.init(None).await.expect("Initial db init failed");
+
+    let exported_data = db1.export().await.expect("Export failed");
+
+    // Re-import into fresh DB
+    let mut db2 = Database::new();
+    db2.init(Some(exported_data))
+        .await
+        .expect("Re-import failed");
+
+    // Assert: empty list, not an error
+    let exercises = db2
+        .get_exercises()
+        .await
+        .expect("get_exercises should succeed even when list is empty");
+    assert!(
+        exercises.is_empty(),
+        "Exercise list should be empty when none were saved"
+    );
+}
 
 // ── Issue 85: sync-readiness schema columns ────────────────────────────────────
 

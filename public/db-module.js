@@ -165,6 +165,96 @@ export function triggerSqliteDownload(data, filename) {
 }
 
 /**
+ * Export the crsqlite-wasm database as a standard SQLite file (Uint8Array).
+ *
+ * crsqlite-wasm stores data in IndexedDB and doesn't expose a raw `.export()`
+ * method like sql.js did. To produce a portable `.sqlite` file we:
+ *   1. Read every user table from the live crsqlite DB via SELECT queries.
+ *   2. Create a temporary sql.js in-memory database.
+ *   3. Replicate schema + rows into the sql.js instance.
+ *   4. Call sql.js `.export()` to obtain the raw bytes.
+ *
+ * sql.js is already shipped in `public/` for the OPFS migration path.
+ *
+ * @returns {Promise<Uint8Array>} The raw bytes of a standard SQLite database.
+ */
+export async function exportDatabase() {
+  if (!db) {
+    throw new Error("Database not initialized");
+  }
+
+  // Ensure sql.js is loaded (it's still shipped in public/ for migration).
+  if (typeof window.initSqlJs === "undefined") {
+    await loadScript("sql-wasm.js");
+  }
+  const SQL = await window.initSqlJs({ locateFile: (file) => file });
+  const outDb = new SQL.Database();
+
+  // Discover user tables (skip sqlite internals, crsqlite internals, _meta).
+  const tables = await db.execO(
+    "SELECT name, sql FROM sqlite_master WHERE type='table' " +
+      "AND name NOT LIKE 'sqlite_%' " +
+      "AND name NOT LIKE '__crsql_%' " +
+      "AND name NOT LIKE 'crsql_%' " +
+      "AND name != '_meta'",
+  );
+
+  for (const { name, sql: createSql } of tables) {
+    if (!createSql) continue;
+
+    // Create the table in the output database.
+    const safeCreate = createSql.replace(
+      /CREATE\s+TABLE\s+/i,
+      "CREATE TABLE IF NOT EXISTS ",
+    );
+    outDb.run(safeCreate);
+
+    // Copy rows.
+    const rows = await db.execO(`SELECT * FROM "${name}"`);
+    if (rows.length === 0) continue;
+
+    const cols = Object.keys(rows[0]);
+    const placeholders = cols.map(() => "?").join(", ");
+    const insertSql = `INSERT INTO "${name}" (${cols.map((c) => `"${c}"`).join(", ")}) VALUES (${placeholders})`;
+    const stmt = outDb.prepare(insertSql);
+    for (const row of rows) {
+      stmt.run(cols.map((c) => row[c]));
+    }
+    stmt.free();
+  }
+
+  // Also copy indexes.
+  const indexes = await db.execO(
+    "SELECT sql FROM sqlite_master WHERE type='index' AND sql IS NOT NULL " +
+      "AND name NOT LIKE '__crsql_%' " +
+      "AND name NOT LIKE 'crsql_%'",
+  );
+  for (const { sql: idxSql } of indexes) {
+    if (idxSql) {
+      try {
+        const safeIdx = idxSql.replace(
+          /CREATE\s+INDEX\s+/i,
+          "CREATE INDEX IF NOT EXISTS ",
+        );
+        outDb.run(safeIdx);
+      } catch (e) {
+        console.warn("[DB] Failed to copy index:", e);
+      }
+    }
+  }
+
+  // Copy the user_version pragma so migrations detect the correct version.
+  const versionRows = await db.execA("PRAGMA user_version");
+  if (versionRows && versionRows.length > 0) {
+    outDb.run(`PRAGMA user_version = ${versionRows[0][0]}`);
+  }
+
+  const bytes = outDb.export();
+  outDb.close();
+  return bytes;
+}
+
+/**
  * Import a user-supplied SQLite file into the crsqlite database.
  *
  * Unlike `initDatabase`, this always loads the provided bytes regardless of

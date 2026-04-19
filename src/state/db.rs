@@ -37,6 +37,12 @@ extern "C" {
     #[wasm_bindgen(js_name = executeQuery)]
     async fn execute_query(sql: &str, params: JsValue) -> JsValue;
 
+    #[wasm_bindgen(js_name = exportDatabase)]
+    async fn export_database() -> JsValue;
+
+    #[wasm_bindgen(js_name = triggerSqliteDownload)]
+    fn trigger_sqlite_download(data: &[u8], filename: &str);
+
     #[wasm_bindgen(js_name = importDatabase)]
     async fn import_database(file_data: Vec<u8>) -> JsValue;
 }
@@ -88,6 +94,28 @@ impl Database {
             log::error!("{}", error_msg);
             Err(DatabaseError::InitializationError(error_msg))
         }
+    }
+
+    pub async fn export(&self) -> Result<Vec<u8>, DatabaseError> {
+        if !self.initialized {
+            return Err(DatabaseError::NotInitialized);
+        }
+
+        let result = export_database().await;
+
+        let uint8_array = js_sys::Uint8Array::new(&result);
+        let mut buffer = vec![0; uint8_array.length() as usize];
+        uint8_array.copy_to(&mut buffer);
+
+        Ok(buffer)
+    }
+
+    /// Exports the database and triggers a browser download of the `.sqlite` file.
+    /// Works on iOS Safari, Chrome Android, and any browser supporting Blob URLs.
+    pub async fn download(&self, filename: &str) -> Result<(), DatabaseError> {
+        let data = self.export().await?;
+        trigger_sqlite_download(&data, filename);
+        Ok(())
     }
 
     async fn migrate_and_create_tables(&self) -> Result<(), DatabaseError> {
