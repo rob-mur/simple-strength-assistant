@@ -1081,9 +1081,6 @@ impl Database {
         self.execute_internal(sql, &js_params).await
     }
 
-    // NOTE: export() and download() were removed as part of the crsqlite-wasm
-    // migration (#179). The database is now persisted automatically via
-    // IndexedDB (IDBBatchAtomicVFS) and no longer needs manual byte export.
 
     // ── Private helpers ───────────────────────────────────────────────────────
 

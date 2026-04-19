@@ -105,6 +105,10 @@ export async function initDatabase(fileData) {
  *
  * For statements that do not return rows (INSERT, UPDATE, DELETE, CREATE, …)
  * the return value is `{ changes: <number> }`.
+ *
+ * Note: `WITH` (CTE) queries are always routed through the mutation path to
+ * avoid misrouting CTE-INSERT/UPDATE/DELETE as SELECTs.  If you need a
+ * CTE-SELECT, rewrite it without WITH or add RETURNING.
  */
 export async function executeQuery(sql, params) {
   if (!db) {
@@ -227,7 +231,7 @@ export async function exportDatabase() {
     stmt.free();
   }
 
-  // Also copy indexes.
+  // Also copy indexes (including UNIQUE indexes).
   const indexes = await db.execO(
     "SELECT sql FROM sqlite_master WHERE type='index' AND sql IS NOT NULL " +
       "AND name NOT LIKE '__crsql_%' " +
@@ -237,8 +241,8 @@ export async function exportDatabase() {
     if (idxSql) {
       try {
         const safeIdx = idxSql.replace(
-          /CREATE\s+INDEX\s+/i,
-          "CREATE INDEX IF NOT EXISTS ",
+          /CREATE\s+(UNIQUE\s+)?INDEX\s+/i,
+          "CREATE $1INDEX IF NOT EXISTS ",
         );
         outDb.run(safeIdx);
       } catch (e) {
@@ -455,7 +459,7 @@ async function migrateFromSqlJs(fileData) {
       console.log(`[DB] Migrated ${rows.length} rows from '${table}'`);
     }
 
-    // Also migrate indexes.
+    // Also migrate indexes (including UNIQUE indexes).
     const idxStmt = oldDb.prepare(
       "SELECT sql FROM sqlite_master WHERE type='index' AND sql IS NOT NULL"
     );
@@ -463,8 +467,8 @@ async function migrateFromSqlJs(fileData) {
       const idxSql = idxStmt.getAsObject().sql;
       if (idxSql) {
         const safeIdx = idxSql.replace(
-          /CREATE\s+INDEX\s+/i,
-          "CREATE INDEX IF NOT EXISTS "
+          /CREATE\s+(UNIQUE\s+)?INDEX\s+/i,
+          "CREATE $1INDEX IF NOT EXISTS "
         );
         try {
           await db.exec(safeIdx);
@@ -483,21 +487,32 @@ async function migrateFromSqlJs(fileData) {
   } catch (migrationError) {
     await db.exec("ROLLBACK");
     throw migrationError;
+  } finally {
+    oldDb.close();
   }
-
-  oldDb.close();
 }
 
 /**
  * Dynamically load a script by inserting a <script> tag.
  * Returns a promise that resolves when the script has loaded.
+ * Deduplicates: concurrent calls for the same src share one promise.
  */
+const _loadingScripts = new Map();
 function loadScript(src) {
-  return new Promise((resolve, reject) => {
+  if (_loadingScripts.has(src)) return _loadingScripts.get(src);
+  const promise = new Promise((resolve, reject) => {
     const script = document.createElement("script");
     script.src = src;
-    script.onload = resolve;
-    script.onerror = reject;
+    script.onload = () => {
+      _loadingScripts.delete(src);
+      resolve();
+    };
+    script.onerror = (err) => {
+      _loadingScripts.delete(src);
+      reject(err);
+    };
     document.head.appendChild(script);
   });
+  _loadingScripts.set(src, promise);
+  return promise;
 }
