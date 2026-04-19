@@ -21,6 +21,29 @@ const MIGRATION_KEY = "crsqlite_migration_done";
 let db = null;
 let sqlite = null;
 
+// Lazy-import of the sync module. Resolved on first use.
+let _syncModulePromise = null;
+async function getSyncModule() {
+  if (!_syncModulePromise) {
+    _syncModulePromise = import("/sync-module.js");
+  }
+  return _syncModulePromise;
+}
+
+/**
+ * Register the open database handle with the sync module so it can read/write
+ * changesets via crsql_changes().
+ */
+async function registerDbWithSync() {
+  try {
+    const syncMod = await getSyncModule();
+    syncMod.registerSyncDb(db);
+    console.log("[DB] Registered database with sync module");
+  } catch (e) {
+    console.warn("[DB] Failed to register database with sync module:", e);
+  }
+}
+
 /**
  * Initialise the crsqlite-wasm module (singleton).
  */
@@ -81,6 +104,10 @@ export async function initDatabase(fileData) {
     // Safe to run every launch — crsql_as_crr is a no-op on tables that are
     // already CRRs.
     await applyCrrMigration();
+
+    // Register the open DB handle with the sync module so WebSocket sync
+    // can access crsql_changes().
+    await registerDbWithSync();
 
     // Expose a raw SQL hook for the Playwright test harness.
     if (typeof window !== "undefined" && window.__TEST_MODE__) {
@@ -298,6 +325,9 @@ export async function importDatabase(fileData) {
 
     // Re-apply CRR upgrade on the freshly imported data.
     await applyCrrMigration();
+
+    // Re-register with sync module after import.
+    await registerDbWithSync();
 
     return true;
   } catch (error) {
