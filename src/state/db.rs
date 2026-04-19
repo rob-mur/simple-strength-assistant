@@ -1081,7 +1081,6 @@ impl Database {
         self.execute_internal(sql, &js_params).await
     }
 
-
     // ── Private helpers ───────────────────────────────────────────────────────
 
     fn extract_id(&self, result: &JsValue, label: &str) -> Result<i64, DatabaseError> {
