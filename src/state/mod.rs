@@ -10,7 +10,7 @@ mod db_tests;
 #[cfg(test)]
 mod file_system_tests;
 
-pub use db::{Database, DatabaseError, MergeConflict, MergeResult};
+pub use db::{Database, DatabaseError};
 pub use error::WorkoutError;
 pub use file_system::FileSystemError;
 pub use file_system::FileSystemManager;

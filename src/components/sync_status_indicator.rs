@@ -13,6 +13,7 @@ use dioxus::prelude::*;
 /// | Syncing    | badge-info      | Syncing…            |
 /// | UpToDate   | badge-success   | Up to date          |
 /// | Error      | badge-error     | Sync error          |
+/// | Disabled   | badge-ghost     | Sync paused         |
 #[component]
 pub fn SyncStatusIndicator(status: SyncStatus) -> Element {
     let sync_attr = status.as_attr_str();
@@ -22,6 +23,7 @@ pub fn SyncStatusIndicator(status: SyncStatus) -> Element {
         SyncStatus::Syncing => ("badge badge-info badge-sm", "Syncing…"),
         SyncStatus::UpToDate => ("badge badge-success badge-sm", "Up to date"),
         SyncStatus::Error(_) => ("badge badge-error badge-sm", "Sync error"),
+        SyncStatus::Disabled(_) => ("badge badge-ghost badge-sm", "Sync paused"),
         SyncStatus::ConflictsDetected => ("badge badge-warning badge-sm", "Conflicts"),
     };
 
