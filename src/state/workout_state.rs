@@ -513,6 +513,8 @@ impl WorkoutStateManager {
 
     /// No-op: crsqlite-wasm persists automatically via IndexedDB
     /// (IDBBatchAtomicVFS). Retained as a function for call-site compatibility.
+    // TODO: Remove this no-op (and its call sites) after one release, once we
+    // are confident that no code path depends on an explicit save step.
     pub async fn save_database(_state: &WorkoutState) -> Result<(), WorkoutError> {
         Ok(())
     }
@@ -711,9 +713,12 @@ impl WorkoutStateManager {
             }
         };
 
-        // With crsqlite-wasm, the database is CRR-backed and merge is handled
-        // by the CRDT layer. We pass an empty blob as a placeholder — the sync
-        // protocol will be updated to use CRR changesets in a follow-up issue.
+        // TODO(sync): Sync is effectively disabled. The empty blob and stub
+        // merge below mean that local data is never sent to the server and
+        // server data is never applied locally. This is intentional — the sync
+        // protocol must be reworked to exchange CRR changesets (via
+        // `crsql_changes()`) instead of whole-database blobs. Remove this
+        // stub once CRR changeset exchange is implemented.
         let local_blob: Vec<u8> = vec![];
 
         // Signal the UI that a sync cycle is in progress.
@@ -723,9 +728,8 @@ impl WorkoutStateManager {
 
         let client = SyncClient::new(FetchClient);
 
-        // Stub merge: CRR-based replication replaces the old blob-level merge.
-        // The merge function is still required by the SyncClient interface but
-        // will be replaced with CRR changeset exchange in a follow-up issue.
+        // TODO(sync): Stub merge — always returns local unchanged, so server
+        // data is never merged. Replace with CRR changeset exchange.
         let crr_merge =
             |local: Vec<u8>,
              _server: Vec<u8>|

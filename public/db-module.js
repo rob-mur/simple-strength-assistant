@@ -106,11 +106,23 @@ export async function executeQuery(sql, params) {
 
     // Determine whether this statement returns rows.
     const hasReturning = /\bRETURNING\b/i.test(sql);
+
+    // A WITH (CTE) clause only returns rows when the final statement is a
+    // SELECT.  CTEs that end with INSERT/UPDATE/DELETE are mutations and must
+    // go through the exec path.
+    let withIsSelect = false;
+    if (trimmed.startsWith("WITH")) {
+      // Strip everything up to the last closing paren of the CTE list and
+      // check whether the remainder begins with SELECT.
+      const afterCte = sql.replace(/^WITH[\s\S]+?\)\s*/i, "");
+      withIsSelect = afterCte.trimStart().toUpperCase().startsWith("SELECT");
+    }
+
     const returnsRows =
       hasReturning ||
       trimmed.startsWith("SELECT") ||
       trimmed.startsWith("PRAGMA") ||
-      trimmed.startsWith("WITH") ||
+      withIsSelect ||
       trimmed.startsWith("EXPLAIN");
 
     if (returnsRows) {
@@ -152,6 +164,50 @@ export function triggerSqliteDownload(data, filename) {
   setTimeout(() => URL.revokeObjectURL(url), 1000);
 }
 
+/**
+ * Import a user-supplied SQLite file into the crsqlite database.
+ *
+ * Unlike `initDatabase`, this always loads the provided bytes regardless of
+ * whether the one-time OPFS migration has already run.  It closes the current
+ * database, opens a fresh one, and migrates the supplied bytes via sql.js.
+ *
+ * @param {Array|Uint8Array} fileData  Raw bytes of a SQLite database to import.
+ * @returns {Promise<boolean>} true on success.
+ */
+export async function importDatabase(fileData) {
+  try {
+    if (!fileData || fileData.length === 0) {
+      console.error("[DB] importDatabase called with empty data");
+      return false;
+    }
+
+    await ensureCrSQLiteLoaded();
+
+    // Close any previously open database.
+    if (db) {
+      try {
+        await db.close();
+      } catch (e) {
+        console.warn("Failed to close existing database:", e);
+      }
+    }
+
+    db = await sqlite.open(DB_NAME);
+
+    console.log("[DB] Importing user-supplied database...");
+    await migrateFromSqlJs(new Uint8Array(fileData));
+    console.log("[DB] Import complete.");
+
+    // Re-apply CRR upgrade on the freshly imported data.
+    await applyCrrMigration();
+
+    return true;
+  } catch (error) {
+    console.error("Failed to import database:", error);
+    return false;
+  }
+}
+
 // ── Internal helpers ──────────────────────────────────────────────────────────
 
 /**
@@ -168,7 +224,7 @@ async function applyCrrMigration() {
         [table]
       );
       if (info.length > 0) {
-        await db.exec(`SELECT crsql_as_crr('${table}')`);
+        await db.exec("SELECT crsql_as_crr(?)", [table]);
         console.log(`[DB] Marked '${table}' as CRR`);
       }
     } catch (e) {
@@ -215,68 +271,77 @@ async function migrateFromSqlJs(fileData) {
   }
   tableStmt.free();
 
-  for (const table of tables) {
-    // Read all rows from the old database.
-    const rows = [];
-    const stmt = oldDb.prepare(`SELECT * FROM "${table}"`);
-    while (stmt.step()) {
-      rows.push(stmt.getAsObject());
+  // Wrap the entire migration in a transaction for atomicity and performance.
+  await db.exec("BEGIN");
+  try {
+    for (const table of tables) {
+      // Read all rows from the old database.
+      const rows = [];
+      const stmt = oldDb.prepare(`SELECT * FROM "${table}"`);
+      while (stmt.step()) {
+        rows.push(stmt.getAsObject());
+      }
+      stmt.free();
+
+      if (rows.length === 0) continue;
+
+      // Get the CREATE TABLE statement so we can replicate the schema.
+      const schemaStmt = oldDb.prepare(
+        "SELECT sql FROM sqlite_master WHERE type='table' AND name=?",
+      );
+      schemaStmt.bind([table]);
+      let createSql = null;
+      if (schemaStmt.step()) {
+        createSql = schemaStmt.getAsObject().sql;
+      }
+      schemaStmt.free();
+
+      if (createSql) {
+        // Create the table in the new database (IF NOT EXISTS to be safe).
+        const safeCreate = createSql.replace(
+          /CREATE\s+TABLE\s+/i,
+          "CREATE TABLE IF NOT EXISTS "
+        );
+        await db.exec(safeCreate);
+      }
+
+      // Insert rows.
+      for (const row of rows) {
+        const cols = Object.keys(row);
+        const placeholders = cols.map(() => "?").join(", ");
+        const values = cols.map((c) => row[c]);
+        const insertSql = `INSERT OR IGNORE INTO "${table}" (${cols.map((c) => `"${c}"`).join(", ")}) VALUES (${placeholders})`;
+        await db.exec(insertSql, values);
+      }
+
+      console.log(`[DB] Migrated ${rows.length} rows from '${table}'`);
     }
-    stmt.free();
 
-    if (rows.length === 0) continue;
-
-    // Get the CREATE TABLE statement so we can replicate the schema.
-    const schemaStmt = oldDb.prepare(
-      "SELECT sql FROM sqlite_master WHERE type='table' AND name=?",
+    // Also migrate indexes.
+    const idxStmt = oldDb.prepare(
+      "SELECT sql FROM sqlite_master WHERE type='index' AND sql IS NOT NULL"
     );
-    schemaStmt.bind([table]);
-    let createSql = null;
-    if (schemaStmt.step()) {
-      createSql = schemaStmt.getAsObject().sql;
-    }
-    schemaStmt.free();
-
-    if (createSql) {
-      // Create the table in the new database (IF NOT EXISTS to be safe).
-      const safeCreate = createSql.replace(
-        /CREATE\s+TABLE\s+/i,
-        "CREATE TABLE IF NOT EXISTS "
-      );
-      await db.exec(safeCreate);
-    }
-
-    // Insert rows.
-    for (const row of rows) {
-      const cols = Object.keys(row);
-      const placeholders = cols.map(() => "?").join(", ");
-      const values = cols.map((c) => row[c]);
-      const insertSql = `INSERT OR IGNORE INTO "${table}" (${cols.map((c) => `"${c}"`).join(", ")}) VALUES (${placeholders})`;
-      await db.exec(insertSql, values);
-    }
-
-    console.log(`[DB] Migrated ${rows.length} rows from '${table}'`);
-  }
-
-  // Also migrate indexes.
-  const idxStmt = oldDb.prepare(
-    "SELECT sql FROM sqlite_master WHERE type='index' AND sql IS NOT NULL"
-  );
-  while (idxStmt.step()) {
-    const idxSql = idxStmt.getAsObject().sql;
-    if (idxSql) {
-      const safeIdx = idxSql.replace(
-        /CREATE\s+INDEX\s+/i,
-        "CREATE INDEX IF NOT EXISTS "
-      );
-      try {
-        await db.exec(safeIdx);
-      } catch (e) {
-        console.warn("[DB] Failed to migrate index:", e);
+    while (idxStmt.step()) {
+      const idxSql = idxStmt.getAsObject().sql;
+      if (idxSql) {
+        const safeIdx = idxSql.replace(
+          /CREATE\s+INDEX\s+/i,
+          "CREATE INDEX IF NOT EXISTS "
+        );
+        try {
+          await db.exec(safeIdx);
+        } catch (e) {
+          console.warn("[DB] Failed to migrate index:", e);
+        }
       }
     }
+    idxStmt.free();
+
+    await db.exec("COMMIT");
+  } catch (migrationError) {
+    await db.exec("ROLLBACK");
+    throw migrationError;
   }
-  idxStmt.free();
 
   oldDb.close();
 }

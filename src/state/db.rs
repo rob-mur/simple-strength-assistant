@@ -36,6 +36,9 @@ extern "C" {
 
     #[wasm_bindgen(js_name = executeQuery)]
     async fn execute_query(sql: &str, params: JsValue) -> JsValue;
+
+    #[wasm_bindgen(js_name = importDatabase)]
+    async fn import_database(file_data: Vec<u8>) -> JsValue;
 }
 
 /// Current schema version. Bump this when the schema changes.
@@ -63,6 +66,26 @@ impl Database {
             Ok(())
         } else {
             let error_msg = "Failed to initialize SQLite database - JS returned false".to_string();
+            log::error!("{}", error_msg);
+            Err(DatabaseError::InitializationError(error_msg))
+        }
+    }
+
+    /// Import a user-supplied SQLite file.  Unlike `init`, this always loads
+    /// the provided bytes (it does not check the one-time migration sentinel).
+    pub async fn import(&mut self, file_data: Vec<u8>) -> Result<(), DatabaseError> {
+        log::debug!("[DB] Calling JS importDatabase...");
+        let result = import_database(file_data).await;
+
+        if result.is_truthy() {
+            log::debug!("[DB] importDatabase succeeded, running migrations...");
+            self.migrate_and_create_tables().await?;
+            self.initialized = true;
+            log::debug!("[DB] Import complete and database initialized");
+            Ok(())
+        } else {
+            let error_msg =
+                "Failed to import database - JS returned false".to_string();
             log::error!("{}", error_msg);
             Err(DatabaseError::InitializationError(error_msg))
         }

@@ -96,9 +96,10 @@ pub fn DataManagementPanel(state: WorkoutState) -> Element {
                                     return;
                                 }
 
-                                // Re-initialize the database with the imported data
+                                // Import the user-supplied file via the dedicated import path
+                                // (bypasses the one-time OPFS migration sentinel).
                                 let mut database = crate::state::Database::new();
-                                match database.init(Some(data.clone())).await {
+                                match database.import(data.clone()).await {
                                     Ok(_) => {
                                         log::debug!("[DataManagement] Database re-initialized from import");
 
