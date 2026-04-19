@@ -84,8 +84,7 @@ impl Database {
             log::debug!("[DB] Import complete and database initialized");
             Ok(())
         } else {
-            let error_msg =
-                "Failed to import database - JS returned false".to_string();
+            let error_msg = "Failed to import database - JS returned false".to_string();
             log::error!("{}", error_msg);
             Err(DatabaseError::InitializationError(error_msg))
         }
