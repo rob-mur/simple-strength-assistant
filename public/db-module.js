@@ -292,18 +292,11 @@ export async function importDatabase(fileData) {
 
     db = await sqlite.open(DB_NAME);
 
-    // Clear all user-data tables so the import fully replaces existing data
-    // rather than silently dropping rows with conflicting primary keys.
-    for (const table of CRR_TABLES) {
-      try {
-        await db.exec(`DELETE FROM "${table}"`);
-      } catch {
-        // Table may not exist yet — that's fine, migration will create it.
-      }
-    }
-
     console.log("[DB] Importing user-supplied database...");
-    await migrateFromSqlJs(new Uint8Array(fileData));
+    // The import is wrapped in a single transaction (inside
+    // migrateFromSqlJs) so that DELETEs + INSERTs are atomic — if the
+    // migration fails, the user's existing data is rolled back intact.
+    await migrateFromSqlJs(new Uint8Array(fileData), { clearFirst: true });
     console.log("[DB] Import complete.");
 
     // Re-apply CRR upgrade on the freshly imported data.
@@ -393,7 +386,7 @@ async function applyCrrMigration() {
  *
  * @param {Uint8Array} fileData Raw bytes of the old SQLite database.
  */
-async function migrateFromSqlJs(fileData) {
+async function migrateFromSqlJs(fileData, { clearFirst = false } = {}) {
   // Dynamically load sql.js — it's still shipped in public/ for this one-time
   // migration but is no longer loaded in index.html.
   if (typeof window.initSqlJs === "undefined") {
@@ -416,18 +409,21 @@ async function migrateFromSqlJs(fileData) {
   // Wrap the entire migration in a transaction for atomicity and performance.
   await db.exec("BEGIN");
   try {
-    for (const table of tables) {
-      // Read all rows from the old database.
-      const rows = [];
-      const stmt = oldDb.prepare(`SELECT * FROM "${table}"`);
-      while (stmt.step()) {
-        rows.push(stmt.getAsObject());
+    // When importing user data, clear existing tables inside the transaction
+    // so that a failure rolls back both the DELETEs and the INSERTs.
+    if (clearFirst) {
+      for (const table of CRR_TABLES) {
+        try {
+          await db.exec(`DELETE FROM "${table}"`);
+        } catch {
+          // Table may not exist yet — migration will create it.
+        }
       }
-      stmt.free();
+    }
 
-      if (rows.length === 0) continue;
-
-      // Get the CREATE TABLE statement so we can replicate the schema.
+    for (const table of tables) {
+      // Get the CREATE TABLE statement so we can replicate the schema,
+      // even for tables with zero rows (e.g. `settings` on a fresh install).
       const schemaStmt = oldDb.prepare(
         "SELECT sql FROM sqlite_master WHERE type='table' AND name=?",
       );
@@ -445,6 +441,19 @@ async function migrateFromSqlJs(fileData) {
           "CREATE TABLE IF NOT EXISTS "
         );
         await db.exec(safeCreate);
+      }
+
+      // Read all rows from the old database.
+      const rows = [];
+      const stmt = oldDb.prepare(`SELECT * FROM "${table}"`);
+      while (stmt.step()) {
+        rows.push(stmt.getAsObject());
+      }
+      stmt.free();
+
+      if (rows.length === 0) {
+        console.log(`[DB] Replicated schema for empty table '${table}'`);
+        continue;
       }
 
       // Insert rows.

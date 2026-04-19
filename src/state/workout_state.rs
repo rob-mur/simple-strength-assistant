@@ -67,6 +67,9 @@ pub enum SyncStatus {
     Syncing,
     UpToDate,
     Error(String),
+    /// Sync is temporarily disabled (e.g. protocol migration in progress).
+    /// Unlike `Error`, this is an expected, non-alarming state.
+    Disabled(String),
     ConflictsDetected,
 }
 
@@ -79,6 +82,7 @@ impl SyncStatus {
             SyncStatus::Syncing => "syncing",
             SyncStatus::UpToDate => "up-to-date",
             SyncStatus::Error(_) => "error",
+            SyncStatus::Disabled(_) => "disabled",
             SyncStatus::ConflictsDetected => "conflicts",
         }
     }
@@ -516,6 +520,7 @@ impl WorkoutStateManager {
     // TODO: Remove this no-op (and its call sites) after one release, once we
     // are confident that no code path depends on an explicit save step.
     pub async fn save_database(_state: &WorkoutState) -> Result<(), WorkoutError> {
+        log::debug!("[DB] save_database: no-op (crsqlite auto-persists via IndexedDB)");
         Ok(())
     }
 
@@ -709,7 +714,7 @@ impl WorkoutStateManager {
         log::info!(
             "[Sync] Sync is temporarily disabled while the protocol is migrated to CRR changesets"
         );
-        state.set_sync_status(SyncStatus::Error(
+        state.set_sync_status(SyncStatus::Disabled(
             "Sync is temporarily unavailable — update in progress".to_string(),
         ));
         // TODO(sync): Once CRR changeset exchange is implemented, replace this
