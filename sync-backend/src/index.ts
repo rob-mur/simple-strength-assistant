@@ -1,15 +1,13 @@
-import { createApp } from "./app.ts";
+import { createApp } from "./app.js";
 
 const dataDir = process.env["DATA_DIR"] ?? "/data";
+const schemaDir = process.env["SCHEMA_DIR"] ?? "/schemas";
 const port = Number(process.env["PORT"] ?? "3000");
 
-const app = createApp(dataDir);
+const server = createApp(dataDir, schemaDir);
 
-const server = Bun.serve({
-  fetch: app.fetch,
-  port,
+server.listen(port, () => {
+  console.log(
+    `vlcn.io sync server listening on port ${port}, DATA_DIR=${dataDir}, SCHEMA_DIR=${schemaDir}`,
+  );
 });
-
-console.log(
-  `Sync backend listening on port ${server.port}, DATA_DIR=${dataDir}`,
-);

@@ -1,24 +1,30 @@
-# Stage 1: Install dependencies
-FROM oven/bun:1 AS deps
+# Stage 1: Install deps and build TypeScript
+FROM node:20 AS build
 WORKDIR /app
-COPY package.json bun.lock ./
-RUN bun install --frozen-lockfile --production
-
-# Stage 2: Production image
-FROM oven/bun:1-slim
-WORKDIR /app
-
-COPY --from=deps /app/node_modules ./node_modules
-COPY package.json tsconfig.json ./
+COPY package.json package-lock.json ./
+RUN npm ci
+COPY tsconfig.json tsconfig.build.json ./
 COPY src ./src
+RUN npx tsc -p tsconfig.build.json
+# Prune devDependencies so only production deps remain for the runtime image
+RUN npm prune --omit=dev
+
+# Stage 2: Production image (only production deps + compiled JS)
+FROM node:20-slim
+WORKDIR /app
+
+COPY --from=build /app/node_modules ./node_modules
+COPY --from=build /app/dist ./dist
+COPY package.json ./
 
 ENV DATA_DIR=/data
+ENV SCHEMA_DIR=/schemas
 ENV PORT=3000
 
-RUN mkdir -p /data && chown -R bun:bun /data
-USER bun
+RUN mkdir -p /data /schemas && chown -R node:node /data /schemas
+USER node
 
 # EXPOSE documents the default port; the actual port is controlled by the PORT env var
 EXPOSE 3000
 
-ENTRYPOINT ["sh", "-c", "mkdir -p \"$DATA_DIR\" && exec bun run src/index.ts"]
+ENTRYPOINT ["sh", "-c", "mkdir -p \"$DATA_DIR\" \"$SCHEMA_DIR\" && exec node dist/index.js"]
