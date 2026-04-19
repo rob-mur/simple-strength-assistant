@@ -6,8 +6,7 @@
 // temporary sql.js instance and inserting the rows into the new crsqlite DB.
 // After migration the database is persisted via IndexedDB (IDBBatchAtomicVFS).
 
-const CRSQLITE_CDN =
-  "https://esm.sh/@vlcn.io/crsqlite-wasm@0.16.0";
+const CRSQLITE_PATH = "./vendor/crsqlite-wasm/crsqlite-wasm.js";
 const DB_NAME = "workout-data";
 
 // Tables that must be marked as CRRs for CRDT-based replication.
@@ -26,7 +25,7 @@ let sqlite = null;
 async function ensureCrSQLiteLoaded() {
   if (sqlite) return sqlite;
 
-  const mod = await import(CRSQLITE_CDN);
+  const mod = await import(CRSQLITE_PATH);
   const initWasm = mod.default;
   sqlite = await initWasm();
   return sqlite;
