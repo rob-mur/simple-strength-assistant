@@ -30,6 +30,7 @@
   },
   "dependencies": {
     "@google/gemini-cli": "^0.35.3",
+    "@vlcn.io/crsqlite-wasm": "^0.16.0",
     "vercel": "^50.4.5"
   },
   "peerDependencies": {

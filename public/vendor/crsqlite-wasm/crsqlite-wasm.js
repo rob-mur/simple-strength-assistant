@@ -1,15 +1,3 @@
-var __defProp = Object.defineProperty;
-var __typeError = (msg) => {
-  throw TypeError(msg);
-};
-var __defNormalProp = (obj, key, value) => key in obj ? __defProp(obj, key, { enumerable: true, configurable: true, writable: true, value }) : obj[key] = value;
-var __publicField = (obj, key, value) => __defNormalProp(obj, typeof key !== "symbol" ? key + "" : key, value);
-var __accessCheck = (obj, member, msg) => member.has(obj) || __typeError("Cannot " + msg);
-var __privateGet = (obj, member, getter) => (__accessCheck(obj, member, "read from private field"), getter ? getter.call(obj) : member.get(obj));
-var __privateAdd = (obj, member, value) => member.has(obj) ? __typeError("Cannot add the same private member more than once") : member instanceof WeakSet ? member.add(obj) : member.set(obj, value);
-var __privateSet = (obj, member, value, setter) => (__accessCheck(obj, member, "write to private field"), setter ? setter.call(obj, value) : member.set(obj, value), value);
-var __privateMethod = (obj, member, method) => (__accessCheck(obj, member, "access private method"), method);
-
 // node_modules/@vlcn.io/crsqlite-wasm/dist/crsqlite.mjs
 var Module = (() => {
   var _scriptDir = import.meta.url;
@@ -3130,9 +3118,7 @@ function decl(s) {
 
 // node_modules/@vlcn.io/wa-sqlite/src/VFS.js
 var Base = class {
-  constructor() {
-    __publicField(this, "mxPathName", 64);
-  }
+  mxPathName = 64;
   /**
    * @param {number} fileId 
    * @returns {number}
@@ -3279,39 +3265,117 @@ var FILE_TYPE_MASK = [
 
 // node_modules/@vlcn.io/wa-sqlite/src/examples/WebLocks.js
 var LOCK_TYPE_MASK = SQLITE_LOCK_NONE | SQLITE_LOCK_SHARED | SQLITE_LOCK_RESERVED | SQLITE_LOCK_PENDING | SQLITE_LOCK_EXCLUSIVE;
-var _state, _releasers, _pending, _WebLocksBase_instances, apply_fn, lock_fn, unlock_fn;
 var WebLocksBase = class {
-  constructor() {
-    __privateAdd(this, _WebLocksBase_instances);
-    __privateAdd(this, _state, SQLITE_LOCK_NONE);
-    __publicField(this, "timeoutMillis", 0);
-    /** @type {Map<string, (value: any) => void>} */
-    __privateAdd(this, _releasers, /* @__PURE__ */ new Map());
-    /** @type {Promise<0|5|3850>} */
-    __privateAdd(this, _pending, Promise.resolve(0));
-  }
   get state() {
-    return __privateGet(this, _state);
+    return this.#state;
   }
+  #state = SQLITE_LOCK_NONE;
+  timeoutMillis = 0;
+  /** @type {Map<string, (value: any) => void>} */
+  #releasers = /* @__PURE__ */ new Map();
+  /** @type {Promise<0|5|3850>} */
+  #pending = Promise.resolve(0);
   /**
    * @param {number} flags 
    * @returns {Promise<0|5|3850>} SQLITE_OK, SQLITE_BUSY, SQLITE_IOERR_LOCK
    */
   async lock(flags) {
-    return __privateMethod(this, _WebLocksBase_instances, apply_fn).call(this, __privateMethod(this, _WebLocksBase_instances, lock_fn), flags);
+    return this.#apply(this.#lock, flags);
   }
   /**
    * @param {number} flags 
    * @returns {Promise<0|5|3850>} SQLITE_OK, SQLITE_IOERR_LOCK
    */
   async unlock(flags) {
-    return __privateMethod(this, _WebLocksBase_instances, apply_fn).call(this, __privateMethod(this, _WebLocksBase_instances, unlock_fn), flags);
+    return this.#apply(this.#unlock, flags);
   }
   /**
    * @returns {Promise<boolean>}
    */
   async isSomewhereReserved() {
     throw new Error("unimplemented");
+  }
+  /**
+   * 
+   * @param {(targetState: number) => void} method 
+   * @param {number} flags 
+   */
+  async #apply(method, flags) {
+    const targetState = flags & LOCK_TYPE_MASK;
+    try {
+      const call = () => method.call(this, targetState);
+      await (this.#pending = this.#pending.then(call, call));
+      this.#state = targetState;
+      return SQLITE_OK;
+    } catch (e) {
+      if (e.name === "AbortError") {
+        return SQLITE_BUSY;
+      }
+      console.error(e);
+      return SQLITE_IOERR_LOCK;
+    }
+  }
+  async #lock(targetState) {
+    if (targetState === this.#state) return SQLITE_OK;
+    switch (this.#state) {
+      case SQLITE_LOCK_NONE:
+        switch (targetState) {
+          case SQLITE_LOCK_SHARED:
+            return this._NONEtoSHARED();
+          default:
+            throw new Error(`unexpected transition ${this.#state} -> ${targetState}`);
+        }
+      case SQLITE_LOCK_SHARED:
+        switch (targetState) {
+          case SQLITE_LOCK_RESERVED:
+            return this._SHAREDtoRESERVED();
+          case SQLITE_LOCK_EXCLUSIVE:
+            return this._SHAREDtoEXCLUSIVE();
+          default:
+            throw new Error(`unexpected transition ${this.#state} -> ${targetState}`);
+        }
+      case SQLITE_LOCK_RESERVED:
+        switch (targetState) {
+          case SQLITE_LOCK_EXCLUSIVE:
+            return this._RESERVEDtoEXCLUSIVE();
+          default:
+            throw new Error(`unexpected transition ${this.#state} -> ${targetState}`);
+        }
+      default:
+        throw new Error(`unexpected transition ${this.#state} -> ${targetState}`);
+    }
+  }
+  async #unlock(targetState) {
+    if (targetState === this.#state) return SQLITE_OK;
+    switch (this.#state) {
+      case SQLITE_LOCK_EXCLUSIVE:
+        switch (targetState) {
+          case SQLITE_LOCK_SHARED:
+            return this._EXCLUSIVEtoSHARED();
+          case SQLITE_LOCK_NONE:
+            return this._EXCLUSIVEtoNONE();
+          default:
+            throw new Error(`unexpected transition ${this.#state} -> ${targetState}`);
+        }
+      case SQLITE_LOCK_RESERVED:
+        switch (targetState) {
+          case SQLITE_LOCK_SHARED:
+            return this._RESERVEDtoSHARED();
+          case SQLITE_LOCK_NONE:
+            return this._RESERVEDtoNONE();
+          default:
+            throw new Error(`unexpected transition ${this.#state} -> ${targetState}`);
+        }
+      case SQLITE_LOCK_SHARED:
+        switch (targetState) {
+          case SQLITE_LOCK_NONE:
+            return this._SHAREDtoNONE();
+          default:
+            throw new Error(`unexpected transition ${this.#state} -> ${targetState}`);
+        }
+      default:
+        throw new Error(`unexpected transition ${this.#state} -> ${targetState}`);
+    }
   }
   async _NONEtoSHARED() {
   }
@@ -3353,7 +3417,7 @@ var WebLocksBase = class {
         await navigator.locks.request(lockName, options, (lock) => {
           resolve(lock);
           if (lock) {
-            return new Promise((release) => __privateGet(this, _releasers).set(lockName, release));
+            return new Promise((release) => this.#releasers.set(lockName, release));
           }
         });
       } catch (e) {
@@ -3365,8 +3429,8 @@ var WebLocksBase = class {
    * @param {string} lockName 
    */
   _releaseWebLock(lockName) {
-    __privateGet(this, _releasers).get(lockName)?.();
-    __privateGet(this, _releasers).delete(lockName);
+    this.#releasers.get(lockName)?.();
+    this.#releasers.delete(lockName);
   }
   /**
    * @param {string} lockName 
@@ -3385,87 +3449,6 @@ var WebLocksBase = class {
       return abortController.signal;
     }
     return void 0;
-  }
-};
-_state = new WeakMap();
-_releasers = new WeakMap();
-_pending = new WeakMap();
-_WebLocksBase_instances = new WeakSet();
-apply_fn = async function(method, flags) {
-  const targetState = flags & LOCK_TYPE_MASK;
-  try {
-    const call = () => method.call(this, targetState);
-    await __privateSet(this, _pending, __privateGet(this, _pending).then(call, call));
-    __privateSet(this, _state, targetState);
-    return SQLITE_OK;
-  } catch (e) {
-    if (e.name === "AbortError") {
-      return SQLITE_BUSY;
-    }
-    console.error(e);
-    return SQLITE_IOERR_LOCK;
-  }
-};
-lock_fn = async function(targetState) {
-  if (targetState === __privateGet(this, _state)) return SQLITE_OK;
-  switch (__privateGet(this, _state)) {
-    case SQLITE_LOCK_NONE:
-      switch (targetState) {
-        case SQLITE_LOCK_SHARED:
-          return this._NONEtoSHARED();
-        default:
-          throw new Error(`unexpected transition ${__privateGet(this, _state)} -> ${targetState}`);
-      }
-    case SQLITE_LOCK_SHARED:
-      switch (targetState) {
-        case SQLITE_LOCK_RESERVED:
-          return this._SHAREDtoRESERVED();
-        case SQLITE_LOCK_EXCLUSIVE:
-          return this._SHAREDtoEXCLUSIVE();
-        default:
-          throw new Error(`unexpected transition ${__privateGet(this, _state)} -> ${targetState}`);
-      }
-    case SQLITE_LOCK_RESERVED:
-      switch (targetState) {
-        case SQLITE_LOCK_EXCLUSIVE:
-          return this._RESERVEDtoEXCLUSIVE();
-        default:
-          throw new Error(`unexpected transition ${__privateGet(this, _state)} -> ${targetState}`);
-      }
-    default:
-      throw new Error(`unexpected transition ${__privateGet(this, _state)} -> ${targetState}`);
-  }
-};
-unlock_fn = async function(targetState) {
-  if (targetState === __privateGet(this, _state)) return SQLITE_OK;
-  switch (__privateGet(this, _state)) {
-    case SQLITE_LOCK_EXCLUSIVE:
-      switch (targetState) {
-        case SQLITE_LOCK_SHARED:
-          return this._EXCLUSIVEtoSHARED();
-        case SQLITE_LOCK_NONE:
-          return this._EXCLUSIVEtoNONE();
-        default:
-          throw new Error(`unexpected transition ${__privateGet(this, _state)} -> ${targetState}`);
-      }
-    case SQLITE_LOCK_RESERVED:
-      switch (targetState) {
-        case SQLITE_LOCK_SHARED:
-          return this._RESERVEDtoSHARED();
-        case SQLITE_LOCK_NONE:
-          return this._RESERVEDtoNONE();
-        default:
-          throw new Error(`unexpected transition ${__privateGet(this, _state)} -> ${targetState}`);
-      }
-    case SQLITE_LOCK_SHARED:
-      switch (targetState) {
-        case SQLITE_LOCK_NONE:
-          return this._SHAREDtoNONE();
-        default:
-          throw new Error(`unexpected transition ${__privateGet(this, _state)} -> ${targetState}`);
-      }
-    default:
-      throw new Error(`unexpected transition ${__privateGet(this, _state)} -> ${targetState}`);
   }
 };
 var WebLocksExclusive = class extends WebLocksBase {
@@ -3507,29 +3490,27 @@ var nextTxId = 0;
 var mapTxToId = /* @__PURE__ */ new WeakMap();
 function log(...args) {
 }
-var _db, _dbReady, _txOptions, _tx, _txTimestamp, _runChain, _putChain, _IDBContext_instances, run_fn;
 var IDBContext = class {
+  /** @type {IDBDatabase} */
+  #db;
+  /** @type {Promise<IDBDatabase>} */
+  #dbReady;
+  #txOptions;
+  /** @type {IDBTransaction} */
+  #tx = null;
+  #txTimestamp = 0;
+  #runChain = Promise.resolve();
+  #putChain = Promise.resolve();
   /**
    * @param {IDBDatabase|Promise<IDBDatabase>} idbDatabase
    */
   constructor(idbDatabase, txOptions = { durability: "default" }) {
-    __privateAdd(this, _IDBContext_instances);
-    /** @type {IDBDatabase} */
-    __privateAdd(this, _db);
-    /** @type {Promise<IDBDatabase>} */
-    __privateAdd(this, _dbReady);
-    __privateAdd(this, _txOptions);
-    /** @type {IDBTransaction} */
-    __privateAdd(this, _tx, null);
-    __privateAdd(this, _txTimestamp, 0);
-    __privateAdd(this, _runChain, Promise.resolve());
-    __privateAdd(this, _putChain, Promise.resolve());
-    __privateSet(this, _dbReady, Promise.resolve(idbDatabase).then((db) => __privateSet(this, _db, db)));
-    __privateSet(this, _txOptions, txOptions);
+    this.#dbReady = Promise.resolve(idbDatabase).then((db) => this.#db = db);
+    this.#txOptions = txOptions;
   }
   async close() {
-    const db = __privateGet(this, _db) ?? await __privateGet(this, _dbReady);
-    await __privateGet(this, _runChain);
+    const db = this.#db ?? await this.#dbReady;
+    await this.#runChain;
     await this.sync();
     db.close();
   }
@@ -3540,74 +3521,71 @@ var IDBContext = class {
    * @param {(stores: Object.<string, ObjectStore>) => any} f 
    */
   async run(mode, f) {
-    const result = __privateGet(this, _runChain).then(() => __privateMethod(this, _IDBContext_instances, run_fn).call(this, mode, f));
-    __privateSet(this, _runChain, result.catch(() => {
-    }));
+    const result = this.#runChain.then(() => this.#run(mode, f));
+    this.#runChain = result.catch(() => {
+    });
     return result;
   }
-  async sync() {
-    await __privateGet(this, _runChain);
-    await __privateGet(this, _putChain);
-    __privateSet(this, _putChain, Promise.resolve());
-  }
-};
-_db = new WeakMap();
-_dbReady = new WeakMap();
-_txOptions = new WeakMap();
-_tx = new WeakMap();
-_txTimestamp = new WeakMap();
-_runChain = new WeakMap();
-_putChain = new WeakMap();
-_IDBContext_instances = new WeakSet();
-run_fn = async function(mode, f) {
-  const db = __privateGet(this, _db) ?? await __privateGet(this, _dbReady);
-  if (mode === "readwrite" && __privateGet(this, _tx)?.mode === "readonly") {
-    __privateSet(this, _tx, null);
-  } else if (performance.now() - __privateGet(this, _txTimestamp) > MAX_TRANSACTION_LIFETIME_MILLIS) {
-    try {
-      __privateGet(this, _tx)?.commit();
-    } catch (e) {
-      if (e.name !== "InvalidStateError") throw e;
+  /**
+   * @param {IDBTransactionMode} mode
+   * @param {(stores: Object.<string, ObjectStore>) => any} f 
+   * @returns 
+   */
+  async #run(mode, f) {
+    const db = this.#db ?? await this.#dbReady;
+    if (mode === "readwrite" && this.#tx?.mode === "readonly") {
+      this.#tx = null;
+    } else if (performance.now() - this.#txTimestamp > MAX_TRANSACTION_LIFETIME_MILLIS) {
+      try {
+        this.#tx?.commit();
+      } catch (e) {
+        if (e.name !== "InvalidStateError") throw e;
+      }
+      await new Promise((resolve) => setTimeout(resolve));
+      this.#tx = null;
     }
-    await new Promise((resolve) => setTimeout(resolve));
-    __privateSet(this, _tx, null);
-  }
-  for (let i = 0; i < 2; ++i) {
-    if (!__privateGet(this, _tx)) {
-      __privateSet(this, _tx, db.transaction(db.objectStoreNames, mode, __privateGet(this, _txOptions)));
-      const timestamp = __privateSet(this, _txTimestamp, performance.now());
-      __privateSet(this, _putChain, __privateGet(this, _putChain).then(() => {
-        return new Promise((resolve, reject) => {
-          __privateGet(this, _tx).addEventListener("complete", (event) => {
-            resolve();
-            if (__privateGet(this, _tx) === event.target) {
-              __privateSet(this, _tx, null);
-            }
-            log(`transaction ${mapTxToId.get(event.target)} complete`);
-          });
-          __privateGet(this, _tx).addEventListener("abort", (event) => {
-            console.warn("tx abort", (performance.now() - timestamp) / 1e3);
-            const e = event.target.error;
-            reject(e);
-            if (__privateGet(this, _tx) === event.target) {
-              __privateSet(this, _tx, null);
-            }
-            log(`transaction ${mapTxToId.get(event.target)} aborted`, e);
+    for (let i = 0; i < 2; ++i) {
+      if (!this.#tx) {
+        this.#tx = db.transaction(db.objectStoreNames, mode, this.#txOptions);
+        const timestamp = this.#txTimestamp = performance.now();
+        this.#putChain = this.#putChain.then(() => {
+          return new Promise((resolve, reject) => {
+            this.#tx.addEventListener("complete", (event) => {
+              resolve();
+              if (this.#tx === event.target) {
+                this.#tx = null;
+              }
+              log(`transaction ${mapTxToId.get(event.target)} complete`);
+            });
+            this.#tx.addEventListener("abort", (event) => {
+              console.warn("tx abort", (performance.now() - timestamp) / 1e3);
+              const e = event.target.error;
+              reject(e);
+              if (this.#tx === event.target) {
+                this.#tx = null;
+              }
+              log(`transaction ${mapTxToId.get(event.target)} aborted`, e);
+            });
           });
         });
-      }));
-      log(`new transaction ${nextTxId} ${mode}`);
-      mapTxToId.set(__privateGet(this, _tx), nextTxId++);
+        log(`new transaction ${nextTxId} ${mode}`);
+        mapTxToId.set(this.#tx, nextTxId++);
+      }
+      try {
+        const stores = Object.fromEntries(Array.from(db.objectStoreNames, (name) => {
+          return [name, new ObjectStore(this.#tx.objectStore(name))];
+        }));
+        return await f(stores);
+      } catch (e) {
+        this.#tx = null;
+        if (i) throw e;
+      }
     }
-    try {
-      const stores = Object.fromEntries(Array.from(db.objectStoreNames, (name) => {
-        return [name, new ObjectStore(__privateGet(this, _tx).objectStore(name))];
-      }));
-      return await f(stores);
-    } catch (e) {
-      __privateSet(this, _tx, null);
-      if (i) throw e;
-    }
+  }
+  async sync() {
+    await this.#runChain;
+    await this.#putChain;
+    this.#putChain = Promise.resolve();
   }
 };
 function wrapRequest(request) {
@@ -3616,22 +3594,21 @@ function wrapRequest(request) {
     request.addEventListener("error", () => reject(request.error));
   });
 }
-var _objectStore;
 var ObjectStore = class {
+  #objectStore;
   /**
    * @param {IDBObjectStore} objectStore 
    */
   constructor(objectStore) {
-    __privateAdd(this, _objectStore);
-    __privateSet(this, _objectStore, objectStore);
+    this.#objectStore = objectStore;
   }
   /**
    * @param {IDBValidKey|IDBKeyRange} query 
    * @returns {Promise}
    */
   get(query) {
-    log(`get ${__privateGet(this, _objectStore).name}`, query);
-    const request = __privateGet(this, _objectStore).get(query);
+    log(`get ${this.#objectStore.name}`, query);
+    const request = this.#objectStore.get(query);
     return wrapRequest(request);
   }
   /**
@@ -3640,8 +3617,8 @@ var ObjectStore = class {
    * @returns {Promise}
    */
   getAll(query, count) {
-    log(`getAll ${__privateGet(this, _objectStore).name}`, query, count);
-    const request = __privateGet(this, _objectStore).getAll(query, count);
+    log(`getAll ${this.#objectStore.name}`, query, count);
+    const request = this.#objectStore.getAll(query, count);
     return wrapRequest(request);
   }
   /**
@@ -3649,8 +3626,8 @@ var ObjectStore = class {
    * @returns {Promise<IDBValidKey>}
    */
   getKey(query) {
-    log(`getKey ${__privateGet(this, _objectStore).name}`, query);
-    const request = __privateGet(this, _objectStore).getKey(query);
+    log(`getKey ${this.#objectStore.name}`, query);
+    const request = this.#objectStore.getKey(query);
     return wrapRequest(request);
   }
   /**
@@ -3659,8 +3636,8 @@ var ObjectStore = class {
    * @returns {Promise}
    */
   getAllKeys(query, count) {
-    log(`getAllKeys ${__privateGet(this, _objectStore).name}`, query, count);
-    const request = __privateGet(this, _objectStore).getAllKeys(query, count);
+    log(`getAllKeys ${this.#objectStore.name}`, query, count);
+    const request = this.#objectStore.getAllKeys(query, count);
     return wrapRequest(request);
   }
   /**
@@ -3669,8 +3646,8 @@ var ObjectStore = class {
    * @returns {Promise}
    */
   put(value, key) {
-    log(`put ${__privateGet(this, _objectStore).name}`, value, key);
-    const request = __privateGet(this, _objectStore).put(value, key);
+    log(`put ${this.#objectStore.name}`, value, key);
+    const request = this.#objectStore.put(value, key);
     return wrapRequest(request);
   }
   /**
@@ -3678,29 +3655,27 @@ var ObjectStore = class {
    * @returns {Promise}
    */
   delete(query) {
-    log(`delete ${__privateGet(this, _objectStore).name}`, query);
-    const request = __privateGet(this, _objectStore).delete(query);
+    log(`delete ${this.#objectStore.name}`, query);
+    const request = this.#objectStore.delete(query);
     return wrapRequest(request);
   }
   clear() {
-    log(`clear ${__privateGet(this, _objectStore).name}`);
-    const request = __privateGet(this, _objectStore).clear();
+    log(`clear ${this.#objectStore.name}`);
+    const request = this.#objectStore.clear();
     return wrapRequest(request);
   }
   index(name) {
-    return new Index(__privateGet(this, _objectStore).index(name));
+    return new Index(this.#objectStore.index(name));
   }
 };
-_objectStore = new WeakMap();
-var _index;
 var Index = class {
+  /** @type {IDBIndex} */
+  #index;
   /**
    * @param {IDBIndex} index 
    */
   constructor(index) {
-    /** @type {IDBIndex} */
-    __privateAdd(this, _index);
-    __privateSet(this, _index, index);
+    this.#index = index;
   }
   /**
    * @param {IDBValidKey|IDBKeyRange} query 
@@ -3708,12 +3683,11 @@ var Index = class {
    * @returns {Promise<IDBValidKey[]>}
    */
   getAllKeys(query, count) {
-    log(`IDBIndex.getAllKeys ${__privateGet(this, _index).objectStore.name}<${__privateGet(this, _index).name}>`, query, count);
-    const request = __privateGet(this, _index).getAllKeys(query, count);
+    log(`IDBIndex.getAllKeys ${this.#index.objectStore.name}<${this.#index.name}>`, query, count);
+    const request = this.#index.getAllKeys(query, count);
     return wrapRequest(request);
   }
 };
-_index = new WeakMap();
 
 // node_modules/@vlcn.io/wa-sqlite/src/examples/IDBBatchAtomicVFS.js
 var SECTOR_SIZE = 512;
@@ -3725,32 +3699,30 @@ var DEFAULT_OPTIONS = {
 };
 function log2(...args) {
 }
-var _options, _mapIdToFile, _idb, _pendingPurges, _taskTimestamp, _pendingAsync, _IDBBatchAtomicVFS_instances, xWriteHelper_fn, xSyncHelper_fn, maybePurge_fn, bound_fn, reblockIfNeeded_fn;
 var IDBBatchAtomicVFS = class extends Base {
+  #options;
+  /** @type {Map<number, OpenedFileEntry>} */
+  #mapIdToFile = /* @__PURE__ */ new Map();
+  /** @type {IDBContext} */
+  #idb;
+  /** @type {Set<string>} */
+  #pendingPurges = /* @__PURE__ */ new Set();
+  #taskTimestamp = performance.now();
+  #pendingAsync = /* @__PURE__ */ new Set();
   constructor(idbDatabaseName = "wa-sqlite", options = DEFAULT_OPTIONS) {
     super();
-    __privateAdd(this, _IDBBatchAtomicVFS_instances);
-    __privateAdd(this, _options);
-    /** @type {Map<number, OpenedFileEntry>} */
-    __privateAdd(this, _mapIdToFile, /* @__PURE__ */ new Map());
-    /** @type {IDBContext} */
-    __privateAdd(this, _idb);
-    /** @type {Set<string>} */
-    __privateAdd(this, _pendingPurges, /* @__PURE__ */ new Set());
-    __privateAdd(this, _taskTimestamp, performance.now());
-    __privateAdd(this, _pendingAsync, /* @__PURE__ */ new Set());
     this.name = idbDatabaseName;
-    __privateSet(this, _options, Object.assign({}, DEFAULT_OPTIONS, options));
-    __privateSet(this, _idb, new IDBContext(openDatabase(idbDatabaseName), {
-      durability: __privateGet(this, _options).durability
-    }));
+    this.#options = Object.assign({}, DEFAULT_OPTIONS, options);
+    this.#idb = new IDBContext(openDatabase(idbDatabaseName), {
+      durability: this.#options.durability
+    });
   }
   async close() {
-    for (const fileId of __privateGet(this, _mapIdToFile).keys()) {
+    for (const fileId of this.#mapIdToFile.keys()) {
       await this.xClose(fileId);
     }
-    await __privateGet(this, _idb)?.close();
-    __privateSet(this, _idb, null);
+    await this.#idb?.close();
+    this.#idb = null;
   }
   /**
    * @param {string?} name 
@@ -3772,9 +3744,9 @@ var IDBBatchAtomicVFS = class extends Base {
           isMetadataChanged: true,
           locks: new WebLocksExclusive(url.pathname)
         };
-        __privateGet(this, _mapIdToFile).set(fileId, file);
-        await __privateGet(this, _idb).run("readwrite", async ({ blocks }) => {
-          file.block0 = await blocks.get(__privateMethod(this, _IDBBatchAtomicVFS_instances, bound_fn).call(this, file, 0));
+        this.#mapIdToFile.set(fileId, file);
+        await this.#idb.run("readwrite", async ({ blocks }) => {
+          file.block0 = await blocks.get(this.#bound(file, 0));
           if (!file.block0) {
             if (flags & SQLITE_OPEN_CREATE) {
               file.block0 = {
@@ -3805,12 +3777,12 @@ var IDBBatchAtomicVFS = class extends Base {
   xClose(fileId) {
     return this.handleAsync(async () => {
       try {
-        const file = __privateGet(this, _mapIdToFile).get(fileId);
+        const file = this.#mapIdToFile.get(fileId);
         if (file) {
           log2(`xClose ${file.path}`);
-          __privateGet(this, _mapIdToFile).delete(fileId);
+          this.#mapIdToFile.delete(fileId);
           if (file.flags & SQLITE_OPEN_DELETEONCLOSE) {
-            __privateGet(this, _idb).run("readwrite", ({ blocks }) => {
+            this.#idb.run("readwrite", ({ blocks }) => {
               blocks.delete(IDBKeyRange.bound([file.path], [file.path, []]));
             });
           }
@@ -3830,14 +3802,14 @@ var IDBBatchAtomicVFS = class extends Base {
    */
   xRead(fileId, pData, iOffset) {
     return this.handleAsync(async () => {
-      const file = __privateGet(this, _mapIdToFile).get(fileId);
+      const file = this.#mapIdToFile.get(fileId);
       log2(`xRead ${file.path} ${pData.byteLength} ${iOffset}`);
       try {
-        const result = await __privateGet(this, _idb).run("readonly", async ({ blocks }) => {
+        const result = await this.#idb.run("readonly", async ({ blocks }) => {
           let pDataOffset = 0;
           while (pDataOffset < pData.byteLength) {
             const fileOffset = iOffset + pDataOffset;
-            const block = fileOffset < file.block0.data.byteLength ? file.block0 : await blocks.get(__privateMethod(this, _IDBBatchAtomicVFS_instances, bound_fn).call(this, file, -fileOffset));
+            const block = fileOffset < file.block0.data.byteLength ? file.block0 : await blocks.get(this.#bound(file, -fileOffset));
             if (!block || block.data.byteLength - block.offset <= fileOffset) {
               pData.fill(0, pDataOffset);
               return SQLITE_IOERR_SHORT_READ;
@@ -3868,21 +3840,60 @@ var IDBBatchAtomicVFS = class extends Base {
    * @returns {number}
    */
   xWrite(fileId, pData, iOffset) {
-    const rewound = __privateGet(this, _pendingAsync).has(fileId);
-    if (rewound || performance.now() - __privateGet(this, _taskTimestamp) > MAX_TASK_MILLIS) {
+    const rewound = this.#pendingAsync.has(fileId);
+    if (rewound || performance.now() - this.#taskTimestamp > MAX_TASK_MILLIS) {
       const result = this.handleAsync(async () => {
         if (this.handleAsync !== super.handleAsync) {
-          __privateGet(this, _pendingAsync).add(fileId);
+          this.#pendingAsync.add(fileId);
         }
         await new Promise((resolve) => setTimeout(resolve));
-        const result2 = __privateMethod(this, _IDBBatchAtomicVFS_instances, xWriteHelper_fn).call(this, fileId, pData, iOffset);
-        __privateSet(this, _taskTimestamp, performance.now());
+        const result2 = this.#xWriteHelper(fileId, pData, iOffset);
+        this.#taskTimestamp = performance.now();
         return result2;
       });
-      if (rewound) __privateGet(this, _pendingAsync).delete(fileId);
+      if (rewound) this.#pendingAsync.delete(fileId);
       return result;
     }
-    return __privateMethod(this, _IDBBatchAtomicVFS_instances, xWriteHelper_fn).call(this, fileId, pData, iOffset);
+    return this.#xWriteHelper(fileId, pData, iOffset);
+  }
+  /**
+   * @param {number} fileId 
+   * @param {Uint8Array} pData 
+   * @param {number} iOffset
+   * @returns {number}
+   */
+  #xWriteHelper(fileId, pData, iOffset) {
+    const file = this.#mapIdToFile.get(fileId);
+    log2(`xWrite ${file.path} ${pData.byteLength} ${iOffset}`);
+    try {
+      const prevFileSize = file.block0.fileSize;
+      if (file.block0.fileSize < iOffset + pData.byteLength) {
+        file.block0.fileSize = iOffset + pData.byteLength;
+        file.isMetadataChanged = true;
+      }
+      const block = iOffset === 0 ? file.block0 : {
+        path: file.path,
+        offset: -iOffset,
+        version: file.block0.version,
+        data: null
+      };
+      block.data = pData.slice();
+      if (file.changedPages) {
+        if (prevFileSize === file.block0.fileSize) {
+          file.changedPages.add(-iOffset);
+        }
+        if (iOffset !== 0) {
+          this.#idb.run("readwrite", ({ blocks }) => blocks.put(block));
+        }
+      } else {
+        this.#idb.run("readwrite", ({ blocks }) => blocks.put(block));
+      }
+      file.isMetadataChanged = iOffset === 0 ? false : file.isMetadataChanged;
+      return SQLITE_OK;
+    } catch (e) {
+      console.error(e);
+      return SQLITE_IOERR;
+    }
   }
   /**
    * @param {number} fileId 
@@ -3890,7 +3901,7 @@ var IDBBatchAtomicVFS = class extends Base {
    * @returns {number}
    */
   xTruncate(fileId, iSize) {
-    const file = __privateGet(this, _mapIdToFile).get(fileId);
+    const file = this.#mapIdToFile.get(fileId);
     log2(`xTruncate ${file.path} ${iSize}`);
     try {
       Object.assign(file.block0, {
@@ -3898,8 +3909,8 @@ var IDBBatchAtomicVFS = class extends Base {
         data: file.block0.data.slice(0, iSize)
       });
       const block0 = Object.assign({}, file.block0);
-      __privateGet(this, _idb).run("readwrite", ({ blocks }) => {
-        blocks.delete(__privateMethod(this, _IDBBatchAtomicVFS_instances, bound_fn).call(this, file, -Infinity, -iSize));
+      this.#idb.run("readwrite", ({ blocks }) => {
+        blocks.delete(this.#bound(file, -Infinity, -iSize));
         blocks.put(block0);
       });
       return SQLITE_OK;
@@ -3914,21 +3925,43 @@ var IDBBatchAtomicVFS = class extends Base {
    * @returns {number}
    */
   xSync(fileId, flags) {
-    const rewound = __privateGet(this, _pendingAsync).has(fileId);
-    if (rewound || __privateGet(this, _options).durability !== "relaxed" || performance.now() - __privateGet(this, _taskTimestamp) > MAX_TASK_MILLIS) {
+    const rewound = this.#pendingAsync.has(fileId);
+    if (rewound || this.#options.durability !== "relaxed" || performance.now() - this.#taskTimestamp > MAX_TASK_MILLIS) {
       const result = this.handleAsync(async () => {
         if (this.handleAsync !== super.handleAsync) {
-          __privateGet(this, _pendingAsync).add(fileId);
+          this.#pendingAsync.add(fileId);
         }
-        const result2 = await __privateMethod(this, _IDBBatchAtomicVFS_instances, xSyncHelper_fn).call(this, fileId, flags);
-        __privateSet(this, _taskTimestamp, performance.now());
+        const result2 = await this.#xSyncHelper(fileId, flags);
+        this.#taskTimestamp = performance.now();
         return result2;
       });
-      if (rewound) __privateGet(this, _pendingAsync).delete(fileId);
+      if (rewound) this.#pendingAsync.delete(fileId);
       return result;
     }
-    const file = __privateGet(this, _mapIdToFile).get(fileId);
+    const file = this.#mapIdToFile.get(fileId);
     log2(`xSync ${file.path} ${flags}`);
+    return SQLITE_OK;
+  }
+  /**
+   * @param {number} fileId 
+   * @param {number} flags 
+   * @returns {Promise<number>}
+   */
+  async #xSyncHelper(fileId, flags) {
+    const file = this.#mapIdToFile.get(fileId);
+    log2(`xSync ${file.path} ${flags}`);
+    try {
+      if (file.isMetadataChanged) {
+        this.#idb.run("readwrite", async ({ blocks }) => {
+          await blocks.put(file.block0);
+        });
+        file.isMetadataChanged = false;
+      }
+      await this.#idb.sync();
+    } catch (e) {
+      console.error(e);
+      return SQLITE_IOERR;
+    }
     return SQLITE_OK;
   }
   /**
@@ -3937,7 +3970,7 @@ var IDBBatchAtomicVFS = class extends Base {
    * @returns {number}
    */
   xFileSize(fileId, pSize64) {
-    const file = __privateGet(this, _mapIdToFile).get(fileId);
+    const file = this.#mapIdToFile.get(fileId);
     log2(`xFileSize ${file.path}`);
     pSize64.setBigInt64(0, BigInt(file.block0.fileSize), true);
     return SQLITE_OK;
@@ -3949,13 +3982,13 @@ var IDBBatchAtomicVFS = class extends Base {
    */
   xLock(fileId, flags) {
     return this.handleAsync(async () => {
-      const file = __privateGet(this, _mapIdToFile).get(fileId);
+      const file = this.#mapIdToFile.get(fileId);
       log2(`xLock ${file.path} ${flags}`);
       try {
         const result = await file.locks.lock(flags);
         if (result === SQLITE_OK && file.locks.state === SQLITE_LOCK_SHARED) {
-          file.block0 = await __privateGet(this, _idb).run("readonly", ({ blocks }) => {
-            return blocks.get(__privateMethod(this, _IDBBatchAtomicVFS_instances, bound_fn).call(this, file, 0));
+          file.block0 = await this.#idb.run("readonly", ({ blocks }) => {
+            return blocks.get(this.#bound(file, 0));
           });
         }
         return result;
@@ -3972,7 +4005,7 @@ var IDBBatchAtomicVFS = class extends Base {
    */
   xUnlock(fileId, flags) {
     return this.handleAsync(async () => {
-      const file = __privateGet(this, _mapIdToFile).get(fileId);
+      const file = this.#mapIdToFile.get(fileId);
       log2(`xUnlock ${file.path} ${flags}`);
       try {
         return file.locks.unlock(flags);
@@ -3989,7 +4022,7 @@ var IDBBatchAtomicVFS = class extends Base {
    */
   xCheckReservedLock(fileId, pResOut) {
     return this.handleAsync(async () => {
-      const file = __privateGet(this, _mapIdToFile).get(fileId);
+      const file = this.#mapIdToFile.get(fileId);
       log2(`xCheckReservedLock ${file.path}`);
       const isReserved = await file.locks.isSomewhereReserved();
       pResOut.setInt32(0, isReserved ? 1 : 0, true);
@@ -4019,7 +4052,7 @@ var IDBBatchAtomicVFS = class extends Base {
    * @returns {number}
    */
   xFileControl(fileId, op, pArg) {
-    const file = __privateGet(this, _mapIdToFile).get(fileId);
+    const file = this.#mapIdToFile.get(fileId);
     log2(`xFileControl ${file.path} ${op}`);
     switch (op) {
       case 11:
@@ -4029,7 +4062,7 @@ var IDBBatchAtomicVFS = class extends Base {
         if (file.overwrite) {
           try {
             return this.handleAsync(async () => {
-              await __privateMethod(this, _IDBBatchAtomicVFS_instances, reblockIfNeeded_fn).call(this, file);
+              await this.#reblockIfNeeded(file);
               return SQLITE_OK;
             });
           } catch (e) {
@@ -4039,7 +4072,7 @@ var IDBBatchAtomicVFS = class extends Base {
         }
         if (file.isMetadataChanged) {
           try {
-            __privateGet(this, _idb).run("readwrite", async ({ blocks }) => {
+            this.#idb.run("readwrite", async ({ blocks }) => {
               await blocks.put(file.block0);
             });
             file.isMetadataChanged = false;
@@ -4057,7 +4090,7 @@ var IDBBatchAtomicVFS = class extends Base {
           try {
             file.block0.version--;
             file.changedPages = /* @__PURE__ */ new Set();
-            __privateGet(this, _idb).run("readwrite", async ({ blocks }) => {
+            this.#idb.run("readwrite", async ({ blocks }) => {
               const keys = await blocks.index("version").getAllKeys(IDBKeyRange.bound(
                 [file.path],
                 [file.path, file.block0.version]
@@ -4079,7 +4112,7 @@ var IDBBatchAtomicVFS = class extends Base {
           const changedPages = file.changedPages;
           file.changedPages = null;
           file.isMetadataChanged = false;
-          __privateGet(this, _idb).run("readwrite", async ({ blocks }) => {
+          this.#idb.run("readwrite", async ({ blocks }) => {
             blocks.put(block0);
             const purgeBlock = await blocks.get([file.path, "purge", 0]) ?? {
               path: file.path,
@@ -4093,7 +4126,7 @@ var IDBBatchAtomicVFS = class extends Base {
               purgeBlock.data.set(pageIndex, block0.version);
             }
             blocks.put(purgeBlock);
-            __privateMethod(this, _IDBBatchAtomicVFS_instances, maybePurge_fn).call(this, file.path, purgeBlock.count);
+            this.#maybePurge(file.path, purgeBlock.count);
           });
           return SQLITE_OK;
         } catch (e) {
@@ -4105,7 +4138,7 @@ var IDBBatchAtomicVFS = class extends Base {
           try {
             file.changedPages = null;
             file.isMetadataChanged = false;
-            file.block0 = await __privateGet(this, _idb).run("readonly", ({ blocks }) => {
+            file.block0 = await this.#idb.run("readonly", ({ blocks }) => {
               return blocks.get([file.path, 0, file.block0.version + 1]);
             });
             return SQLITE_OK;
@@ -4129,8 +4162,8 @@ var IDBBatchAtomicVFS = class extends Base {
       try {
         const path = new URL(name, "file://localhost/").pathname;
         log2(`xAccess ${path} ${flags}`);
-        const key = await __privateGet(this, _idb).run("readonly", ({ blocks }) => {
-          return blocks.getKey(__privateMethod(this, _IDBBatchAtomicVFS_instances, bound_fn).call(this, { path }, 0));
+        const key = await this.#idb.run("readonly", ({ blocks }) => {
+          return blocks.getKey(this.#bound({ path }, 0));
         });
         pResOut.setInt32(0, key ? 1 : 0, true);
         return SQLITE_OK;
@@ -4150,11 +4183,11 @@ var IDBBatchAtomicVFS = class extends Base {
       const path = new URL(name, "file://localhost/").pathname;
       log2(`xDelete ${path} ${syncDir}`);
       try {
-        __privateGet(this, _idb).run("readwrite", ({ blocks }) => {
+        this.#idb.run("readwrite", ({ blocks }) => {
           return blocks.delete(IDBKeyRange.bound([path], [path, []]));
         });
         if (syncDir) {
-          await __privateGet(this, _idb).sync();
+          await this.#idb.sync();
         }
         return SQLITE_OK;
       } catch (e) {
@@ -4169,7 +4202,7 @@ var IDBBatchAtomicVFS = class extends Base {
    */
   async purge(path) {
     const start = Date.now();
-    await __privateGet(this, _idb).run("readwrite", async ({ blocks }) => {
+    await this.#idb.run("readwrite", async ({ blocks }) => {
       const purgeBlock = await blocks.get([path, "purge", 0]);
       if (purgeBlock) {
         for (const [pageOffset, version] of purgeBlock.data) {
@@ -4185,165 +4218,107 @@ var IDBBatchAtomicVFS = class extends Base {
       log2(`purge ${path} ${purgeBlock?.data.size ?? 0} pages in ${Date.now() - start} ms`);
     });
   }
-};
-_options = new WeakMap();
-_mapIdToFile = new WeakMap();
-_idb = new WeakMap();
-_pendingPurges = new WeakMap();
-_taskTimestamp = new WeakMap();
-_pendingAsync = new WeakMap();
-_IDBBatchAtomicVFS_instances = new WeakSet();
-/**
- * @param {number} fileId 
- * @param {Uint8Array} pData 
- * @param {number} iOffset
- * @returns {number}
- */
-xWriteHelper_fn = function(fileId, pData, iOffset) {
-  const file = __privateGet(this, _mapIdToFile).get(fileId);
-  log2(`xWrite ${file.path} ${pData.byteLength} ${iOffset}`);
-  try {
-    const prevFileSize = file.block0.fileSize;
-    if (file.block0.fileSize < iOffset + pData.byteLength) {
-      file.block0.fileSize = iOffset + pData.byteLength;
-      file.isMetadataChanged = true;
+  /**
+   * Conditionally schedule a purge task.
+   * @param {string} path 
+   * @param {number} nPages 
+   */
+  #maybePurge(path, nPages) {
+    if (this.#options.purge === "manual" || this.#pendingPurges.has(path) || nPages < this.#options.purgeAtLeast) {
+      return;
     }
-    const block = iOffset === 0 ? file.block0 : {
-      path: file.path,
-      offset: -iOffset,
-      version: file.block0.version,
-      data: null
-    };
-    block.data = pData.slice();
-    if (file.changedPages) {
-      if (prevFileSize === file.block0.fileSize) {
-        file.changedPages.add(-iOffset);
-      }
-      if (iOffset !== 0) {
-        __privateGet(this, _idb).run("readwrite", ({ blocks }) => blocks.put(block));
-      }
-    } else {
-      __privateGet(this, _idb).run("readwrite", ({ blocks }) => blocks.put(block));
-    }
-    file.isMetadataChanged = iOffset === 0 ? false : file.isMetadataChanged;
-    return SQLITE_OK;
-  } catch (e) {
-    console.error(e);
-    return SQLITE_IOERR;
-  }
-};
-xSyncHelper_fn = async function(fileId, flags) {
-  const file = __privateGet(this, _mapIdToFile).get(fileId);
-  log2(`xSync ${file.path} ${flags}`);
-  try {
-    if (file.isMetadataChanged) {
-      __privateGet(this, _idb).run("readwrite", async ({ blocks }) => {
-        await blocks.put(file.block0);
+    if (globalThis.requestIdleCallback) {
+      globalThis.requestIdleCallback(() => {
+        this.purge(path);
+        this.#pendingPurges.delete(path);
       });
-      file.isMetadataChanged = false;
+    } else {
+      setTimeout(() => {
+        this.purge(path);
+        this.#pendingPurges.delete(path);
+      });
     }
-    await __privateGet(this, _idb).sync();
-  } catch (e) {
-    console.error(e);
-    return SQLITE_IOERR;
+    this.#pendingPurges.add(path);
   }
-  return SQLITE_OK;
-};
-/**
- * Conditionally schedule a purge task.
- * @param {string} path 
- * @param {number} nPages 
- */
-maybePurge_fn = function(path, nPages) {
-  if (__privateGet(this, _options).purge === "manual" || __privateGet(this, _pendingPurges).has(path) || nPages < __privateGet(this, _options).purgeAtLeast) {
-    return;
+  #bound(file, begin, end = 0) {
+    const version = !begin || -begin < file.block0.data.length ? -Infinity : file.block0.version;
+    return IDBKeyRange.bound(
+      [file.path, begin, version],
+      [file.path, end, Infinity]
+    );
   }
-  if (globalThis.requestIdleCallback) {
-    globalThis.requestIdleCallback(() => {
-      this.purge(path);
-      __privateGet(this, _pendingPurges).delete(path);
-    });
-  } else {
-    setTimeout(() => {
-      this.purge(path);
-      __privateGet(this, _pendingPurges).delete(path);
-    });
-  }
-  __privateGet(this, _pendingPurges).add(path);
-};
-bound_fn = function(file, begin, end = 0) {
-  const version = !begin || -begin < file.block0.data.length ? -Infinity : file.block0.version;
-  return IDBKeyRange.bound(
-    [file.path, begin, version],
-    [file.path, end, Infinity]
-  );
-};
-reblockIfNeeded_fn = async function(file) {
-  const oldPageSize = file.block0.data.length;
-  if (oldPageSize < 18) return;
-  const view = new DataView(file.block0.data.buffer, file.block0.data.byteOffset);
-  let newPageSize = view.getUint16(16);
-  if (newPageSize === 1) newPageSize = 65536;
-  if (newPageSize === oldPageSize) return;
-  const maxPageSize = Math.max(oldPageSize, newPageSize);
-  const nOldPages = maxPageSize / oldPageSize;
-  const nNewPages = maxPageSize / newPageSize;
-  const newPageCount = view.getUint32(28);
-  const fileSize = newPageCount * newPageSize;
-  const version = file.block0.version;
-  await __privateGet(this, _idb).run("readwrite", async ({ blocks }) => {
-    const keys = await blocks.index("version").getAllKeys(IDBKeyRange.bound(
-      [file.path, version + 1],
-      [file.path, Infinity]
-    ));
-    for (const key of keys) {
-      blocks.delete(key);
-    }
-    blocks.delete([file.path, "purge", 0]);
-    for (let iOffset = 0; iOffset < fileSize; iOffset += maxPageSize) {
-      const oldPages = await blocks.getAll(
-        IDBKeyRange.lowerBound([file.path, -(iOffset + maxPageSize), Infinity]),
-        nOldPages
-      );
-      for (const oldPage of oldPages) {
-        blocks.delete([oldPage.path, oldPage.offset, oldPage.version]);
+  // The database page size can be changed with PRAGMA page_size and VACUUM.
+  // The updated file will be overwritten with a regular transaction using
+  // the old page size. After that it will be read and written using the
+  // new page size, so the IndexedDB objects must be combined or split
+  // appropriately.
+  async #reblockIfNeeded(file) {
+    const oldPageSize = file.block0.data.length;
+    if (oldPageSize < 18) return;
+    const view = new DataView(file.block0.data.buffer, file.block0.data.byteOffset);
+    let newPageSize = view.getUint16(16);
+    if (newPageSize === 1) newPageSize = 65536;
+    if (newPageSize === oldPageSize) return;
+    const maxPageSize = Math.max(oldPageSize, newPageSize);
+    const nOldPages = maxPageSize / oldPageSize;
+    const nNewPages = maxPageSize / newPageSize;
+    const newPageCount = view.getUint32(28);
+    const fileSize = newPageCount * newPageSize;
+    const version = file.block0.version;
+    await this.#idb.run("readwrite", async ({ blocks }) => {
+      const keys = await blocks.index("version").getAllKeys(IDBKeyRange.bound(
+        [file.path, version + 1],
+        [file.path, Infinity]
+      ));
+      for (const key of keys) {
+        blocks.delete(key);
       }
-      if (nNewPages === 1) {
-        const buffer = new Uint8Array(newPageSize);
+      blocks.delete([file.path, "purge", 0]);
+      for (let iOffset = 0; iOffset < fileSize; iOffset += maxPageSize) {
+        const oldPages = await blocks.getAll(
+          IDBKeyRange.lowerBound([file.path, -(iOffset + maxPageSize), Infinity]),
+          nOldPages
+        );
         for (const oldPage of oldPages) {
-          buffer.set(oldPage.data, -(iOffset + oldPage.offset));
+          blocks.delete([oldPage.path, oldPage.offset, oldPage.version]);
         }
-        const newPage = {
-          path: file.path,
-          offset: -iOffset,
-          version,
-          data: buffer
-        };
-        if (newPage.offset === 0) {
-          newPage.fileSize = fileSize;
-          file.block0 = newPage;
-        }
-        blocks.put(newPage);
-      } else {
-        const oldPage = oldPages[0];
-        for (let i = 0; i < nNewPages; ++i) {
-          const offset = -(iOffset + i * newPageSize);
-          if (-offset >= fileSize) break;
+        if (nNewPages === 1) {
+          const buffer = new Uint8Array(newPageSize);
+          for (const oldPage of oldPages) {
+            buffer.set(oldPage.data, -(iOffset + oldPage.offset));
+          }
           const newPage = {
-            path: oldPage.path,
-            offset,
+            path: file.path,
+            offset: -iOffset,
             version,
-            data: oldPage.data.subarray(i * newPageSize, (i + 1) * newPageSize)
+            data: buffer
           };
           if (newPage.offset === 0) {
             newPage.fileSize = fileSize;
             file.block0 = newPage;
           }
           blocks.put(newPage);
+        } else {
+          const oldPage = oldPages[0];
+          for (let i = 0; i < nNewPages; ++i) {
+            const offset = -(iOffset + i * newPageSize);
+            if (-offset >= fileSize) break;
+            const newPage = {
+              path: oldPage.path,
+              offset,
+              version,
+              data: oldPage.data.subarray(i * newPageSize, (i + 1) * newPageSize)
+            };
+            if (newPage.offset === 0) {
+              newPage.fileSize = fileSize;
+              file.block0 = newPage;
+            }
+            blocks.put(newPage);
+          }
         }
       }
-    }
-  });
+    });
+  }
 };
 function openDatabase(idbDatabaseName) {
   return new Promise((resolve, reject) => {
@@ -4567,18 +4542,18 @@ function computeCacheKey(sql, mode, bind) {
 
 // node_modules/@vlcn.io/crsqlite-wasm/dist/Stmt.js
 var Stmt = class {
+  originDB;
+  stmtFinalizer;
+  cache;
+  api;
+  base;
+  str;
+  sql;
+  // TOOD: use mode in get/all!
+  mode = "o";
+  finalized = false;
+  bindings = [];
   constructor(originDB, stmtFinalizer, cache, api2, base, str, sql) {
-    __publicField(this, "originDB");
-    __publicField(this, "stmtFinalizer");
-    __publicField(this, "cache");
-    __publicField(this, "api");
-    __publicField(this, "base");
-    __publicField(this, "str");
-    __publicField(this, "sql");
-    // TOOD: use mode in get/all!
-    __publicField(this, "mode", "o");
-    __publicField(this, "finalized", false);
-    __publicField(this, "bindings", []);
     this.originDB = originDB;
     this.stmtFinalizer = stmtFinalizer;
     this.cache = cache;
@@ -4676,13 +4651,13 @@ var Stmt = class {
 
 // node_modules/@vlcn.io/crsqlite-wasm/dist/TX.js
 var TX = class _TX {
+  api;
+  db;
+  __mutex;
+  assertOpen;
+  stmtFinalizer;
+  cache = /* @__PURE__ */ new Map();
   constructor(api2, db, __mutex, assertOpen, stmtFinalizer) {
-    __publicField(this, "api");
-    __publicField(this, "db");
-    __publicField(this, "__mutex");
-    __publicField(this, "assertOpen");
-    __publicField(this, "stmtFinalizer");
-    __publicField(this, "cache", /* @__PURE__ */ new Map());
     this.api = api2;
     this.db = db;
     this.__mutex = __mutex;
@@ -4826,7 +4801,7 @@ function serialize(cache, key, cb, mutex) {
   }
   log3("Enqueueing query ", key);
   let cause = null;
-  if (import.meta.env?.DEV) {
+  if (void 0) {
     cause = new Error();
   }
   const res = mutex.runExclusive(cb);
@@ -4872,71 +4847,52 @@ function firstPick(data) {
 }
 
 // node_modules/@vlcn.io/crsqlite-wasm/dist/DB.js
-var _siteid, _tablesUsedStmt, _updateHooks, _closed, _tx2, _assertOpen, _onUpdate;
 var DB = class {
+  api;
+  db;
+  filename;
+  __mutex = topLevelMutex;
+  stmtFinalizer = /* @__PURE__ */ new Map();
+  // private stmtFinalizationRegistry = new FinalizationRegistry(
+  //   (base: number) => {
+  //     const ref = this.stmtFinalizer.get(base);
+  //     const stmt = ref?.deref();
+  //     if (stmt) {
+  //       console.log("finalized ", base);
+  //       stmt.finalize();
+  //     }
+  //     this.stmtFinalizer.delete(base);
+  //   }
+  // );
+  #siteid = null;
+  #tablesUsedStmt = null;
+  cache = /* @__PURE__ */ new Map();
+  #updateHooks = null;
+  #closed = false;
+  #tx;
   constructor(api2, db, filename) {
-    __publicField(this, "api");
-    __publicField(this, "db");
-    __publicField(this, "filename");
-    __publicField(this, "__mutex", topLevelMutex);
-    __publicField(this, "stmtFinalizer", /* @__PURE__ */ new Map());
-    // private stmtFinalizationRegistry = new FinalizationRegistry(
-    //   (base: number) => {
-    //     const ref = this.stmtFinalizer.get(base);
-    //     const stmt = ref?.deref();
-    //     if (stmt) {
-    //       console.log("finalized ", base);
-    //       stmt.finalize();
-    //     }
-    //     this.stmtFinalizer.delete(base);
-    //   }
-    // );
-    __privateAdd(this, _siteid, null);
-    __privateAdd(this, _tablesUsedStmt, null);
-    __publicField(this, "cache", /* @__PURE__ */ new Map());
-    __privateAdd(this, _updateHooks, null);
-    __privateAdd(this, _closed, false);
-    __privateAdd(this, _tx2);
-    __privateAdd(this, _assertOpen, () => {
-      if (__privateGet(this, _closed)) {
-        throw new Error("The DB is closed");
-      }
-    });
-    __privateAdd(this, _onUpdate, (type, dbName, tblName, rowid) => {
-      if (__privateGet(this, _updateHooks) == null) {
-        return;
-      }
-      __privateGet(this, _updateHooks).forEach((h) => {
-        try {
-          h(type, dbName, tblName, rowid);
-        } catch (e) {
-          console.error("Failed notifying a DB update listener");
-          console.error(e);
-        }
-      });
-    });
     this.api = api2;
     this.db = db;
     this.filename = filename;
-    __privateSet(this, _tx2, new TX(api2, db, topLevelMutex, __privateGet(this, _assertOpen), this.stmtFinalizer));
+    this.#tx = new TX(api2, db, topLevelMutex, this.#assertOpen, this.stmtFinalizer);
   }
   get siteid() {
-    return __privateGet(this, _siteid);
+    return this.#siteid;
   }
   _setSiteid(siteid) {
-    if (__privateGet(this, _siteid)) {
+    if (this.#siteid) {
       throw new Error("Site id already set");
     }
-    __privateSet(this, _siteid, siteid);
+    this.#siteid = siteid;
   }
   _setTablesUsedStmt(stmt) {
-    __privateSet(this, _tablesUsedStmt, stmt);
+    this.#tablesUsedStmt = stmt;
   }
   get tablesUsedStmt() {
-    if (__privateGet(this, _tablesUsedStmt) == null) {
+    if (this.#tablesUsedStmt == null) {
       throw new Error("tablesUsedStmt not set");
     }
-    return __privateGet(this, _tablesUsedStmt);
+    return this.#tablesUsedStmt;
   }
   async automigrateTo(schemaName, schemaContent) {
     const version = cryb64(schemaContent);
@@ -4965,32 +4921,37 @@ var DB = class {
     return ret;
   }
   execMany(sql) {
-    return __privateGet(this, _tx2).execMany(sql);
+    return this.#tx.execMany(sql);
   }
   exec(sql, bind) {
-    return __privateGet(this, _tx2).exec(sql, bind);
+    return this.#tx.exec(sql, bind);
   }
+  #assertOpen = () => {
+    if (this.#closed) {
+      throw new Error("The DB is closed");
+    }
+  };
   /**
    * @returns returns an object for each row, e.g. `{ col1: valA, col2: valB, ... }`
    */
   execO(sql, bind) {
-    return __privateGet(this, _tx2).execO(sql, bind);
+    return this.#tx.execO(sql, bind);
   }
   // TODO: execOCached() -- which takes a table list
   /**
    * @returns returns an array for each row, e.g. `[ valA, valB, ... ]`
    */
   execA(sql, bind) {
-    return __privateGet(this, _tx2).execA(sql, bind);
+    return this.#tx.execA(sql, bind);
   }
   prepare(sql) {
-    return __privateGet(this, _tx2).prepare(sql);
+    return this.#tx.prepare(sql);
   }
   tx(cb) {
-    return __privateGet(this, _tx2).tx(cb);
+    return this.#tx.tx(cb);
   }
   imperativeTx() {
-    return __privateGet(this, _tx2).imperativeTx();
+    return this.#tx.imperativeTx();
   }
   /**
    * Close the database and finalize any prepared statements that were not freed for the given DB.
@@ -4999,14 +4960,14 @@ var DB = class {
     for (const stmt of this.stmtFinalizer.values()) {
       await stmt.finalize(this);
     }
-    __privateGet(this, _tablesUsedStmt)?.finalize(this);
+    this.#tablesUsedStmt?.finalize(this);
     return this.exec("SELECT crsql_finalize()").then(() => {
-      __privateSet(this, _closed, true);
+      this.#closed = true;
       return serialize(this.cache, void 0, () => this.api.close(this.db), this.__mutex);
     });
   }
   createFunction(name, fn, opts) {
-    __privateGet(this, _assertOpen).call(this);
+    this.#assertOpen();
     this.api.create_function(this.db, name, fn.length, SQLITE_UTF8, 0, (context, values) => {
       const args = [];
       for (let i = 0; i < fn.length; ++i) {
@@ -5019,27 +4980,33 @@ var DB = class {
     });
   }
   onUpdate(cb) {
-    if (__privateGet(this, _updateHooks) == null) {
-      this.api.update_hook(this.db, __privateGet(this, _onUpdate));
-      __privateSet(this, _updateHooks, /* @__PURE__ */ new Set());
+    if (this.#updateHooks == null) {
+      this.api.update_hook(this.db, this.#onUpdate);
+      this.#updateHooks = /* @__PURE__ */ new Set();
     }
-    __privateGet(this, _updateHooks).add(cb);
-    return () => __privateGet(this, _updateHooks)?.delete(cb);
+    this.#updateHooks.add(cb);
+    return () => this.#updateHooks?.delete(cb);
   }
+  #onUpdate = (type, dbName, tblName, rowid) => {
+    if (this.#updateHooks == null) {
+      return;
+    }
+    this.#updateHooks.forEach((h) => {
+      try {
+        h(type, dbName, tblName, rowid);
+      } catch (e) {
+        console.error("Failed notifying a DB update listener");
+        console.error(e);
+      }
+    });
+  };
 };
-_siteid = new WeakMap();
-_tablesUsedStmt = new WeakMap();
-_updateHooks = new WeakMap();
-_closed = new WeakMap();
-_tx2 = new WeakMap();
-_assertOpen = new WeakMap();
-_onUpdate = new WeakMap();
 
 // node_modules/@vlcn.io/crsqlite-wasm/dist/index.js
 var api = null;
 var SQLite3 = class {
+  base;
   constructor(base) {
-    __publicField(this, "base");
     this.base = base;
   }
   open(filename, mode = "c") {
