@@ -30,6 +30,13 @@ export function createApp(dataDir: string, schemaDir: string): Server {
       return;
     }
 
+    // Health check for load balancer probes.
+    if (req.url === "/health") {
+      res.writeHead(200);
+      res.end("ok");
+      return;
+    }
+
     // No HTTP endpoints — only WebSocket upgrades are served.
     res.writeHead(404);
     res.end("Not found");

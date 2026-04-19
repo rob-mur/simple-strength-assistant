@@ -9,7 +9,6 @@
     "test": "bun test"
   },
   "devDependencies": {
-    "@types/bun": "latest",
     "@types/node": "^22",
     "tsx": "^4",
     "typescript": "^5"

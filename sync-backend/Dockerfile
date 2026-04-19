@@ -7,7 +7,7 @@ COPY tsconfig.json tsconfig.build.json ./
 COPY src ./src
 RUN npx tsc -p tsconfig.build.json
 # Prune devDependencies so only production deps remain for the runtime image
-RUN npm prune --production
+RUN npm prune --omit=dev
 
 # Stage 2: Production image (only production deps + compiled JS)
 FROM node:20-slim

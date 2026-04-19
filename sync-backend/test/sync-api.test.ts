@@ -36,6 +36,13 @@ describe("vlcn.io sync server", () => {
     await rm(schemaDir, { recursive: true, force: true });
   });
 
+  test("GET /health returns 200", async () => {
+    const res = await fetch(`${baseUrl}/health`);
+    expect(res.status).toBe(200);
+    const body = await res.text();
+    expect(body).toBe("ok");
+  });
+
   test("HTTP GET returns 404 (old blob endpoints removed)", async () => {
     const res = await fetch(`${baseUrl}/sync/test-slot`);
     expect(res.status).toBe(404);
