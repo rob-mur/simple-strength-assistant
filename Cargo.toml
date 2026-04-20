@@ -47,9 +47,7 @@ gloo-timers = { version = "0.3", features = ["futures"] }
 thiserror = "2.0"
 log = "0.4"
 tracing = "0.1"
-async-trait = "0.1"
 uuid = { version = "1", features = ["v4", "js"] }
-base64 = "0.22"
 
 [dev-dependencies]
 wasm-bindgen-test = "0.3"

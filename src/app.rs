@@ -1,4 +1,3 @@
-use crate::components::conflict_resolution::ConflictResolutionScreen;
 #[cfg(debug_assertions)]
 use crate::components::debug_panel::DebugPanel;
 use crate::components::exercise_form::ExerciseForm;
@@ -788,16 +787,10 @@ pub fn App() -> Element {
                     }
                 }
                 InitializationState::Ready => {
-                    if workout_state.has_pending_conflicts() {
-                        rsx! {
-                            ConflictResolutionScreen { state: workout_state }
-                        }
-                    } else {
-                        rsx! {
-                            main {
-                                class: "flex-1 flex flex-col min-h-0 w-full",
-                                Router::<Route> {}
-                            }
+                    rsx! {
+                        main {
+                            class: "flex-1 flex flex-col min-h-0 w-full",
+                            Router::<Route> {}
                         }
                     }
                 }

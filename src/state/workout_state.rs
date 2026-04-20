@@ -1,10 +1,7 @@
 use crate::models::{CompletedSet, ExerciseMetadata, SetType, Settings};
 use crate::state::{Database, Storage, error::WorkoutError};
-use crate::sync::ConflictRecord;
 #[cfg(not(test))]
 use crate::sync::SyncCredentials;
-use crate::sync::SyncOutcome;
-use crate::sync::VectorClock;
 use dioxus::prelude::*;
 use wasm_bindgen::JsValue;
 
@@ -57,8 +54,6 @@ pub enum InitializationState {
 /// `Error(reason)`      - the last sync failed; carries a human-readable reason
 ///                        (e.g. "network timeout", "401 Unauthorized") so the UI
 ///                        can surface actionable context instead of a generic message.
-/// `ConflictsDetected`  - the merge found true conflicts that require user resolution.
-///                        Actual conflict data is stored in `WorkoutState::pending_conflicts`.
 #[derive(Clone, PartialEq, Debug, Default)]
 pub enum SyncStatus {
     #[default]
@@ -70,7 +65,6 @@ pub enum SyncStatus {
     /// Sync is temporarily disabled (e.g. protocol migration in progress).
     /// Unlike `Error`, this is an expected, non-alarming state.
     Disabled(String),
-    ConflictsDetected,
 }
 
 impl SyncStatus {
@@ -83,7 +77,6 @@ impl SyncStatus {
             SyncStatus::UpToDate => "up-to-date",
             SyncStatus::Error(_) => "error",
             SyncStatus::Disabled(_) => "disabled",
-            SyncStatus::ConflictsDetected => "conflicts",
         }
     }
 }
@@ -99,14 +92,8 @@ pub struct WorkoutState {
     last_save_time: Signal<f64>,
     exercises: Signal<Vec<ExerciseMetadata>>,
     sync_status: Signal<SyncStatus>,
-    /// Local vector clock, persisted across sync cycles
-    sync_clock: Signal<VectorClock>,
     /// Global application settings (target RPE, history window, blend factor).
     settings: Signal<Settings>,
-    /// Pending conflicts from a sync merge that the user needs to resolve.
-    pending_conflicts: Signal<Vec<ConflictRecord>>,
-    /// The merged database blob waiting for conflict resolution before being committed.
-    pending_merged_blob: Signal<Option<Vec<u8>>>,
 }
 
 impl Default for WorkoutState {
@@ -117,14 +104,6 @@ impl Default for WorkoutState {
 
 impl WorkoutState {
     pub fn new() -> Self {
-        // Start with an empty clock. In production, the persisted clock is
-        // loaded via `load_persisted_clock()` during `setup_database()` so
-        // sync resumes from the correct sequence numbers after page reloads.
-        //
-        // Note: calling `crate::sync::load_clock()` directly here (even
-        // behind `#[cfg(not(test))]`) breaks Dioxus 0.7.x SSR rendering —
-        // cross-module function calls inside `Signal::new()` constructors
-        // cause the virtual DOM to produce empty output. See #95.
         Self {
             initialization_state: Signal::new(InitializationState::NotInitialized),
             current_session: Signal::new(None),
@@ -136,19 +115,6 @@ impl WorkoutState {
             exercises: Signal::new(Vec::new()),
             settings: Signal::new(Settings::default()),
             sync_status: Signal::new(SyncStatus::Idle),
-            sync_clock: Signal::new(VectorClock::new()),
-            pending_conflicts: Signal::new(Vec::new()),
-            pending_merged_blob: Signal::new(None),
-        }
-    }
-
-    /// Load the persisted vector clock from LocalStorage (production only).
-    /// Called during database setup so sync resumes from the correct state.
-    pub fn load_persisted_clock(&self) {
-        #[cfg(not(test))]
-        {
-            let clock = crate::sync::load_clock();
-            self.set_sync_clock(clock);
         }
     }
 
@@ -240,38 +206,6 @@ impl WorkoutState {
     pub fn set_sync_status(&self, status: SyncStatus) {
         let mut sig = self.sync_status;
         sig.set(status);
-    }
-
-    pub fn sync_clock(&self) -> VectorClock {
-        (self.sync_clock)()
-    }
-
-    pub fn set_sync_clock(&self, clock: VectorClock) {
-        let mut sig = self.sync_clock;
-        sig.set(clock);
-    }
-
-    pub fn pending_conflicts(&self) -> Vec<ConflictRecord> {
-        (self.pending_conflicts)()
-    }
-
-    pub fn set_pending_conflicts(&self, conflicts: Vec<ConflictRecord>) {
-        let mut sig = self.pending_conflicts;
-        sig.set(conflicts);
-    }
-
-    pub fn pending_merged_blob(&self) -> Option<Vec<u8>> {
-        (self.pending_merged_blob)()
-    }
-
-    pub fn set_pending_merged_blob(&self, blob: Option<Vec<u8>>) {
-        let mut sig = self.pending_merged_blob;
-        sig.set(blob);
-    }
-
-    /// Returns true if there are unresolved sync conflicts pending.
-    pub fn has_pending_conflicts(&self) -> bool {
-        !self.pending_conflicts().is_empty()
     }
 }
 
@@ -365,8 +299,6 @@ impl WorkoutStateManager {
         if let Err(e) = Self::load_settings(state).await {
             js_log(&format!("[DB Init] load_settings warning: {}", e));
         }
-
-        state.load_persisted_clock();
 
         state.set_initialization_state(InitializationState::Ready);
 
@@ -662,7 +594,6 @@ impl WorkoutStateManager {
             js_log(&format!("[UI] sync_exercises warning: {}", e));
         }
 
-        state.load_persisted_clock();
         state.set_initialization_state(InitializationState::Ready);
 
         js_log("[UI] complete_file_initialization done → Ready");
@@ -672,20 +603,6 @@ impl WorkoutStateManager {
         js_log(&format!("[ERROR] Workout state error: {}", error));
         state.set_error(Some(error));
         state.set_initialization_state(InitializationState::Error);
-    }
-
-    /// Map a `SyncOutcome` to the corresponding `SyncStatus` for the UI indicator.
-    ///
-    /// This is a pure function so it can be unit-tested without wasm dependencies.
-    pub fn map_sync_outcome_to_status(outcome: &SyncOutcome) -> SyncStatus {
-        match outcome {
-            SyncOutcome::Pushed => SyncStatus::UpToDate,
-            SyncOutcome::Pulled(_) => SyncStatus::UpToDate,
-            SyncOutcome::Merged(_) => SyncStatus::UpToDate,
-            SyncOutcome::Offline => SyncStatus::Error("Server unreachable".into()),
-            SyncOutcome::ConflictDetected { .. } => SyncStatus::ConflictsDetected,
-            SyncOutcome::Skipped => SyncStatus::Idle,
-        }
     }
 
     /// Trigger a background sync cycle using WebSocket-based CRR changeset
@@ -738,206 +655,6 @@ impl WorkoutStateManager {
         }
     }
 
-    /// Shared helper for `Pulled` and `Merged` sync outcomes: initialise a new
-    /// database from the given blob and sync exercises.
-    ///
-    /// With crsqlite-wasm, persistence is handled automatically via IndexedDB.
-    /// On failure the existing in-memory database is left untouched so the
-    /// session remains functional.
-    // TODO(sync): Re-enable when CRR changeset exchange is implemented.
-    #[cfg(not(test))]
-    #[allow(dead_code)]
-    async fn apply_synced_blob(state: &WorkoutState, blob: &[u8], label: &str) {
-        // Rust-layer defence: reject empty blobs before handing them to the JS
-        // layer.  An empty blob is never a valid SQLite database.
-        if blob.is_empty() {
-            log::warn!(
-                "[Sync] Ignoring empty {} blob — existing database left intact",
-                label
-            );
-            return;
-        }
-
-        let mut new_db = Database::new();
-        match new_db.init(Some(blob.to_vec())).await {
-            Ok(_) => {
-                // crsqlite-wasm auto-persists via IndexedDB — no OPFS write needed.
-                state.set_database(new_db);
-                if let Err(e) = Self::sync_exercises(state).await {
-                    log::warn!("[Sync] Failed to sync exercises after {}: {}", label, e);
-                }
-            }
-            Err(e) => {
-                log::warn!(
-                    "[Sync] Failed to init DB from {} blob (existing DB left intact): {}",
-                    label,
-                    e
-                );
-            }
-        }
-    }
-
-    /// Store pending conflicts from a sync merge so the UI can display the
-    /// conflict resolution screen.
-    pub fn set_conflict_state(
-        state: &WorkoutState,
-        conflicts: Vec<ConflictRecord>,
-        merged_blob: Vec<u8>,
-    ) {
-        state.set_pending_conflicts(conflicts);
-        state.set_pending_merged_blob(Some(merged_blob));
-    }
-
-    /// Apply the user's conflict resolutions to the merged database blob.
-    ///
-    /// `choices` maps each conflict's `row_id` to a boolean:
-    /// - `true`  = keep version A (local)
-    /// - `false` = keep version B (remote)
-    ///
-    /// The method rewrites the conflicting rows in the merged blob according
-    /// to the user's choices, saves the result to OPFS, and pushes to the server.
-    pub async fn apply_conflict_resolutions(
-        state: &WorkoutState,
-        choices: &std::collections::HashMap<String, bool>,
-    ) -> Result<(), WorkoutError> {
-        let merged_blob = state
-            .pending_merged_blob()
-            .ok_or(WorkoutError::NotInitialized)?;
-        let conflicts = state.pending_conflicts();
-
-        // Build a JSON array of resolution instructions for the JS side.
-        // Each entry tells the DB module which version's data to write for a given UUID.
-        let mut resolutions = Vec::new();
-        for conflict in &conflicts {
-            let keep_a = choices.get(&conflict.row_id).copied().unwrap_or(true);
-            let chosen_version = if keep_a {
-                &conflict.version_a
-            } else {
-                &conflict.version_b
-            };
-            resolutions.push(serde_json::json!({
-                "uuid": conflict.row_id,
-                "table": conflict.table,
-                "chosen_version": chosen_version,
-            }));
-        }
-
-        log::info!("[Conflict] Applying {} resolutions", resolutions.len());
-
-        // Initialize a new database from the merged blob
-        let mut resolved_db = Database::new();
-        resolved_db
-            .init(Some(merged_blob.clone()))
-            .await
-            .map_err(|e| {
-                log::error!("[Conflict] Failed to init DB from merged blob: {}", e);
-                WorkoutError::Database(e)
-            })?;
-
-        // Whitelist of allowed table and column names matching the known schema.
-        // This prevents SQL injection via server-controlled ConflictRecord data.
-        use std::collections::HashSet;
-
-        let allowed_tables: HashSet<&str> =
-            ["exercises", "completed_sets"].iter().copied().collect();
-        let allowed_columns: HashSet<&str> = [
-            "id",
-            "name",
-            "is_weighted",
-            "min_weight",
-            "increment",
-            "exercise_id",
-            "set_number",
-            "reps",
-            "rpe",
-            "weight",
-            "is_bodyweight",
-            "recorded_at",
-            "uuid",
-            "updated_at",
-            "deleted_at",
-        ]
-        .iter()
-        .copied()
-        .collect();
-
-        // Apply each resolution by updating the row in the database
-        for resolution in &resolutions {
-            let uuid = resolution["uuid"].as_str().unwrap_or_default();
-            let table = resolution["table"].as_str().unwrap_or_default();
-            let chosen_json = resolution["chosen_version"].as_str().unwrap_or_default();
-
-            // Reject unknown table names
-            if !allowed_tables.contains(table) {
-                log::warn!(
-                    "[Conflict] Rejecting unknown table '{}' for row {}",
-                    table,
-                    uuid
-                );
-                continue;
-            }
-
-            // Parse the chosen version and build an UPDATE statement
-            let fields: std::collections::HashMap<String, serde_json::Value> =
-                serde_json::from_str(chosen_json).unwrap_or_default();
-
-            // Build SET clause from the chosen version's fields (excluding uuid)
-            let mut set_parts = Vec::new();
-            let mut values = Vec::new();
-            for (key, val) in &fields {
-                if key == "uuid" {
-                    continue;
-                }
-                // Reject unknown column names
-                if !allowed_columns.contains(key.as_str()) {
-                    log::warn!(
-                        "[Conflict] Rejecting unknown column '{}' in table '{}' for row {}",
-                        key,
-                        table,
-                        uuid
-                    );
-                    continue;
-                }
-                set_parts.push(format!("{} = ?", key));
-                match val {
-                    serde_json::Value::String(s) => values.push(s.clone()),
-                    serde_json::Value::Number(n) => values.push(n.to_string()),
-                    serde_json::Value::Null => values.push("NULL".to_string()),
-                    other => values.push(other.to_string()),
-                }
-            }
-
-            if !set_parts.is_empty() {
-                let sql = format!(
-                    "UPDATE {} SET {} WHERE uuid = ?",
-                    table,
-                    set_parts.join(", ")
-                );
-                values.push(uuid.to_string());
-
-                log::debug!("[Conflict] Executing: {} with {} params", sql, values.len());
-                if let Err(e) = resolved_db.execute_raw(&sql, &values).await {
-                    log::warn!("[Conflict] Failed to apply resolution for {}: {}", uuid, e);
-                }
-            }
-        }
-
-        // crsqlite-wasm auto-persists via IndexedDB — no manual export/write needed.
-
-        // Update the active database
-        state.set_database(resolved_db);
-
-        // Sync exercises from the resolved database
-        if let Err(e) = Self::sync_exercises(state).await {
-            log::warn!(
-                "[Conflict] Failed to sync exercises after resolution: {}",
-                e
-            );
-        }
-
-        log::info!("[Conflict] All conflicts resolved successfully");
-        Ok(())
-    }
 }
 
 #[cfg(test)]
@@ -1008,70 +725,6 @@ mod tests {
         assert_eq!(predicted.weight, None);
         assert_eq!(predicted.reps, 10);
         assert_eq!(predicted.rpe, 7.0);
-    }
-
-    // ── Sync outcome → status mapping tests ───────────────────────────────
-
-    #[test]
-    fn test_pushed_outcome_maps_to_up_to_date() {
-        let status = WorkoutStateManager::map_sync_outcome_to_status(&SyncOutcome::Pushed);
-        assert_eq!(status, SyncStatus::UpToDate);
-    }
-
-    #[test]
-    fn test_pulled_outcome_maps_to_up_to_date() {
-        let status =
-            WorkoutStateManager::map_sync_outcome_to_status(&SyncOutcome::Pulled(vec![1, 2, 3]));
-        assert_eq!(status, SyncStatus::UpToDate);
-    }
-
-    #[test]
-    fn test_merged_outcome_maps_to_up_to_date() {
-        let status =
-            WorkoutStateManager::map_sync_outcome_to_status(&SyncOutcome::Merged(vec![4, 5, 6]));
-        assert_eq!(status, SyncStatus::UpToDate);
-    }
-
-    #[test]
-    fn test_offline_outcome_maps_to_error() {
-        let status = WorkoutStateManager::map_sync_outcome_to_status(&SyncOutcome::Offline);
-        assert_eq!(status, SyncStatus::Error("Server unreachable".to_string()));
-    }
-
-    #[test]
-    fn test_skipped_outcome_maps_to_idle() {
-        let status = WorkoutStateManager::map_sync_outcome_to_status(&SyncOutcome::Skipped);
-        assert_eq!(status, SyncStatus::Idle);
-    }
-
-    #[test]
-    fn test_conflict_detected_outcome_maps_to_conflicts_detected() {
-        use crate::sync::ConflictRecord;
-        let status =
-            WorkoutStateManager::map_sync_outcome_to_status(&SyncOutcome::ConflictDetected {
-                merged: vec![7, 8, 9],
-                conflicts: vec![ConflictRecord {
-                    table: "exercises".into(),
-                    row_id: "row-1".into(),
-                    version_a: "{}".into(),
-                    version_b: "{}".into(),
-                }],
-            });
-        assert_eq!(status, SyncStatus::ConflictsDetected);
-    }
-
-    #[test]
-    fn test_error_then_success_transitions_back_to_up_to_date() {
-        // After an error, a subsequent successful sync should transition back
-        let error_status = WorkoutStateManager::map_sync_outcome_to_status(&SyncOutcome::Offline);
-        assert_eq!(
-            error_status,
-            SyncStatus::Error("Server unreachable".to_string())
-        );
-
-        // Next sync succeeds
-        let success_status = WorkoutStateManager::map_sync_outcome_to_status(&SyncOutcome::Pushed);
-        assert_eq!(success_status, SyncStatus::UpToDate);
     }
 
     #[test]
