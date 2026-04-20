@@ -16,9 +16,6 @@ pub struct SyncCredentials {
 /// Key used to store/retrieve sync credentials in LocalStorage.
 const CREDS_KEY: &str = "sync_credentials";
 
-/// Key used to store/retrieve the vector clock in LocalStorage.
-const CLOCK_KEY: &str = "sync_vector_clock";
-
 impl SyncCredentials {
     /// Load credentials from LocalStorage, returning `None` if not present.
     pub fn load() -> Option<Self> {
@@ -108,51 +105,6 @@ impl SyncCredentials {
                 .sync_id
                 .chars()
                 .all(|c| c.is_ascii_alphanumeric() || c == '-')
-    }
-}
-
-// ── Vector clock persistence ─────────────────────────────────────────────
-
-use super::VectorClock;
-
-/// Persist a vector clock to LocalStorage so it survives page reloads.
-pub fn save_clock(clock: &VectorClock) -> Result<(), String> {
-    #[cfg(not(test))]
-    {
-        use gloo_storage::{LocalStorage, Storage};
-        LocalStorage::set(CLOCK_KEY, clock).map_err(|e| e.to_string())
-    }
-    #[cfg(test)]
-    {
-        let _ = (clock, CLOCK_KEY);
-        Ok(())
-    }
-}
-
-/// Remove the vector clock from LocalStorage (called on unpair).
-pub fn delete_clock() {
-    #[cfg(not(test))]
-    {
-        use gloo_storage::{LocalStorage, Storage};
-        LocalStorage::delete(CLOCK_KEY);
-    }
-    #[cfg(test)]
-    {
-        let _ = CLOCK_KEY;
-    }
-}
-
-/// Load a vector clock from LocalStorage, returning a fresh clock if not present.
-pub fn load_clock() -> VectorClock {
-    #[cfg(not(test))]
-    {
-        use gloo_storage::{LocalStorage, Storage};
-        LocalStorage::get::<VectorClock>(CLOCK_KEY).unwrap_or_default()
-    }
-    #[cfg(test)]
-    {
-        let _ = CLOCK_KEY;
-        VectorClock::new()
     }
 }
 
@@ -300,24 +252,6 @@ mod tests {
                 .chars()
                 .all(|c| c.is_ascii_hexdigit() || c == '-')
         );
-    }
-
-    #[test]
-    fn test_load_clock_returns_default_in_test() {
-        let clock = super::load_clock();
-        assert_eq!(clock, super::VectorClock::new());
-    }
-
-    #[test]
-    fn test_save_clock_succeeds_in_test() {
-        let clock = super::VectorClock::new();
-        assert!(super::save_clock(&clock).is_ok());
-    }
-
-    #[test]
-    fn test_delete_clock_does_not_panic() {
-        // In test mode delete_clock is a no-op; verify it doesn't panic.
-        super::delete_clock();
     }
 
     #[test]
