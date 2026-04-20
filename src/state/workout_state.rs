@@ -688,13 +688,15 @@ impl WorkoutStateManager {
         }
     }
 
-    /// Trigger a background sync cycle.  Non-blocking: errors are swallowed
-    /// except for `ConflictDetected`, which surfaces the conflict resolution UI.
+    /// Trigger a background sync cycle using WebSocket-based CRR changeset
+    /// exchange.  Non-blocking: errors are logged but do not crash the app.
     ///
     /// This is a no-op when `sync_id` is not configured in LocalStorage
     /// (i.e. the pairing flow has not been run yet).
     #[cfg(not(test))]
     pub async fn trigger_background_sync(state: &WorkoutState) {
+        use crate::sync::ws_bridge;
+
         // Load existing credentials. If none are saved, sync is not configured
         // and we skip silently — the user must explicitly set up sync first.
         let Some(credentials) = SyncCredentials::load() else {
@@ -706,24 +708,34 @@ impl WorkoutStateManager {
             return;
         }
 
-        // Sync is disabled: the old blob-level protocol is incompatible with
-        // the new CRR-backed database.  Rather than silently running no-op
-        // network calls, we short-circuit here and surface the state to the
-        // user.  Remove this gate once CRR changeset exchange is implemented.
-        let _ = credentials; // validated above; will be used by CRR sync
-        log::info!(
-            "[Sync] Sync is temporarily disabled while the protocol is migrated to CRR changesets"
-        );
-        state.set_sync_status(SyncStatus::Disabled(
-            "Sync is temporarily unavailable — update in progress".to_string(),
-        ));
-        // TODO(sync): Once CRR changeset exchange is implemented, replace this
-        // early return with:
-        // 1. Extract local changesets via `crsql_changes()`
-        // 2. Send changesets to server via SyncClient
-        // 3. Apply server changesets locally
-        // 4. Update vector clock and sync status
-        // See git history for the previous blob-level sync implementation.
+        state.set_sync_status(SyncStatus::Syncing);
+
+        let outcome = ws_bridge::run_ws_sync(&credentials.sync_id, &credentials.sync_secret).await;
+
+        match outcome {
+            crate::sync::WsSyncOutcome::Synced => {
+                log::info!("[Sync] CRR changeset sync completed — changes exchanged");
+                state.set_sync_status(SyncStatus::UpToDate);
+
+                // Re-read exercises from the database since remote changes may
+                // have added or modified exercise rows.
+                if let Err(e) = Self::sync_exercises(state).await {
+                    log::warn!("[Sync] Failed to refresh exercises after sync: {}", e);
+                }
+            }
+            crate::sync::WsSyncOutcome::NoChanges => {
+                log::debug!("[Sync] CRR changeset sync — no changes to exchange");
+                state.set_sync_status(SyncStatus::UpToDate);
+            }
+            crate::sync::WsSyncOutcome::Offline => {
+                log::warn!("[Sync] Server unreachable — continuing offline");
+                state.set_sync_status(SyncStatus::Error("Server unreachable".to_string()));
+            }
+            crate::sync::WsSyncOutcome::Error(msg) => {
+                log::warn!("[Sync] Sync error: {}", msg);
+                state.set_sync_status(SyncStatus::Error(msg));
+            }
+        }
     }
 
     /// Shared helper for `Pulled` and `Merged` sync outcomes: initialise a new

@@ -1,6 +1,7 @@
 pub mod client;
 pub mod credentials;
 pub mod vector_clock;
+pub mod ws_bridge;
 
 #[cfg(not(test))]
 pub mod http;
@@ -8,6 +9,7 @@ pub mod http;
 pub use client::{ConflictRecord, MergeResult, SyncClient, SyncOutcome};
 pub use credentials::{SyncCredentials, delete_clock, load_clock, save_clock};
 pub use vector_clock::VectorClock;
+pub use ws_bridge::WsSyncOutcome;
 
 /// Trivial merge stub for tests. Returns the local blob unchanged.
 #[cfg(test)]
