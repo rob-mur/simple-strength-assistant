@@ -91,7 +91,6 @@ Then(
     // When offline the indicator should transition away from "up-to-date".
     // It may show "error" (network failure) or "syncing" (retry attempt).
     const status = await indicator.getAttribute("data-sync-status");
-    const acceptableOffline = ["error", "syncing", "idle", "never-synced"];
     if (status === "up-to-date") {
       // The app may not have attempted a sync yet — wait briefly and re-check
       await page.waitForTimeout(3000);
