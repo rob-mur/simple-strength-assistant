@@ -23,20 +23,14 @@ pub struct SyncEdgeCaseWorld {
 
 #[given("a database with exercises before CRR migration")]
 async fn step_db_with_exercises(world: &mut SyncEdgeCaseWorld) {
-    world.exercises_before_migration = vec![
-        "Bench Press".into(),
-        "Squat".into(),
-        "Deadlift".into(),
-    ];
+    world.exercises_before_migration =
+        vec!["Bench Press".into(), "Squat".into(), "Deadlift".into()];
     world.exercises_after_migration.clear();
 }
 
 #[given("a database with exercises and sync credentials before CRR migration")]
 async fn step_db_with_exercises_and_creds(world: &mut SyncEdgeCaseWorld) {
-    world.exercises_before_migration = vec![
-        "Bench Press".into(),
-        "Squat".into(),
-    ];
+    world.exercises_before_migration = vec!["Bench Press".into(), "Squat".into()];
     world.has_sync_credentials = true;
     world.app_ready = false;
 }
@@ -76,7 +70,10 @@ async fn step_creds_present(world: &mut SyncEdgeCaseWorld) {
 
 #[then("the app should be in a ready state")]
 async fn step_app_ready(world: &mut SyncEdgeCaseWorld) {
-    assert!(world.app_ready, "App should be in ready state after migration");
+    assert!(
+        world.app_ready,
+        "App should be in ready state after migration"
+    );
 }
 
 // ── JS ↔ Rust boundary steps ────────────────────────────────────────────────
