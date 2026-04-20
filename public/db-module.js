@@ -25,7 +25,7 @@ let sqlite = null;
 let _syncModulePromise = null;
 async function getSyncModule() {
   if (!_syncModulePromise) {
-    _syncModulePromise = import("/sync-module.js");
+    _syncModulePromise = import("./sync-module.js");
   }
   return _syncModulePromise;
 }
