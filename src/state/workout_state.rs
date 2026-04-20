@@ -654,7 +654,6 @@ impl WorkoutStateManager {
             }
         }
     }
-
 }
 
 #[cfg(test)]
