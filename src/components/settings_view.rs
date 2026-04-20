@@ -105,11 +105,9 @@ pub fn SettingsView(state: WorkoutState) -> Element {
                                             #[cfg(not(test))]
                                             {
                                                 SyncCredentials::delete();
-                                                crate::sync::delete_clock();
                                             }
                                             credentials.set(None);
                                             state.set_sync_status(SyncStatus::Idle);
-                                            state.set_sync_clock(crate::sync::VectorClock::new());
                                         },
                                         "Unpair"
                                     }

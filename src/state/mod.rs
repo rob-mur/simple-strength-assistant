@@ -2,7 +2,6 @@ mod db;
 mod error;
 mod file_system;
 mod storage;
-mod vector_clock;
 mod workout_state;
 
 #[cfg(test)]
@@ -14,8 +13,6 @@ pub use db::{Database, DatabaseError};
 pub use error::WorkoutError;
 pub use file_system::FileSystemError;
 pub use file_system::FileSystemManager;
-// VectorClock, ClockRelationship, and compare_vector_clocks are pub(crate)
-// until the sync client (#91) wires them up.
 pub use workout_state::{
     InitializationState, PredictedParameters, SyncStatus, WorkoutSession, WorkoutState,
     WorkoutStateManager,

@@ -24,7 +24,6 @@ pub fn SyncStatusIndicator(status: SyncStatus) -> Element {
         SyncStatus::UpToDate => ("badge badge-success badge-sm", "Up to date"),
         SyncStatus::Error(_) => ("badge badge-error badge-sm", "Sync error"),
         SyncStatus::Disabled(_) => ("badge badge-ghost badge-sm", "Sync paused"),
-        SyncStatus::ConflictsDetected => ("badge badge-warning badge-sm", "Conflicts"),
     };
 
     rsx! {
