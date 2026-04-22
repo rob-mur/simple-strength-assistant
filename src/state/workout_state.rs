@@ -289,6 +289,15 @@ impl WorkoutStateManager {
         })?;
         js_log("[DB Init] Database initialized successfully");
 
+        // If the sync module failed to load, mark sync as disabled so the UI
+        // can surface a visible indicator without blocking the app.
+        if database.sync_unavailable {
+            js_log("[DB Init] Sync module unavailable — marking sync as Disabled");
+            state.set_sync_status(SyncStatus::Disabled(
+                "Sync module could not be loaded".to_string(),
+            ));
+        }
+
         state.set_database(database);
         state.set_file_manager(file_manager);
 
@@ -588,6 +597,16 @@ impl WorkoutStateManager {
         file_manager: Storage,
     ) {
         js_log("[UI] complete_file_initialization: storing DB and file manager...");
+
+        // If the sync module failed to load during DB init, mark sync as disabled
+        // so the UI can surface a visible indicator without blocking the app.
+        if database.sync_unavailable {
+            js_log("[UI] Sync module unavailable — marking sync as Disabled");
+            state.set_sync_status(SyncStatus::Disabled(
+                "Sync module could not be loaded".to_string(),
+            ));
+        }
+
         state.set_database(database);
         state.set_file_manager(file_manager);
 
