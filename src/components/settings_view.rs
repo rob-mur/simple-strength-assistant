@@ -3,11 +3,12 @@ use crate::models::Settings;
 use crate::state::{SyncStatus, WorkoutState, WorkoutStateManager};
 use crate::sync::SyncCredentials;
 use dioxus::prelude::*;
-use wasm_bindgen::JsValue;
 
 /// Write directly to browser `console.log` — always visible in Playwright
 /// regardless of log level.
+#[cfg(not(test))]
 fn js_log(msg: &str) {
+    use wasm_bindgen::JsValue;
     web_sys::console::log_1(&JsValue::from_str(msg));
 }
 
@@ -97,10 +98,10 @@ pub fn SettingsView(state: WorkoutState) -> Element {
                                         class: "btn btn-outline btn-sm gap-2",
                                         "data-testid": "copy-sync-id-button",
                                         onclick: {
-                                            let sync_id = creds.sync_id.clone();
+                                            let _sync_id = creds.sync_id.clone();
                                             move |_| {
                                                 #[cfg(not(test))]
-                                                copy_to_clipboard(&sync_id);
+                                                copy_to_clipboard(&_sync_id);
                                             }
                                         },
                                         "Copy sync code"
@@ -142,10 +143,10 @@ pub fn SettingsView(state: WorkoutState) -> Element {
                                     class: "btn btn-outline btn-sm gap-2 mb-4 w-full",
                                     "data-testid": "copy-sync-id-button",
                                     onclick: {
-                                        let sync_id = creds.sync_id.clone();
+                                        let _sync_id = creds.sync_id.clone();
                                         move |_| {
                                             #[cfg(not(test))]
-                                            copy_to_clipboard(&sync_id);
+                                            copy_to_clipboard(&_sync_id);
                                         }
                                     },
                                     "Copy sync code"
