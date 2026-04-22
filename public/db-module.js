@@ -18,8 +18,59 @@ const CRR_TABLES = ["exercises", "completed_sets", "settings"];
 // itself (new: stored atomically with the migrated data).
 const MIGRATION_KEY = "crsqlite_migration_done";
 
+// Timeout (ms) for each individual DB init step.
+// 15 s is generous for wasm load; individual SQL steps should be instant.
+const STEP_TIMEOUT_MS = 15_000;
+
 let db = null;
 let sqlite = null;
+
+// Last error detail from initDatabase() — retrieved by Rust via getDbInitError().
+let _lastDbInitError = null;
+
+/**
+ * Retrieve the error string set by the most recent failed initDatabase() call.
+ * Returns an empty string when there is no error.
+ * Called from Rust immediately after initDatabase() returns falsy.
+ */
+export function getDbInitError() {
+  return _lastDbInitError ?? "";
+}
+
+/**
+ * Whether the sync module failed to load during the last initDatabase() call.
+ * When true the app is still functional; sync is simply unavailable.
+ */
+let _syncUnavailable = false;
+
+/**
+ * Returns true when the sync module could not be loaded.
+ * Used by the UI to show a "sync unavailable" badge without blocking init.
+ */
+export function isSyncUnavailable() {
+  return _syncUnavailable;
+}
+
+/**
+ * Race a promise against a timeout.  Rejects with a descriptive error if the
+ * timeout fires before the promise settles.
+ *
+ * @param {Promise<any>} promise  The operation to guard.
+ * @param {number} ms             Timeout in milliseconds.
+ * @param {string} stepName       Human-readable label for the error message.
+ */
+function withTimeout(promise, ms, stepName) {
+  return new Promise((resolve, reject) => {
+    const timer = setTimeout(
+      () => reject(new Error(`DB init step timed out: ${stepName} (${ms}ms)`)),
+      ms,
+    );
+    promise.then(
+      (v) => { clearTimeout(timer); resolve(v); },
+      (e) => { clearTimeout(timer); reject(e); },
+    );
+  });
+}
 
 // Lazy-import of the sync module. Resolved on first use.
 let _syncModulePromise = null;
@@ -33,14 +84,23 @@ async function getSyncModule() {
 /**
  * Register the open database handle with the sync module so it can read/write
  * changesets via crsql_changes().
+ *
+ * Sync module load failures are non-fatal: the app continues to work, and
+ * `_syncUnavailable` is set so the UI can surface a visible indicator.
  */
 async function registerDbWithSync() {
   try {
-    const syncMod = await getSyncModule();
+    const syncMod = await withTimeout(
+      getSyncModule(),
+      STEP_TIMEOUT_MS,
+      "registerDbWithSync",
+    );
     syncMod.registerSyncDb(db);
+    _syncUnavailable = false;
     console.log("[DB] Registered database with sync module");
   } catch (e) {
-    console.warn("[DB] Failed to register database with sync module:", e);
+    _syncUnavailable = true;
+    console.warn("[DB] Failed to register database with sync module — sync unavailable:", e);
   }
 }
 
@@ -50,9 +110,13 @@ async function registerDbWithSync() {
 async function ensureCrSQLiteLoaded() {
   if (sqlite) return sqlite;
 
-  const mod = await import(CRSQLITE_WASM_URL);
+  const mod = await withTimeout(
+    import(CRSQLITE_WASM_URL),
+    STEP_TIMEOUT_MS,
+    "import crsqlite-wasm",
+  );
   const initWasm = mod.default;
-  sqlite = await initWasm();
+  sqlite = await withTimeout(initWasm(), STEP_TIMEOUT_MS, "initWasm()");
   return sqlite;
 }
 
@@ -86,8 +150,9 @@ export async function ensureCrrTables() {
 }
 
 export async function initDatabase(fileData) {
+  _lastDbInitError = null;
   try {
-    await ensureCrSQLiteLoaded();
+    await withTimeout(ensureCrSQLiteLoaded(), STEP_TIMEOUT_MS, "ensureCrSQLiteLoaded");
 
     // Close any previously open database.
     if (db) {
@@ -98,7 +163,7 @@ export async function initDatabase(fileData) {
       }
     }
 
-    db = await sqlite.open(DB_NAME);
+    db = await withTimeout(sqlite.open(DB_NAME), STEP_TIMEOUT_MS, "sqlite.open");
 
     // ── One-time migration from OPFS (sql.js) data ─────────────────────────
     // If the caller provided file data AND we haven't migrated yet, read the
@@ -108,14 +173,18 @@ export async function initDatabase(fileData) {
     // for backwards compat with any user who already migrated before this fix.
     const alreadyMigrated =
       localStorage.getItem(MIGRATION_KEY) ||
-      (await isMigrationDone());
+      (await withTimeout(isMigrationDone(), STEP_TIMEOUT_MS, "isMigrationDone"));
 
     const needsMigration =
       fileData && fileData.length > 0 && !alreadyMigrated;
 
     if (needsMigration) {
       console.log("[DB] Migrating existing OPFS data into crsqlite...");
-      await migrateFromSqlJs(new Uint8Array(fileData));
+      await withTimeout(
+        migrateFromSqlJs(new Uint8Array(fileData)),
+        STEP_TIMEOUT_MS,
+        "migrateFromSqlJs",
+      );
       // Also set localStorage so the check short-circuits on next launch.
       localStorage.setItem(MIGRATION_KEY, Date.now().toString());
       console.log("[DB] Migration complete.");
@@ -124,10 +193,11 @@ export async function initDatabase(fileData) {
     // ── Idempotent CRR upgrade ─────────────────────────────────────────────
     // Safe to run every launch — crsql_as_crr is a no-op on tables that are
     // already CRRs.
-    await applyCrrMigration();
+    await withTimeout(applyCrrMigration(), STEP_TIMEOUT_MS, "applyCrrMigration");
 
     // Register the open DB handle with the sync module so WebSocket sync
-    // can access crsql_changes().
+    // can access crsql_changes().  Non-fatal: sync unavailability does not
+    // block the rest of init.
     await registerDbWithSync();
 
     // Expose a raw SQL hook for the Playwright test harness.
@@ -137,6 +207,8 @@ export async function initDatabase(fileData) {
 
     return true;
   } catch (error) {
+    const msg = error instanceof Error ? error.message : String(error);
+    _lastDbInitError = msg;
     console.error("Failed to initialize database:", error);
     return false;
   }

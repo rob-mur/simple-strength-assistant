@@ -48,6 +48,16 @@ extern "C" {
 
     #[wasm_bindgen(js_name = ensureCrrTables)]
     async fn ensure_crr_tables() -> JsValue;
+
+    /// Returns the error message from the most recent failed `initDatabase()` call.
+    /// Returns an empty string when there is no error.
+    #[wasm_bindgen(js_name = getDbInitError)]
+    fn get_db_init_error() -> String;
+
+    /// Returns true when the sync module could not be loaded during init.
+    /// The app is still functional; sync is simply unavailable.
+    #[wasm_bindgen(js_name = isSyncUnavailable)]
+    fn is_sync_unavailable() -> bool;
 }
 
 /// Current schema version. Bump this when the schema changes.
@@ -56,11 +66,17 @@ const SCHEMA_VERSION: i64 = 6;
 #[derive(Clone, PartialEq)]
 pub struct Database {
     initialized: bool,
+    /// Set to true when the sync module failed to load during `init()`.
+    /// The database is fully functional; only sync is affected.
+    pub sync_unavailable: bool,
 }
 
 impl Database {
     pub fn new() -> Self {
-        Self { initialized: false }
+        Self {
+            initialized: false,
+            sync_unavailable: false,
+        }
     }
 
     pub async fn init(&mut self, file_data: Option<Vec<u8>>) -> Result<(), DatabaseError> {
@@ -68,13 +84,24 @@ impl Database {
         let result = init_database(file_data).await;
 
         if result.is_truthy() {
+            // Check whether the sync module failed to load (non-fatal).
+            if is_sync_unavailable() {
+                log::warn!("[DB] Sync module unavailable — sync will not function this session");
+                self.sync_unavailable = true;
+            }
             log::debug!("[DB] initDatabase succeeded, creating tables...");
             self.migrate_and_create_tables().await?;
             self.initialized = true;
             log::debug!("[DB] Tables created successfully and database initialized");
             Ok(())
         } else {
-            let error_msg = "Failed to initialize SQLite database - JS returned false".to_string();
+            // Retrieve the detailed error from JS to surface a useful message.
+            let js_reason = get_db_init_error();
+            let error_msg = if js_reason.is_empty() {
+                "Failed to initialize SQLite database".to_string()
+            } else {
+                format!("Failed to initialize SQLite database: {}", js_reason)
+            };
             log::error!("{}", error_msg);
             Err(DatabaseError::InitializationError(error_msg))
         }
@@ -1550,5 +1577,24 @@ impl Database {
 impl Default for Database {
     fn default() -> Self {
         Self::new()
+    }
+}
+
+#[cfg(test)]
+mod init_error_tests {
+    use super::*;
+
+    /// Verify that Database::new() starts with sync_unavailable = false.
+    #[test]
+    fn new_database_sync_available() {
+        let db = Database::new();
+        assert!(!db.sync_unavailable);
+    }
+
+    /// Verify that Database::new() starts uninitialized.
+    #[test]
+    fn new_database_not_initialized() {
+        let db = Database::new();
+        assert!(!db.initialized);
     }
 }
