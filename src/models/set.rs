@@ -5,7 +5,7 @@ use serde::{Deserialize, Serialize};
 pub struct HistorySet {
     /// Primary key in completed_sets
     pub id: i64,
-    pub exercise_id: i64,
+    pub exercise_id: String,
     pub exercise_name: String,
     pub set_number: u32,
     pub reps: u32,

@@ -128,7 +128,7 @@ async fn step_check_config(world: &mut LibraryWorld, min_weight: String, increme
 #[given(expr = "an exercise named {string} exists in the library")]
 async fn step_exercise_exists(world: &mut LibraryWorld, name: String) {
     world.exercises.push(ExerciseMetadata {
-        id: Some(1),
+        id: Some("1".to_string()),
         name: name.clone(),
         set_type_config: SetTypeConfig::Weighted {
             min_weight: 20.0,

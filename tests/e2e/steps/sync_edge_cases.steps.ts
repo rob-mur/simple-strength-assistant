@@ -12,6 +12,9 @@ When("the device goes back online", async ({ page, context }) => {
   await context.setOffline(false);
   // Allow network stack to recover before continuing
   await page.waitForTimeout(1000);
+  // Do NOT advance __syncLogCursor here — the periodic sync (every 30s)
+  // may have already fired and logged completion before this step runs.
+  // The cursor should only advance in steps that explicitly initiate sync.
 });
 
 When(
@@ -61,9 +64,9 @@ When(
 Then("no conflict resolution screen should be visible", async ({ page }) => {
   // The app uses CRR auto-merge — there should be no conflict UI at all.
   // Check that no modal / banner with conflict-related text is present.
-  const conflictLocator = page.locator(
-    'text=/conflict/i, [data-testid="conflict-resolution"]',
-  );
+  // Only check for the specific conflict resolution component, not any text
+  // containing the word "conflict" (which could appear in other contexts).
+  const conflictLocator = page.locator('[data-testid="conflict-resolution"]');
   await expect(conflictLocator).toHaveCount(0);
 });
 

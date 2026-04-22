@@ -9,7 +9,7 @@ use web_sys::{IntersectionObserver, IntersectionObserverEntry, IntersectionObser
 
 #[derive(Clone, Debug, PartialEq)]
 pub struct ExerciseGroup {
-    pub exercise_id: i64,
+    pub exercise_id: String,
     pub exercise_name: String,
     pub sets: Vec<HistorySet>,
 }
@@ -56,7 +56,7 @@ pub fn group_sets_by_day(sets: &[HistorySet], utc_offset_minutes: i32) -> Vec<Da
         {
             Some(eg) => eg.sets.push(set.clone()),
             None => day.exercises.push(ExerciseGroup {
-                exercise_id: set.exercise_id,
+                exercise_id: set.exercise_id.clone(),
                 exercise_name: set.exercise_name.clone(),
                 sets: vec![set.clone()],
             }),
@@ -118,18 +118,21 @@ const PAGE_SIZE: i64 = 20;
 pub fn HistoryView(
     state: WorkoutState,
     /// When `Some`, the view defaults to the per-exercise scope for this exercise.
-    exercise_id: Option<i64>,
+    exercise_id: Option<String>,
     /// When `Some`, a back button is rendered and this handler is called on click.
     /// Omit to suppress the back button (e.g. when the parent already provides one).
     on_back: Option<EventHandler<()>>,
 ) -> Element {
     // Track exercise_id prop in a signal for reactivity in effects
-    let mut eid_signal = use_signal(|| exercise_id);
+    let mut eid_signal = use_signal(|| exercise_id.clone());
     if *eid_signal.peek() != exercise_id {
-        eid_signal.set(exercise_id);
+        eid_signal.set(exercise_id.clone());
     }
 
-    let initial_scope = if exercise_id.is_some() {
+    let exercise_id_is_some = exercise_id.is_some();
+    let exercise_id_is_none = exercise_id.is_none();
+
+    let initial_scope = if exercise_id_is_some {
         HistoryScope::Exercise
     } else {
         HistoryScope::All
@@ -137,7 +140,7 @@ pub fn HistoryView(
 
     let mut scope = use_signal(|| initial_scope);
     // User-selected exercise filter (only used when exercise_id prop is None)
-    let mut user_filter_eid = use_signal(|| None::<i64>);
+    let mut user_filter_eid = use_signal(|| None::<String>);
     // Available exercises for the filter dropdown
     let mut available_exercises = use_signal(Vec::<crate::models::ExerciseMetadata>::new);
 
@@ -173,12 +176,15 @@ pub fn HistoryView(
             let eid = eid_signal();
             let user_eid = user_filter_eid();
             let effective_eid = eid.or(user_eid);
-            if let Some(id) = effective_eid {
+            if let Some(ref id) = effective_eid {
                 let state_ref = state_ref;
+                let id = id.clone();
                 spawn(async move {
                     if let Some(db) = state_ref.database()
                         && let Ok(exercises) = db.get_exercises().await
-                        && let Some(ex) = exercises.iter().find(|e| e.id == Some(id))
+                        && let Some(ex) = exercises
+                            .iter()
+                            .find(|e| e.id.as_deref() == Some(id.as_str()))
                     {
                         exercise_name.set(ex.name.clone());
                     }
@@ -192,7 +198,7 @@ pub fn HistoryView(
         let state_ref = state;
         use_effect(move || {
             let _ = eid_signal(); // track changes
-            if exercise_id.is_none() {
+            if exercise_id_is_none {
                 spawn(async move {
                     if let Some(db) = state_ref.database()
                         && let Ok(exercises) = db.get_exercises().await
@@ -246,7 +252,7 @@ pub fn HistoryView(
                 return;
             }
             let current_scope = scope();
-            let eid = eid_signal.peek().or(*user_filter_eid.peek());
+            let eid = eid_signal.peek().clone().or(user_filter_eid.peek().clone());
             let offset = sets.read().len() as i64;
             spawn(async move {
                 loading.set(true);
@@ -307,7 +313,7 @@ pub fn HistoryView(
                 class: "flex rounded-lg overflow-hidden border border-base-300 mb-6 sticky top-0 bg-base-100 z-10",
                 "data-testid": "history-scope-toggle",
 
-                if exercise_id.is_some() {
+                if exercise_id_is_some {
                     button {
                         class: if scope() == HistoryScope::Exercise {
                             "flex-1 py-2 text-sm font-semibold bg-primary text-primary-content"
@@ -320,7 +326,7 @@ pub fn HistoryView(
                     }
                 }
 
-                if exercise_id.is_none() {
+                if exercise_id_is_none {
                     select {
                         class: "flex-1 py-2 text-sm font-semibold bg-base-100 border-0 outline-none cursor-pointer",
                         "data-testid": "exercise-filter-select",
@@ -329,17 +335,17 @@ pub fn HistoryView(
                             if val.is_empty() {
                                 user_filter_eid.set(None);
                                 scope.set(HistoryScope::All);
-                            } else if let Ok(id) = val.parse::<i64>() {
-                                user_filter_eid.set(Some(id));
+                            } else {
+                                user_filter_eid.set(Some(val));
                                 scope.set(HistoryScope::Exercise);
                             }
                         },
                         option { value: "", "All exercises" }
                         for ex in available_exercises.read().iter() {
-                            if let Some(id) = ex.id {
+                            if let Some(ref id) = ex.id {
                                 option {
                                     value: "{id}",
-                                    selected: user_filter_eid() == Some(id),
+                                    selected: user_filter_eid().as_deref() == Some(id.as_str()),
                                     "{ex.name}"
                                 }
                             }
@@ -347,7 +353,7 @@ pub fn HistoryView(
                     }
                 }
 
-                if exercise_id.is_some() {
+                if exercise_id_is_some {
                     button {
                         class: if scope() == HistoryScope::All {
                             "flex-1 py-2 text-sm font-semibold bg-primary text-primary-content"
@@ -426,7 +432,7 @@ pub fn HistoryView(
                                                                         spawn(async move {
                                                                             if let Some(db) = state_ref.database()
                                                                                 && let Ok(exercises) = db.get_exercises().await
-                                                                                && let Some(ex) = exercises.iter().find(|e| e.id == Some(set.exercise_id))
+                                                                                && let Some(ex) = exercises.iter().find(|e| e.id.as_deref() == Some(set.exercise_id.as_str()))
                                                                             {
                                                                                 editing_exercise.set(Some(ex.clone()));
                                                                                 editing_set.set(Some(set));
@@ -587,13 +593,13 @@ pub fn HistoryView(
 async fn fetch_page(
     db: &Database,
     scope: HistoryScope,
-    exercise_id: Option<i64>,
+    exercise_id: Option<String>,
     limit: i64,
     offset: i64,
 ) -> Result<Vec<HistorySet>, crate::state::DatabaseError> {
     match scope {
         HistoryScope::Exercise => {
-            if let Some(id) = exercise_id {
+            if let Some(ref id) = exercise_id {
                 db.get_sets_for_exercise(id, limit, offset).await
             } else {
                 db.get_all_sets_paginated(limit, offset).await
@@ -617,14 +623,14 @@ mod tests {
 
     fn make_set(
         id: i64,
-        exercise_id: i64,
+        exercise_id: &str,
         name: &str,
         set_number: u32,
         recorded_at: f64,
     ) -> HistorySet {
         HistorySet {
             id,
-            exercise_id,
+            exercise_id: exercise_id.to_string(),
             exercise_name: name.to_string(),
             set_number,
             reps: 8,
@@ -644,7 +650,13 @@ mod tests {
 
     #[test]
     fn test_single_set_single_day() {
-        let sets = vec![make_set(1, 1, "Bench Press", 1, DAY1_START + 3_600_000.0)];
+        let sets = vec![make_set(
+            1,
+            "ex-1",
+            "Bench Press",
+            1,
+            DAY1_START + 3_600_000.0,
+        )];
         let groups = group_sets_by_day(&sets, 0);
         assert_eq!(groups.len(), 1);
         assert_eq!(groups[0].date_label, "2025-01-01");
@@ -655,8 +667,8 @@ mod tests {
     #[test]
     fn test_two_sets_same_day_same_exercise() {
         let sets = vec![
-            make_set(2, 1, "Squat", 2, DAY1_START + 7_200_000.0),
-            make_set(1, 1, "Squat", 1, DAY1_START + 3_600_000.0),
+            make_set(2, "ex-1", "Squat", 2, DAY1_START + 7_200_000.0),
+            make_set(1, "ex-1", "Squat", 1, DAY1_START + 3_600_000.0),
         ];
         let groups = group_sets_by_day(&sets, 0);
         assert_eq!(groups.len(), 1, "Should be one day group");
@@ -668,8 +680,8 @@ mod tests {
     fn test_two_exercises_same_day_share_one_date_header() {
         // AC #5: Multiple exercises on the same day appear under one date header
         let sets = vec![
-            make_set(2, 2, "Deadlift", 1, DAY1_START + 7_200_000.0),
-            make_set(1, 1, "Bench Press", 1, DAY1_START + 3_600_000.0),
+            make_set(2, "ex-2", "Deadlift", 1, DAY1_START + 7_200_000.0),
+            make_set(1, "ex-1", "Bench Press", 1, DAY1_START + 3_600_000.0),
         ];
         let groups = group_sets_by_day(&sets, 0);
         assert_eq!(groups.len(), 1, "One date header for same day");
@@ -684,8 +696,8 @@ mod tests {
     fn test_two_sets_different_days() {
         // AC #4: reverse-chronological, grouped by day
         let sets = vec![
-            make_set(2, 1, "Squat", 1, DAY2_START + 3_600_000.0),
-            make_set(1, 1, "Squat", 1, DAY1_START + 3_600_000.0),
+            make_set(2, "ex-1", "Squat", 1, DAY2_START + 3_600_000.0),
+            make_set(1, "ex-1", "Squat", 1, DAY1_START + 3_600_000.0),
         ];
         let groups = group_sets_by_day(&sets, 0);
         assert_eq!(groups.len(), 2);
@@ -697,7 +709,7 @@ mod tests {
     fn test_timezone_offset_shifts_day_boundary() {
         // A set at 2025-01-01 23:00 UTC is 2025-01-02 01:00 in UTC+2
         let set_ms = DAY1_START + 23.0 * 3_600_000.0;
-        let sets = vec![make_set(1, 1, "Press", 1, set_ms)];
+        let sets = vec![make_set(1, "ex-1", "Press", 1, set_ms)];
 
         let utc_groups = group_sets_by_day(&sets, 0);
         assert_eq!(utc_groups[0].date_label, "2025-01-01");
@@ -728,9 +740,9 @@ mod tests {
     fn test_sets_within_exercise_group_are_chronological() {
         // DB returns newest first: set 3, 2, 1
         let sets = vec![
-            make_set(3, 1, "Squat", 3, DAY1_START + 10_800_000.0), // 3 h
-            make_set(2, 1, "Squat", 2, DAY1_START + 7_200_000.0),  // 2 h
-            make_set(1, 1, "Squat", 1, DAY1_START + 3_600_000.0),  // 1 h
+            make_set(3, "ex-1", "Squat", 3, DAY1_START + 10_800_000.0), // 3 h
+            make_set(2, "ex-1", "Squat", 2, DAY1_START + 7_200_000.0),  // 2 h
+            make_set(1, "ex-1", "Squat", 1, DAY1_START + 3_600_000.0),  // 1 h
         ];
         let groups = group_sets_by_day(&sets, 0);
         assert_eq!(groups.len(), 1);
@@ -754,10 +766,10 @@ mod tests {
     fn test_day_groups_reverse_chrono_sets_within_group_chrono() {
         // Two days; within each day two sets arrive newest-first from DB
         let sets = vec![
-            make_set(4, 1, "Squat", 2, DAY2_START + 7_200_000.0), // day2 set2 (newer)
-            make_set(3, 1, "Squat", 1, DAY2_START + 3_600_000.0), // day2 set1 (older)
-            make_set(2, 1, "Squat", 2, DAY1_START + 7_200_000.0), // day1 set2 (newer)
-            make_set(1, 1, "Squat", 1, DAY1_START + 3_600_000.0), // day1 set1 (older)
+            make_set(4, "ex-1", "Squat", 2, DAY2_START + 7_200_000.0), // day2 set2 (newer)
+            make_set(3, "ex-1", "Squat", 1, DAY2_START + 3_600_000.0), // day2 set1 (older)
+            make_set(2, "ex-1", "Squat", 2, DAY1_START + 7_200_000.0), // day1 set2 (newer)
+            make_set(1, "ex-1", "Squat", 1, DAY1_START + 3_600_000.0), // day1 set1 (older)
         ];
         let groups = group_sets_by_day(&sets, 0);
         assert_eq!(groups.len(), 2);

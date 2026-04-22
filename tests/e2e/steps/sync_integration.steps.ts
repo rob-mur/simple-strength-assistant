@@ -75,22 +75,38 @@ Then("the sync should complete without errors", async ({ page }) => {
   // Wait for hydration
   await page.waitForSelector('body[data-hydrated="true"]', { timeout: 10000 });
 
-  // Wait for sync to finish — look for the completion or error log
-  try {
+  // Wait for sync to finish — look for the completion or error log.
+  // Include WebSocket-era messages alongside the old HTTP-era ones so that
+  // both broken-sync and fixed-sync code paths are detected.
+  const syncCompletionPatterns = [
+    "[Sync] Background sync complete",
+    "[Sync] Periodic sync complete",
+    "[Sync] Initial sync after setup complete",
+    "[Sync] Initial sync after pairing complete",
+    "[Sync] Push failed",
+    "[Sync] Metadata fetch failed",
+    "[Sync] Pull failed",
+    "[Sync] WebSocket error",
+    "[Sync] WebSocket constructor failed",
+    "[WS Sync] Server unreachable",
+    "[WS Sync] Error",
+    "WebSocket connection to",
+    "[Sync] runSyncCycle failed",
+    "[Sync] Server unreachable",
+    "[Sync] Sync error",
+    "[Sync] No credentials configured",
+  ];
+  const matchesCompletion = (text: string) =>
+    syncCompletionPatterns.some((p) => text.includes(p));
+
+  // Check already-collected logs first (sync may have fired before this step).
+  const existingLogs: string[] = (page as any).__syncConsoleLogs ?? [];
+  const alreadyFound = existingLogs.find(matchesCompletion);
+  if (!alreadyFound) {
     await page.waitForEvent("console", {
-      predicate: (msg) => {
-        const text = msg.text();
-        return (
-          text.includes("[Sync] Background sync complete") ||
-          text.includes("[Sync] Push failed") ||
-          text.includes("[Sync] Metadata fetch failed") ||
-          text.includes("[Sync] Pull failed")
-        );
-      },
-      timeout: 15000,
+      predicate: (msg) => matchesCompletion(msg.text()),
+      timeout: 20000,
     });
-  } catch {
-    // Sync may not fire if credentials weren't generated in time
   }
 
   const logs: string[] = (page as any).__syncConsoleLogs ?? [];
@@ -111,18 +127,33 @@ Then("the sync should complete without errors", async ({ page }) => {
 
   // Log sync-related console messages for debugging
   console.log("\n=== Sync Console Logs ===");
-  for (const log of logs.filter((l) => l.includes("[Sync]"))) {
+  for (const log of logs.filter(
+    (l) =>
+      l.includes("[Sync]") ||
+      l.includes("[WS Sync]") ||
+      l.includes("WebSocket"),
+  )) {
     console.log(`  ${log}`);
   }
   console.log("=== End ===\n");
 
-  // Assert no sync errors in console
+  // Assert no sync errors in console — check both old HTTP and new WebSocket patterns
   const syncErrors = logs.filter(
     (l) =>
       l.includes("[Sync] Push failed") ||
       l.includes("[Sync] Metadata fetch failed") ||
       l.includes("[Sync] Pull failed") ||
-      l.includes("[Sync] Pull for merge failed"),
+      l.includes("[Sync] Pull for merge failed") ||
+      // WebSocket-era error patterns
+      l.includes("[Sync] WebSocket error") ||
+      l.includes("[Sync] WebSocket constructor failed") ||
+      l.includes("[WS Sync] Server unreachable") ||
+      l.includes("[WS Sync] Error") ||
+      l.includes("[Sync] runSyncCycle failed") ||
+      l.includes("[Sync] Server unreachable") ||
+      l.includes("[Sync] Sync error") ||
+      // Browser-level WebSocket failure messages
+      (l.includes("WebSocket connection to") && l.includes("failed")),
   );
 
   // Assert no HTTP errors from sync requests.
@@ -156,14 +187,18 @@ Then(
       timeout: 10000,
     });
 
-    // Give sync time to fire
-    try {
-      await page.waitForEvent("console", {
-        predicate: (msg) => msg.text().includes("[Sync]"),
-        timeout: 10000,
-      });
-    } catch {
-      // No sync messages at all is fine for this assertion
+    // Give sync time to fire — check accumulated logs first, then wait.
+    const existingLogs: string[] = (page as any).__syncConsoleLogs ?? [];
+    const hasSyncLog = existingLogs.some((l) => l.includes("[Sync]"));
+    if (!hasSyncLog) {
+      try {
+        await page.waitForEvent("console", {
+          predicate: (msg) => msg.text().includes("[Sync]"),
+          timeout: 10000,
+        });
+      } catch {
+        // No sync messages at all is fine for this assertion
+      }
     }
 
     // Short delay to catch any late errors
@@ -174,7 +209,12 @@ Then(
       (l) =>
         l.includes("NetworkError") ||
         l.includes("Failed to fetch") ||
-        l.includes("CORS"),
+        l.includes("CORS") ||
+        // WebSocket-era network error patterns
+        l.includes("[Sync] WebSocket error") ||
+        l.includes("[Sync] Server unreachable") ||
+        l.includes("[WS Sync] Server unreachable") ||
+        (l.includes("WebSocket connection to") && l.includes("failed")),
     );
 
     if (networkErrors.length > 0) {
@@ -226,6 +266,9 @@ When("I set up sync and copy the sync code", async ({ page }) => {
   await page.click('[data-testid="tab-settings"]');
   const setupBtn = page.locator('[data-testid="setup-sync-button"]');
   await expect(setupBtn).toBeVisible({ timeout: 10000 });
+  (page as any).__syncLogCursor = (
+    (page as any).__syncConsoleLogs ?? []
+  ).length;
   await setupBtn.click();
 
   // Wait for sync code display
@@ -248,18 +291,69 @@ When("I set up sync and copy the sync code", async ({ page }) => {
 });
 
 When("I wait for sync to complete", async ({ page }) => {
-  try {
-    await page.waitForEvent("console", {
-      predicate: (msg) =>
-        msg.text().includes("[Sync] Background sync complete") ||
-        msg.text().includes("[Sync] Periodic sync complete") ||
-        msg.text().includes("[Sync] Initial sync after setup complete") ||
-        msg.text().includes("[Pairing] Initial sync after pairing complete"),
-      timeout: 15000,
-    });
-  } catch {
-    // Sync may have already completed before we started listening
+  // Patterns that indicate sync completed (success or error).
+  const successPatterns = [
+    "[Sync] Background sync complete",
+    "[Sync] Periodic sync complete",
+    "[Sync] Initial sync after setup complete",
+    "[Sync] Initial sync after pairing complete",
+  ];
+  const errorPatterns = [
+    "[WS Sync] Server unreachable",
+    "[WS Sync] Error",
+    "[Sync] WebSocket error",
+    "[Sync] WebSocket constructor failed",
+    "[Sync] runSyncCycle failed",
+    "[Sync] Server unreachable",
+    "[Sync] Sync error",
+  ];
+  const allPatterns = [...successPatterns, ...errorPatterns];
+
+  const matches = (text: string) => allPatterns.some((p) => text.includes(p));
+  const isError = (text: string) => errorPatterns.some((p) => text.includes(p));
+
+  // Check already-collected console logs first — sync may have completed
+  // before this step started (e.g. the spawned task finished while the
+  // previous step was interacting with the UI).
+  // Use cursor to skip logs from before the sync was initiated.
+  // Prefer success matches over error matches — after going offline/online,
+  // the periodic sync may log "Server unreachable" (from the offline period)
+  // followed by a successful sync (from the next tick after reconnecting).
+  const cursor = (page as any).__syncLogCursor ?? 0;
+  const allLogs: string[] = (page as any).__syncConsoleLogs ?? [];
+  const logs = allLogs.slice(cursor);
+  const isSuccess = (text: string) =>
+    successPatterns.some((p) => text.includes(p));
+  const successMatch = logs.findLast(isSuccess);
+  const anyMatch = successMatch ?? logs.find(matches);
+  if (anyMatch) {
+    console.log(`[wait for sync] Already matched: ${anyMatch}`);
+    (page as any).__syncLogCursor = allLogs.length;
+    if (!successMatch && isError(anyMatch)) {
+      throw new Error(`Sync failed while waiting for completion: ${anyMatch}`);
+    }
+    await page.waitForTimeout(2000);
+    return;
   }
+
+  // Otherwise wait for a future console message.
+  // 40s timeout: the app's periodic sync fires every 30s, so after
+  // going offline/online we may need to wait for the next tick.
+  const matched = await page.waitForEvent("console", {
+    predicate: (msg) => matches(msg.text()),
+    timeout: 40000,
+  });
+
+  const matchedText = matched.text();
+  console.log(`[wait for sync] Matched future event: ${matchedText}`);
+  (page as any).__syncLogCursor = (
+    (page as any).__syncConsoleLogs ?? []
+  ).length;
+
+  if (isError(matchedText)) {
+    throw new Error(`Sync failed while waiting for completion: ${matchedText}`);
+  }
+
   // Extra wait to ensure data is persisted
   await page.waitForTimeout(2000);
 });
@@ -268,7 +362,7 @@ When("I clear storage and reload as a new device", async ({ page }) => {
   // Save the sync code before clearing
   const syncCode = (page as any).__copiedSyncCode;
 
-  // Clear both LocalStorage and OPFS to fully simulate a new device
+  // Clear LocalStorage, OPFS, and IndexedDB to fully simulate a new device
   await page.evaluate(async () => {
     localStorage.clear();
     // Clear OPFS database file
@@ -277,6 +371,15 @@ When("I clear storage and reload as a new device", async ({ page }) => {
       await root.removeEntry("workout-data.sqlite").catch(() => {});
     } catch {
       // OPFS may not be available
+    }
+    // Clear all IndexedDB databases (crsqlite-wasm may persist here)
+    try {
+      const dbs = await indexedDB.databases();
+      for (const db of dbs) {
+        if (db.name) indexedDB.deleteDatabase(db.name);
+      }
+    } catch {
+      // indexedDB.databases() may not be available in all browsers
     }
   });
   await page.reload();
@@ -303,6 +406,9 @@ When("I join sync with the copied sync code", async ({ page }) => {
   await input.fill(syncCode);
 
   // Click Connect
+  (page as any).__syncLogCursor = (
+    (page as any).__syncConsoleLogs ?? []
+  ).length;
   await page.click('[data-testid="manual-submit-button"]');
 
   // Wait for pairing to complete

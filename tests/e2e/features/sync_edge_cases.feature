@@ -39,8 +39,6 @@ Feature: Sync edge cases for cr-sqlite
   # ── Concurrent offline writes (auto-merge) ─────────────────────────────
 
   # QA: both devices change while offline → reconnect → all changes visible, no conflict screen
-  # fixme: requires WebSocket sync server endpoint (/ws) — blocked until server is updated
-  @fixme
   Scenario: Concurrent offline edits merge without conflict
     Given I open the app with real sync backend and clear storage
     When I click "Create New Database"
@@ -67,8 +65,6 @@ Feature: Sync edge cases for cr-sqlite
   # ── Room isolation ─────────────────────────────────────────────────────
 
   # QA: two independent pairs can't see each other's data
-  # fixme: requires WebSocket sync server endpoint (/ws) — blocked until server is updated
-  @fixme
   Scenario: Separate sync rooms are isolated
     Given I open the app with real sync backend and clear storage
     When I click "Create New Database"
