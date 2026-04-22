@@ -26,8 +26,8 @@ pub enum SetTypeConfig {
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
 #[allow(dead_code)]
 pub struct ExerciseMetadata {
-    /// Optional database ID for the exercise
-    pub id: Option<i64>,
+    /// Optional database ID for the exercise (UUID string)
+    pub id: Option<String>,
     /// Display name of the exercise (e.g., "Bench Press", "Pull-ups")
     pub name: String,
     /// Configuration for the type of sets this exercise uses
@@ -96,7 +96,7 @@ mod tests {
     #[test]
     fn test_serde_round_trip_weighted_exercise() {
         let original = ExerciseMetadata {
-            id: Some(123),
+            id: Some("test-uuid-123".to_string()),
             name: "Squat".to_string(),
             set_type_config: SetTypeConfig::Weighted {
                 min_weight: 20.0,
@@ -136,7 +136,7 @@ mod tests {
     #[test]
     fn test_exercise_cloning() {
         let original = ExerciseMetadata {
-            id: Some(99),
+            id: Some("test-uuid-99".to_string()),
             name: "Deadlift".to_string(),
             set_type_config: SetTypeConfig::Weighted {
                 min_weight: 20.0,
@@ -155,7 +155,7 @@ mod tests {
     #[test]
     fn test_serde_round_trip_with_rep_range() {
         let original = ExerciseMetadata {
-            id: Some(42),
+            id: Some("test-uuid-42".to_string()),
             name: "Squat".to_string(),
             set_type_config: SetTypeConfig::Weighted {
                 min_weight: 20.0,
@@ -177,7 +177,7 @@ mod tests {
     #[test]
     fn test_serde_defaults_for_missing_rep_fields() {
         // Simulate JSON from older version without rep range fields
-        let json = r#"{"id":1,"name":"Bench","set_type_config":{"Weighted":{"min_weight":20.0,"increment":2.5}}}"#;
+        let json = r#"{"id":"uuid-1","name":"Bench","set_type_config":{"Weighted":{"min_weight":20.0,"increment":2.5}}}"#;
         let deserialized: ExerciseMetadata =
             serde_json::from_str(json).expect("Deserialization failed");
 

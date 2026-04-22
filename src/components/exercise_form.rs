@@ -68,7 +68,7 @@ pub fn ExerciseForm(
     });
     let mut validation_error = use_signal(|| None::<String>);
 
-    let initial_id = initial_exercise.as_ref().and_then(|e| e.id);
+    let initial_id = initial_exercise.as_ref().and_then(|e| e.id.clone());
     let is_edit = initial_exercise.is_some();
 
     let handle_save = move |_| {
@@ -82,7 +82,7 @@ pub fn ExerciseForm(
         validation_error.set(None);
 
         let exercise = ExerciseMetadata {
-            id: initial_id,
+            id: initial_id.clone(),
             name,
             set_type_config: if is_weighted() {
                 SetTypeConfig::Weighted {

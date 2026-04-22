@@ -66,9 +66,9 @@ async fn step_select_exercise(_world: &mut WorkoutWorld, _name: String) {
 async fn step_click_start(world: &mut WorkoutWorld) {
     // Simulate starting a session
     world.current_session = Some(WorkoutSession {
-        session_id: Some(1),
+        session_id: Some("1".to_string()),
         exercise: ExerciseMetadata {
-            id: Some(1),
+            id: Some("1".to_string()),
             name: "Bench Press".to_string(),
             set_type_config: SetTypeConfig::Weighted {
                 min_weight: 0.0,
@@ -149,9 +149,9 @@ async fn step_check_button_absent(world: &mut WorkoutWorld, button_text: String)
 #[given(expr = "an active session for {string} with completed sets")]
 async fn step_active_session_with_sets(world: &mut WorkoutWorld, exercise_name: String) {
     world.current_session = Some(WorkoutSession {
-        session_id: Some(1),
+        session_id: Some("1".to_string()),
         exercise: ExerciseMetadata {
-            id: Some(1),
+            id: Some("1".to_string()),
             name: exercise_name,
             set_type_config: SetTypeConfig::Weighted {
                 min_weight: 0.0,
@@ -178,9 +178,9 @@ async fn step_active_session_with_sets(world: &mut WorkoutWorld, exercise_name: 
 async fn step_switch_exercise(world: &mut WorkoutWorld, exercise_name: String) {
     // Simulate the UI starting a new session, which implicitly clears the old one.
     world.current_session = Some(WorkoutSession {
-        session_id: Some(2),
+        session_id: Some("2".to_string()),
         exercise: ExerciseMetadata {
-            id: Some(2),
+            id: Some("2".to_string()),
             name: exercise_name,
             set_type_config: SetTypeConfig::Weighted {
                 min_weight: 0.0,

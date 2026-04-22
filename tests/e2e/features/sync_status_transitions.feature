@@ -5,8 +5,6 @@ Feature: Sync status indicator transitions
   So that I know when my data is synced, offline, or syncing
 
   # QA: synced → offline → syncing → synced transition chain
-  # fixme: requires WebSocket sync server endpoint (/ws) — blocked until server is updated
-  @fixme
   Scenario: Status indicator transitions through synced-offline-syncing-synced
     Given I open the app with real sync backend and clear storage
     When I click "Create New Database"

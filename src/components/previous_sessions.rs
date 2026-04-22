@@ -32,7 +32,7 @@ fn start_of_today_utc_ms() -> f64 {
 #[component]
 pub fn PreviousSessions(
     state: WorkoutState,
-    exercise_id: i64,
+    exercise_id: String,
     /// Pass `session.completed_sets.len()` so the panel refreshes on each new set.
     completed_sets_count: usize,
 ) -> Element {
@@ -42,7 +42,7 @@ pub fn PreviousSessions(
     let mut loading = use_signal(|| false);
 
     // Track props in signals so use_effect can subscribe to them
-    let mut eid_signal = use_signal(|| exercise_id);
+    let mut eid_signal = use_signal(|| exercise_id.clone());
     if *eid_signal.peek() != exercise_id {
         eid_signal.set(exercise_id);
     }
@@ -56,12 +56,12 @@ pub fn PreviousSessions(
             return;
         }
         let offset = sets.read().len() as i64;
-        let eid = *eid_signal.peek();
+        let eid = eid_signal.peek().clone();
         spawn(async move {
             loading.set(true);
             if let Some(db) = state.database() {
                 match db
-                    .get_sets_for_exercise_before(eid, start_of_today_utc_ms(), PAGE_SIZE, offset)
+                    .get_sets_for_exercise_before(&eid, start_of_today_utc_ms(), PAGE_SIZE, offset)
                     .await
                 {
                     Ok(mut new_sets) => {
@@ -100,7 +100,7 @@ pub fn PreviousSessions(
             loading.set(true);
             if let Some(db) = state.database() {
                 match db
-                    .get_sets_for_exercise_before(eid, start_of_today_utc_ms(), PAGE_SIZE, 0)
+                    .get_sets_for_exercise_before(&eid, start_of_today_utc_ms(), PAGE_SIZE, 0)
                     .await
                 {
                     Ok(new_sets) => {

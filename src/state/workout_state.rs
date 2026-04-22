@@ -29,7 +29,7 @@ pub struct PredictedParameters {
 
 #[derive(Clone, Debug, PartialEq)]
 pub struct WorkoutSession {
-    pub session_id: Option<i64>,
+    pub session_id: Option<String>,
     pub exercise: ExerciseMetadata,
     pub completed_sets: Vec<CompletedSet>,
     pub predicted: PredictedParameters,
@@ -309,7 +309,7 @@ impl WorkoutStateManager {
     pub async fn save_exercise(
         state: &WorkoutState,
         exercise: ExerciseMetadata,
-    ) -> Result<i64, WorkoutError> {
+    ) -> Result<String, WorkoutError> {
         let db = state.database().ok_or(WorkoutError::NotInitialized)?;
 
         let id = db
@@ -351,12 +351,12 @@ impl WorkoutStateManager {
             .map_err(|e: crate::state::DatabaseError| {
                 WorkoutError::SaveExerciseError(e.to_string())
             })?;
-        exercise.id = Some(id);
+        exercise.id = Some(id.clone());
 
         // Fetch last set for suggestions (only for weighted exercises)
         let last_set = match exercise.set_type_config {
             crate::models::SetTypeConfig::Weighted { .. } => {
-                db.get_last_set_for_exercise(id).await.unwrap_or_else(|e| {
+                db.get_last_set_for_exercise(&id).await.unwrap_or_else(|e| {
                     log::warn!("Failed to fetch last set for suggestion: {}", e);
                     None
                 })
@@ -373,7 +373,7 @@ impl WorkoutStateManager {
 
         // Use exercise_id as session_id so the UI can detect a new session started
         let session = WorkoutSession {
-            session_id: exercise.id,
+            session_id: exercise.id.clone(),
             exercise,
             completed_sets: Vec::new(),
             predicted,
@@ -392,6 +392,7 @@ impl WorkoutStateManager {
         let exercise_id = session
             .exercise
             .id
+            .clone()
             .ok_or(WorkoutError::SessionNotPersisted)?;
 
         let db = state.database().ok_or(WorkoutError::NotInitialized)?;
@@ -400,7 +401,7 @@ impl WorkoutStateManager {
             .map_err(|e| WorkoutError::InvalidSetData(e.to_string()))?;
 
         let _set_id =
-            db.log_set(exercise_id, &set)
+            db.log_set(&exercise_id, &set)
                 .await
                 .map_err(|e: crate::state::DatabaseError| {
                     WorkoutError::InsertSetError(e.to_string())
@@ -617,11 +618,11 @@ impl WorkoutStateManager {
         // Load existing credentials. If none are saved, sync is not configured
         // and we skip silently — the user must explicitly set up sync first.
         let Some(credentials) = SyncCredentials::load() else {
-            log::debug!("[Sync] No credentials configured — skipping sync");
+            js_log("[Sync] No credentials configured — skipping sync");
             return;
         };
         if !credentials.is_valid() {
-            log::debug!("[Sync] Skipped — credentials failed validation");
+            js_log("[Sync] Skipped — credentials failed validation");
             return;
         }
 
@@ -631,25 +632,38 @@ impl WorkoutStateManager {
 
         match outcome {
             crate::sync::WsSyncOutcome::Synced => {
-                log::info!("[Sync] CRR changeset sync completed — changes exchanged");
+                js_log("[Sync] CRR changeset sync completed — changes exchanged");
                 state.set_sync_status(SyncStatus::UpToDate);
 
                 // Re-read exercises from the database since remote changes may
                 // have added or modified exercise rows.
                 if let Err(e) = Self::sync_exercises(state).await {
-                    log::warn!("[Sync] Failed to refresh exercises after sync: {}", e);
+                    js_log(&format!(
+                        "[Sync] Failed to refresh exercises after sync: {}",
+                        e
+                    ));
                 }
+                let ex_names: Vec<String> = state
+                    .exercises
+                    .read()
+                    .iter()
+                    .map(|e| e.name.clone())
+                    .collect();
+                js_log(&format!(
+                    "[Sync] Exercises after sync refresh: {:?}",
+                    ex_names
+                ));
             }
             crate::sync::WsSyncOutcome::NoChanges => {
-                log::debug!("[Sync] CRR changeset sync — no changes to exchange");
+                js_log("[Sync] CRR changeset sync — no changes to exchange");
                 state.set_sync_status(SyncStatus::UpToDate);
             }
             crate::sync::WsSyncOutcome::Offline => {
-                log::warn!("[Sync] Server unreachable — continuing offline");
+                js_log("[Sync] Server unreachable — continuing offline");
                 state.set_sync_status(SyncStatus::Error("Server unreachable".to_string()));
             }
             crate::sync::WsSyncOutcome::Error(msg) => {
-                log::warn!("[Sync] Sync error: {}", msg);
+                js_log(&format!("[Sync] Sync error: {}", msg));
                 state.set_sync_status(SyncStatus::Error(msg));
             }
         }
@@ -664,7 +678,7 @@ mod tests {
     #[test]
     fn test_initial_predictions_weighted() {
         let exercise = ExerciseMetadata {
-            id: Some(1),
+            id: Some("test-uuid-1".to_string()),
             name: "Bench Press".to_string(),
             set_type_config: SetTypeConfig::Weighted {
                 min_weight: 0.0,
@@ -684,7 +698,7 @@ mod tests {
     #[test]
     fn test_initial_predictions_weighted_with_history() {
         let exercise = ExerciseMetadata {
-            id: Some(1),
+            id: Some("test-uuid-1".to_string()),
             name: "Bench Press".to_string(),
             set_type_config: SetTypeConfig::Weighted {
                 min_weight: 0.0,
@@ -712,7 +726,7 @@ mod tests {
     #[test]
     fn test_initial_predictions_bodyweight() {
         let exercise = ExerciseMetadata {
-            id: Some(2),
+            id: Some("test-uuid-2".to_string()),
             name: "Pull-ups".to_string(),
             set_type_config: SetTypeConfig::Bodyweight,
             min_reps: 1,
@@ -729,7 +743,7 @@ mod tests {
     #[test]
     fn test_next_predictions_progression() {
         let exercise = ExerciseMetadata {
-            id: Some(3),
+            id: Some("test-uuid-3".to_string()),
             name: "Bench Press".to_string(),
             set_type_config: SetTypeConfig::Weighted {
                 min_weight: 0.0,
@@ -740,7 +754,7 @@ mod tests {
         };
 
         let session = WorkoutSession {
-            session_id: Some(1),
+            session_id: Some("test-uuid-1".to_string()),
             exercise,
             completed_sets: vec![CompletedSet {
                 set_number: 1,

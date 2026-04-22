@@ -64,6 +64,27 @@ async function ensureCrSQLiteLoaded() {
  *   migrated into the new crsqlite DB on first launch.
  * @returns {Promise<boolean>} true on success.
  */
+/**
+ * Re-run the CRR migration.  Called from Rust after schema tables have been
+ * created so that tables that didn't exist during initDatabase() are still
+ * marked as CRRs.
+ *
+ * @returns {Promise<boolean>} true on success.
+ */
+export async function ensureCrrTables() {
+  try {
+    if (!db) return false;
+    await applyCrrMigration();
+    // Re-register db with sync module after CRR marking to ensure the
+    // sync module's handle reflects the post-CRR state.
+    await registerDbWithSync();
+    return true;
+  } catch (e) {
+    console.warn("[DB] ensureCrrTables failed:", e);
+    return false;
+  }
+}
+
 export async function initDatabase(fileData) {
   try {
     await ensureCrSQLiteLoaded();

@@ -45,10 +45,13 @@ extern "C" {
 
     #[wasm_bindgen(js_name = importDatabase)]
     async fn import_database(file_data: Vec<u8>) -> JsValue;
+
+    #[wasm_bindgen(js_name = ensureCrrTables)]
+    async fn ensure_crr_tables() -> JsValue;
 }
 
 /// Current schema version. Bump this when the schema changes.
-const SCHEMA_VERSION: i64 = 4;
+const SCHEMA_VERSION: i64 = 6;
 
 #[derive(Clone, PartialEq)]
 pub struct Database {
@@ -188,9 +191,33 @@ impl Database {
             self.apply_v4_migration().await?;
         }
 
+        // ── v5 migration: CRR-compatible table schemas ──────────────────────────
+        // crsqlite requires: explicit NOT NULL on PK (AUTOINCREMENT leaves
+        // notnull=0 in pragma table_info), no UNIQUE indices besides PK, and
+        // no CHECK constraints.  Rebuild tables to match the server schema.
+        if current_version < 5 {
+            log::debug!("[DB] Applying v5 migration: CRR-compatible table schemas");
+            self.apply_v5_migration().await?;
+        }
+
+        // ── v6 migration: UUID primary key for exercises ────────────────────────
+        if current_version < 6 {
+            log::debug!("[DB] Applying v6 migration: UUID primary key for exercises");
+            self.apply_v6_migration().await?;
+        }
+
         // Stamp the new version
         self.execute_internal(&format!("PRAGMA user_version = {}", SCHEMA_VERSION), &[])
             .await?;
+
+        // Mark tables as CRRs now that they exist.  applyCrrMigration() in
+        // db-module.js runs during initDatabase() — before Rust creates the
+        // tables — so we must re-run it here.
+        log::debug!("[DB] Ensuring CRR tables are marked after schema migration");
+        let crr_result = ensure_crr_tables().await;
+        if !crr_result.is_truthy() {
+            log::warn!("[DB] ensureCrrTables returned false — CRR marking may have failed");
+        }
 
         Ok(())
     }
@@ -325,14 +352,246 @@ impl Database {
         Ok(())
     }
 
-    /// Inserts the default settings row if no row exists yet.
-    /// Safe to call multiple times — uses INSERT OR IGNORE.
-    async fn seed_settings(&self) -> Result<(), DatabaseError> {
+    /// Rebuild tables to be CRR-compatible:
+    ///   - `INTEGER PRIMARY KEY NOT NULL` (explicit NOT NULL so pragma table_info
+    ///     reports notnull=1, which crsqlite requires)
+    ///   - No UNIQUE indices besides the primary key
+    ///   - No CHECK constraints
+    ///   - No FOREIGN KEY constraints (CRRs manage their own consistency)
+    async fn apply_v5_migration(&self) -> Result<(), DatabaseError> {
+        // ── exercises ───────────────────────────────────────────────────────
         self.execute_internal(
-            "INSERT OR IGNORE INTO settings (id, target_rpe, history_window_days, today_blend_factor) VALUES (1, 8.0, 30, 0.5)",
+            r#"CREATE TABLE IF NOT EXISTS exercises_v5 (
+                id INTEGER PRIMARY KEY NOT NULL,
+                name TEXT NOT NULL DEFAULT '',
+                is_weighted INTEGER NOT NULL DEFAULT 0,
+                min_weight REAL,
+                increment REAL,
+                uuid TEXT NOT NULL DEFAULT '',
+                updated_at INTEGER NOT NULL DEFAULT 0,
+                deleted_at INTEGER,
+                min_reps INTEGER NOT NULL DEFAULT 1,
+                max_reps INTEGER
+            )"#,
             &[],
         )
         .await?;
+        self.execute_internal(
+            "INSERT OR IGNORE INTO exercises_v5 SELECT id, name, is_weighted, min_weight, increment, uuid, updated_at, deleted_at, min_reps, max_reps FROM exercises",
+            &[],
+        )
+        .await?;
+        self.execute_internal("DROP TABLE exercises", &[]).await?;
+        self.execute_internal("ALTER TABLE exercises_v5 RENAME TO exercises", &[])
+            .await?;
+
+        // ── completed_sets ──────────────────────────────────────────────────
+        self.execute_internal(
+            r#"CREATE TABLE IF NOT EXISTS completed_sets_v5 (
+                id INTEGER PRIMARY KEY NOT NULL,
+                exercise_id INTEGER NOT NULL DEFAULT 0,
+                set_number INTEGER NOT NULL DEFAULT 0,
+                reps INTEGER NOT NULL DEFAULT 0,
+                rpe REAL NOT NULL DEFAULT 0.0,
+                weight REAL,
+                is_bodyweight INTEGER NOT NULL DEFAULT 0,
+                recorded_at INTEGER NOT NULL DEFAULT 0,
+                uuid TEXT NOT NULL DEFAULT '',
+                updated_at INTEGER NOT NULL DEFAULT 0,
+                deleted_at INTEGER
+            )"#,
+            &[],
+        )
+        .await?;
+        self.execute_internal(
+            "INSERT OR IGNORE INTO completed_sets_v5 SELECT id, exercise_id, set_number, reps, rpe, weight, is_bodyweight, recorded_at, uuid, updated_at, deleted_at FROM completed_sets",
+            &[],
+        )
+        .await?;
+        self.execute_internal("DROP TABLE completed_sets", &[])
+            .await?;
+        self.execute_internal(
+            "ALTER TABLE completed_sets_v5 RENAME TO completed_sets",
+            &[],
+        )
+        .await?;
+        // Re-create the index (dropped with the old table).
+        self.execute_internal(
+            "CREATE INDEX IF NOT EXISTS idx_sets_exercise_id ON completed_sets(exercise_id)",
+            &[],
+        )
+        .await?;
+
+        // ── settings ────────────────────────────────────────────────────────
+        self.execute_internal(
+            r#"CREATE TABLE IF NOT EXISTS settings_v5 (
+                id INTEGER PRIMARY KEY NOT NULL,
+                target_rpe REAL NOT NULL DEFAULT 8.0,
+                history_window_days INTEGER NOT NULL DEFAULT 30,
+                today_blend_factor REAL NOT NULL DEFAULT 0.5
+            )"#,
+            &[],
+        )
+        .await?;
+        self.execute_internal(
+            "INSERT OR IGNORE INTO settings_v5 SELECT id, target_rpe, history_window_days, today_blend_factor FROM settings",
+            &[],
+        )
+        .await?;
+        self.execute_internal("DROP TABLE settings", &[]).await?;
+        self.execute_internal("ALTER TABLE settings_v5 RENAME TO settings", &[])
+            .await?;
+        // Re-seed in case settings was empty.
+        self.seed_settings().await?;
+
+        log::debug!("[DB] v5 migration complete — tables are now CRR-compatible");
+        Ok(())
+    }
+
+    /// V6: Migrate exercises to UUID primary key for CRR compatibility.
+    ///
+    /// INTEGER PRIMARY KEY causes CRR collisions when two devices independently
+    /// create exercises (both get id=1). Using UUID as PK ensures globally unique
+    /// identifiers.
+    ///
+    /// Also changes completed_sets.exercise_id from INTEGER to TEXT (UUID reference).
+    async fn apply_v6_migration(&self) -> Result<(), DatabaseError> {
+        // Ensure all exercises have a uuid before migration
+        let exercises_without_uuid = self
+            .execute_internal(
+                "SELECT id FROM exercises WHERE uuid = '' OR uuid IS NULL",
+                &[],
+            )
+            .await?;
+        if let Some(arr) = exercises_without_uuid.dyn_ref::<js_sys::Array>() {
+            for i in 0..arr.length() {
+                let row = arr.get(i);
+                let id = js_sys::Reflect::get(&row, &JsValue::from_str("id"))
+                    .ok()
+                    .and_then(|v| v.as_f64());
+                if let Some(id) = id {
+                    let uuid = Self::generate_uuid();
+                    self.execute_internal(
+                        "UPDATE exercises SET uuid = ? WHERE id = ?",
+                        &[JsValue::from_str(&uuid), JsValue::from_f64(id)],
+                    )
+                    .await?;
+                }
+            }
+        }
+
+        // Rebuild exercises with uuid as PRIMARY KEY
+        self.execute_internal(
+            "CREATE TABLE IF NOT EXISTS exercises_v6 (
+                uuid TEXT PRIMARY KEY NOT NULL,
+                name TEXT NOT NULL DEFAULT '',
+                is_weighted INTEGER NOT NULL DEFAULT 0,
+                min_weight REAL,
+                increment REAL,
+                updated_at INTEGER NOT NULL DEFAULT 0,
+                deleted_at INTEGER,
+                min_reps INTEGER NOT NULL DEFAULT 1,
+                max_reps INTEGER
+            )",
+            &[],
+        )
+        .await?;
+        self.execute_internal(
+            "INSERT OR IGNORE INTO exercises_v6 SELECT uuid, name, is_weighted, min_weight, increment, updated_at, deleted_at, min_reps, max_reps FROM exercises",
+            &[],
+        )
+        .await?;
+
+        // Rebuild completed_sets with TEXT exercise_id (uuid reference)
+        self.execute_internal(
+            "CREATE TABLE IF NOT EXISTS completed_sets_v6 (
+                id INTEGER PRIMARY KEY NOT NULL,
+                exercise_id TEXT NOT NULL DEFAULT '',
+                set_number INTEGER NOT NULL DEFAULT 0,
+                reps INTEGER NOT NULL DEFAULT 0,
+                rpe REAL NOT NULL DEFAULT 0.0,
+                weight REAL,
+                is_bodyweight INTEGER NOT NULL DEFAULT 0,
+                recorded_at INTEGER NOT NULL DEFAULT 0,
+                uuid TEXT NOT NULL DEFAULT '',
+                updated_at INTEGER NOT NULL DEFAULT 0,
+                deleted_at INTEGER
+            )",
+            &[],
+        )
+        .await?;
+        // Check for orphaned completed_sets (exercise_id pointing to deleted exercises)
+        let orphan_result = self
+            .execute_internal(
+                "SELECT count(*) as cnt FROM completed_sets cs WHERE NOT EXISTS (SELECT 1 FROM exercises e WHERE e.id = cs.exercise_id)",
+                &[],
+            )
+            .await;
+        if let Ok(ref v) = orphan_result
+            && let Some(arr) = v.dyn_ref::<js_sys::Array>()
+            && arr.length() > 0
+        {
+            let cnt = js_sys::Reflect::get(&arr.get(0), &JsValue::from_str("cnt"))
+                .ok()
+                .and_then(|v| v.as_f64())
+                .unwrap_or(0.0);
+            if cnt > 0.0 {
+                #[cfg(target_arch = "wasm32")]
+                web_sys::console::warn_1(&JsValue::from_str(&format!(
+                    "[DB] v6 migration: {} orphaned completed_sets rows will lose exercise linkage",
+                    cnt
+                )));
+            }
+        }
+
+        self.execute_internal(
+            "INSERT OR IGNORE INTO completed_sets_v6 SELECT cs.id, e.uuid, cs.set_number, cs.reps, cs.rpe, cs.weight, cs.is_bodyweight, cs.recorded_at, cs.uuid, cs.updated_at, cs.deleted_at FROM completed_sets cs INNER JOIN exercises e ON cs.exercise_id = e.id",
+            &[],
+        )
+        .await?;
+
+        // Drop old tables and rename
+        self.execute_internal("DROP TABLE IF EXISTS completed_sets", &[])
+            .await?;
+        self.execute_internal("DROP TABLE IF EXISTS exercises", &[])
+            .await?;
+        self.execute_internal("ALTER TABLE exercises_v6 RENAME TO exercises", &[])
+            .await?;
+        self.execute_internal(
+            "ALTER TABLE completed_sets_v6 RENAME TO completed_sets",
+            &[],
+        )
+        .await?;
+
+        // Recreate index
+        self.execute_internal(
+            "CREATE INDEX IF NOT EXISTS idx_sets_exercise_id ON completed_sets(exercise_id)",
+            &[],
+        )
+        .await?;
+
+        log::debug!("[DB] v6 migration complete — exercises now use UUID primary key");
+        Ok(())
+    }
+
+    /// Inserts the default settings row if no row exists yet.
+    /// Uses a SELECT guard instead of INSERT OR IGNORE because CRR tables
+    /// don't support ON CONFLICT clauses.
+    async fn seed_settings(&self) -> Result<(), DatabaseError> {
+        let existing = self
+            .execute_internal("SELECT id FROM settings WHERE id = 1", &[])
+            .await?;
+        let has_row = existing
+            .dyn_ref::<js_sys::Array>()
+            .map(|a| a.length() > 0)
+            .unwrap_or(false);
+        if !has_row {
+            self.execute_internal(
+                "INSERT INTO settings (id, target_rpe, history_window_days, today_blend_factor) VALUES (1, 8.0, 30, 0.5)",
+                &[],
+            )
+            .await?;
+        }
         Ok(())
     }
 
@@ -434,7 +693,7 @@ impl Database {
     /// Log a single set for the given exercise. Records the current timestamp.
     pub async fn log_set(
         &self,
-        exercise_id: i64,
+        exercise_id: &str,
         set: &CompletedSet,
     ) -> Result<i64, DatabaseError> {
         let (weight, is_bodyweight) = match set.set_type {
@@ -452,7 +711,7 @@ impl Database {
         "#;
 
         let params = vec![
-            JsValue::from_f64(exercise_id as f64),
+            JsValue::from_str(exercise_id),
             JsValue::from_f64(set.set_number as f64),
             JsValue::from_f64(set.reps as f64),
             JsValue::from_f64(set.rpe as f64),
@@ -473,7 +732,7 @@ impl Database {
     /// data-import scenarios where the recording time is known.
     pub async fn log_set_at(
         &self,
-        exercise_id: i64,
+        exercise_id: &str,
         set: &CompletedSet,
         recorded_at: f64,
     ) -> Result<i64, DatabaseError> {
@@ -492,7 +751,7 @@ impl Database {
         "#;
 
         let params = vec![
-            JsValue::from_f64(exercise_id as f64),
+            JsValue::from_str(exercise_id),
             JsValue::from_f64(set.set_number as f64),
             JsValue::from_f64(set.reps as f64),
             JsValue::from_f64(set.rpe as f64),
@@ -512,7 +771,7 @@ impl Database {
     /// Returns sets for one exercise in reverse-chronological order with pagination.
     pub async fn get_sets_for_exercise(
         &self,
-        exercise_id: i64,
+        exercise_id: &str,
         limit: i64,
         offset: i64,
     ) -> Result<Vec<HistorySet>, DatabaseError> {
@@ -520,14 +779,14 @@ impl Database {
             SELECT cs.id, cs.exercise_id, e.name AS exercise_name,
                    cs.set_number, cs.reps, cs.rpe, cs.weight, cs.is_bodyweight, cs.recorded_at
             FROM completed_sets cs
-            JOIN exercises e ON cs.exercise_id = e.id
+            JOIN exercises e ON cs.exercise_id = e.uuid
             WHERE cs.exercise_id = ? AND cs.deleted_at IS NULL
             ORDER BY cs.recorded_at DESC, cs.id DESC
             LIMIT ? OFFSET ?
         "#;
 
         let params = vec![
-            JsValue::from_f64(exercise_id as f64),
+            JsValue::from_str(exercise_id),
             JsValue::from_f64(limit as f64),
             JsValue::from_f64(offset as f64),
         ];
@@ -543,7 +802,7 @@ impl Database {
     /// current (today's) session are not shown alongside historical data.
     pub async fn get_sets_for_exercise_before(
         &self,
-        exercise_id: i64,
+        exercise_id: &str,
         before_ms: f64,
         limit: i64,
         offset: i64,
@@ -552,14 +811,14 @@ impl Database {
             SELECT cs.id, cs.exercise_id, e.name AS exercise_name,
                    cs.set_number, cs.reps, cs.rpe, cs.weight, cs.is_bodyweight, cs.recorded_at
             FROM completed_sets cs
-            JOIN exercises e ON cs.exercise_id = e.id
+            JOIN exercises e ON cs.exercise_id = e.uuid
             WHERE cs.exercise_id = ? AND cs.recorded_at < ? AND cs.deleted_at IS NULL
             ORDER BY cs.recorded_at DESC, cs.id DESC
             LIMIT ? OFFSET ?
         "#;
 
         let params = vec![
-            JsValue::from_f64(exercise_id as f64),
+            JsValue::from_str(exercise_id),
             JsValue::from_f64(before_ms),
             JsValue::from_f64(limit as f64),
             JsValue::from_f64(offset as f64),
@@ -579,7 +838,7 @@ impl Database {
             SELECT cs.id, cs.exercise_id, e.name AS exercise_name,
                    cs.set_number, cs.reps, cs.rpe, cs.weight, cs.is_bodyweight, cs.recorded_at
             FROM completed_sets cs
-            JOIN exercises e ON cs.exercise_id = e.id
+            JOIN exercises e ON cs.exercise_id = e.uuid
             WHERE cs.deleted_at IS NULL
             ORDER BY cs.recorded_at DESC, cs.id DESC
             LIMIT ? OFFSET ?
@@ -644,7 +903,10 @@ impl Database {
         Ok(())
     }
 
-    pub async fn save_exercise(&self, exercise: &ExerciseMetadata) -> Result<i64, DatabaseError> {
+    pub async fn save_exercise(
+        &self,
+        exercise: &ExerciseMetadata,
+    ) -> Result<String, DatabaseError> {
         let (is_weighted, min_weight, increment) = match exercise.set_type_config {
             crate::models::SetTypeConfig::Weighted {
                 min_weight,
@@ -660,11 +922,11 @@ impl Database {
             .map(|r| JsValue::from_f64(r as f64))
             .unwrap_or(JsValue::NULL);
 
-        let result = if let Some(id) = exercise.id {
+        let result = if let Some(ref id) = exercise.id {
             let sql = r#"
                 UPDATE exercises SET name = ?, is_weighted = ?, min_weight = ?, increment = ?, min_reps = ?, max_reps = ?, updated_at = ?
-                WHERE id = ?
-                RETURNING id
+                WHERE uuid = ?
+                RETURNING uuid
             "#;
             let params = vec![
                 JsValue::from_str(&exercise.name),
@@ -678,38 +940,72 @@ impl Database {
                 min_reps_val,
                 max_reps_val,
                 JsValue::from_f64(now),
-                JsValue::from_f64(id as f64),
+                JsValue::from_str(id),
             ];
             self.execute(sql, &params).await?
         } else {
-            let uuid = Self::generate_uuid();
-            let sql = r#"
-                INSERT INTO exercises (name, is_weighted, min_weight, increment, min_reps, max_reps, uuid, updated_at)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-                ON CONFLICT(name) DO UPDATE SET
-                    is_weighted = excluded.is_weighted,
-                    min_weight = excluded.min_weight,
-                    increment = excluded.increment,
-                    min_reps = excluded.min_reps,
-                    max_reps = excluded.max_reps,
-                    updated_at = excluded.updated_at
-                RETURNING id
-            "#;
-            let params = vec![
-                JsValue::from_str(&exercise.name),
-                JsValue::from_bool(is_weighted),
-                min_weight
-                    .map(|w| JsValue::from_f64(w as f64))
-                    .unwrap_or(JsValue::NULL),
-                increment
-                    .map(|i| JsValue::from_f64(i as f64))
-                    .unwrap_or(JsValue::NULL),
-                min_reps_val,
-                max_reps_val,
-                JsValue::from_str(&uuid),
-                JsValue::from_f64(now),
-            ];
-            self.execute(sql, &params).await?
+            // Check if an exercise with this name already exists.
+            // CRR tables don't support UNIQUE constraints or ON CONFLICT
+            // clauses, so we check-then-upsert manually.
+            let existing = self
+                .execute(
+                    "SELECT uuid FROM exercises WHERE name = ?",
+                    &[JsValue::from_str(&exercise.name)],
+                )
+                .await?;
+            let existing_uuid = existing
+                .dyn_ref::<js_sys::Array>()
+                .and_then(|a| if a.length() > 0 { Some(a.get(0)) } else { None })
+                .and_then(|row| {
+                    js_sys::Reflect::get(&row, &JsValue::from_str("uuid"))
+                        .ok()
+                        .and_then(|v| v.as_string())
+                });
+
+            if let Some(euuid) = existing_uuid {
+                // Update existing exercise by name match.
+                let sql = r#"
+                    UPDATE exercises SET is_weighted = ?, min_weight = ?, increment = ?, min_reps = ?, max_reps = ?, updated_at = ?
+                    WHERE uuid = ?
+                    RETURNING uuid
+                "#;
+                let params = vec![
+                    JsValue::from_bool(is_weighted),
+                    min_weight
+                        .map(|w| JsValue::from_f64(w as f64))
+                        .unwrap_or(JsValue::NULL),
+                    increment
+                        .map(|i| JsValue::from_f64(i as f64))
+                        .unwrap_or(JsValue::NULL),
+                    min_reps_val,
+                    max_reps_val,
+                    JsValue::from_f64(now),
+                    JsValue::from_str(&euuid),
+                ];
+                self.execute(sql, &params).await?
+            } else {
+                let uuid = Self::generate_uuid();
+                let sql = r#"
+                    INSERT INTO exercises (uuid, name, is_weighted, min_weight, increment, min_reps, max_reps, updated_at)
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                    RETURNING uuid
+                "#;
+                let params = vec![
+                    JsValue::from_str(&uuid),
+                    JsValue::from_str(&exercise.name),
+                    JsValue::from_bool(is_weighted),
+                    min_weight
+                        .map(|w| JsValue::from_f64(w as f64))
+                        .unwrap_or(JsValue::NULL),
+                    increment
+                        .map(|i| JsValue::from_f64(i as f64))
+                        .unwrap_or(JsValue::NULL),
+                    min_reps_val,
+                    max_reps_val,
+                    JsValue::from_f64(now),
+                ];
+                self.execute(sql, &params).await?
+            }
         };
 
         let array = result
@@ -724,16 +1020,15 @@ impl Database {
         }
 
         let first_row = array.get(0);
-        let id = js_sys::Reflect::get(&first_row, &JsValue::from_str("id"))?
-            .as_f64()
-            .ok_or_else(|| DatabaseError::QueryError("Failed to get exercise id".to_string()))?
-            as i64;
+        let id = js_sys::Reflect::get(&first_row, &JsValue::from_str("uuid"))?
+            .as_string()
+            .ok_or_else(|| DatabaseError::QueryError("Failed to get exercise uuid".to_string()))?;
 
         Ok(id)
     }
 
     pub async fn get_exercises(&self) -> Result<Vec<ExerciseMetadata>, DatabaseError> {
-        let sql = "SELECT id, name, is_weighted, min_weight, increment, min_reps, max_reps FROM exercises WHERE deleted_at IS NULL ORDER BY name";
+        let sql = "SELECT uuid, name, is_weighted, min_weight, increment, min_reps, max_reps FROM exercises WHERE deleted_at IS NULL ORDER BY name";
         let result = self.execute(sql, &[]).await?;
 
         let array = result
@@ -743,9 +1038,7 @@ impl Database {
         let mut exercises = Vec::new();
         for i in 0..array.length() {
             let row = array.get(i);
-            let id = js_sys::Reflect::get(&row, &JsValue::from_str("id"))?
-                .as_f64()
-                .map(|f| f as i64);
+            let id = js_sys::Reflect::get(&row, &JsValue::from_str("uuid"))?.as_string();
 
             let name = js_sys::Reflect::get(&row, &JsValue::from_str("name"))?
                 .as_string()
@@ -861,7 +1154,7 @@ impl Database {
     /// Returns the most recent set for the given exercise (used for predictions).
     pub async fn get_last_set_for_exercise(
         &self,
-        exercise_id: i64,
+        exercise_id: &str,
     ) -> Result<Option<crate::models::CompletedSet>, DatabaseError> {
         let sql = r#"
             SELECT set_number, reps, rpe, weight, is_bodyweight
@@ -871,7 +1164,7 @@ impl Database {
             LIMIT 1
         "#;
 
-        let params = vec![JsValue::from_f64(exercise_id as f64)];
+        let params = vec![JsValue::from_str(exercise_id)];
         let result = self.execute(sql, &params).await?;
 
         let array = result
@@ -928,7 +1221,7 @@ impl Database {
     /// Bodyweight sets are skipped because e1RM is undefined without a weight.
     pub async fn get_best_set_for_exercise(
         &self,
-        exercise_id: i64,
+        exercise_id: &str,
         since_ms: f64,
         exclude_start_ms: f64,
         exclude_end_ms: f64,
@@ -944,7 +1237,7 @@ impl Database {
         "#;
 
         let params = vec![
-            JsValue::from_f64(exercise_id as f64),
+            JsValue::from_str(exercise_id),
             JsValue::from_f64(since_ms),
             JsValue::from_f64(exclude_start_ms),
             JsValue::from_f64(exclude_end_ms),
@@ -981,7 +1274,7 @@ impl Database {
     /// Returns `None` when no sets were logged today for this exercise.
     pub async fn get_latest_set_today(
         &self,
-        exercise_id: i64,
+        exercise_id: &str,
         today_start_ms: f64,
         today_end_ms: f64,
     ) -> Result<Option<CompletedSet>, DatabaseError> {
@@ -997,7 +1290,7 @@ impl Database {
         "#;
 
         let params = vec![
-            JsValue::from_f64(exercise_id as f64),
+            JsValue::from_str(exercise_id),
             JsValue::from_f64(today_start_ms),
             JsValue::from_f64(today_end_ms),
         ];
@@ -1130,9 +1423,8 @@ impl Database {
                 as i64;
 
             let exercise_id = js_sys::Reflect::get(&row, &JsValue::from_str("exercise_id"))?
-                .as_f64()
-                .ok_or_else(|| DatabaseError::QueryError("Failed to get exercise_id".to_string()))?
-                as i64;
+                .as_string()
+                .unwrap_or_default();
 
             let exercise_name = js_sys::Reflect::get(&row, &JsValue::from_str("exercise_name"))?
                 .as_string()

@@ -1,7 +1,7 @@
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
-import { mkdtemp, rm } from "node:fs/promises";
+import { copyFile, mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { join, resolve } from "node:path";
 import { createApp } from "../src/app.ts";
 import type { Server } from "node:http";
 
@@ -15,6 +15,11 @@ describe("vlcn.io sync server", () => {
   beforeAll(async () => {
     dataDir = await mkdtemp(join(tmpdir(), "sync-test-data-"));
     schemaDir = await mkdtemp(join(tmpdir(), "sync-test-schema-"));
+    // Copy the schema file so the server can create rooms
+    await copyFile(
+      resolve(import.meta.dir, "../schemas/default"),
+      join(schemaDir, "default"),
+    );
 
     server = createApp(dataDir, schemaDir);
 
@@ -84,7 +89,10 @@ describe("vlcn.io sync server", () => {
     const wsUrl = `ws://localhost:${port}/sync/test-room`;
 
     // Encode room info in sec-websocket-protocol as vlcn.io expects
-    const room = btoa("room=test-room,schemaName=default,schemaVersion=0");
+    // Strip base64 padding — '=' is not valid in WebSocket subprotocol values (RFC 6455 §4.1)
+    const room = btoa(
+      "room=test-room,schemaName=default,schemaVersion=589454654283815490",
+    ).replace(/=+$/, "");
 
     const ws = new WebSocket(wsUrl, [room]);
 
@@ -117,8 +125,12 @@ describe("vlcn.io sync server", () => {
   });
 
   test("WebSocket connections to different sync_ids are isolated", async () => {
-    const room1 = btoa("room=room-a,schemaName=default,schemaVersion=0");
-    const room2 = btoa("room=room-b,schemaName=default,schemaVersion=0");
+    const room1 = btoa(
+      "room=room-a,schemaName=default,schemaVersion=589454654283815490",
+    );
+    const room2 = btoa(
+      "room=room-b,schemaName=default,schemaVersion=589454654283815490",
+    );
 
     const ws1 = new WebSocket(`ws://localhost:${port}/sync/room-a`, [room1]);
     const ws2 = new WebSocket(`ws://localhost:${port}/sync/room-b`, [room2]);

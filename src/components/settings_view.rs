@@ -3,6 +3,13 @@ use crate::models::Settings;
 use crate::state::{SyncStatus, WorkoutState, WorkoutStateManager};
 use crate::sync::SyncCredentials;
 use dioxus::prelude::*;
+use wasm_bindgen::JsValue;
+
+/// Write directly to browser `console.log` — always visible in Playwright
+/// regardless of log level.
+fn js_log(msg: &str) {
+    web_sys::console::log_1(&JsValue::from_str(msg));
+}
 
 /// Clamp and round a value to a given step within [min, max].
 fn clamp_step(value: f64, min: f64, max: f64, step: f64) -> f64 {
@@ -188,9 +195,9 @@ pub fn SettingsView(state: WorkoutState) -> Element {
                                             {
                                                 let state = state;
                                                 spawn(async move {
-                                                    log::info!("[Pairing] Setup complete — triggering initial sync");
+                                                    js_log("[Sync] Initial sync after setup — starting");
                                                     WorkoutStateManager::trigger_background_sync(&state).await;
-                                                    log::info!("[Pairing] Initial sync after setup complete");
+                                                    js_log("[Sync] Initial sync after setup complete");
                                                 });
                                             }
                                         },
@@ -267,9 +274,9 @@ pub fn SettingsView(state: WorkoutState) -> Element {
                                             {
                                                 let state = state;
                                                 spawn(async move {
-                                                    log::info!("[Pairing] Join complete — triggering initial sync");
+                                                    js_log("[Sync] Join complete — triggering initial sync");
                                                     WorkoutStateManager::trigger_background_sync(&state).await;
-                                                    log::info!("[Pairing] Initial sync after pairing complete");
+                                                    js_log("[Sync] Initial sync after pairing complete");
                                                     pairing_step.set(PairingStep::Done);
                                                 });
                                             }

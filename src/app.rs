@@ -89,11 +89,11 @@ pub enum Route {
     #[route("/workout/history")]
     WorkoutHistory,
     #[route("/workout/history/:exercise_id")]
-    WorkoutHistoryExercise { exercise_id: i64 },
+    WorkoutHistoryExercise { exercise_id: String },
     #[route("/library")]
     LibraryTab,
     #[route("/library/:exercise_id")]
-    LibraryExercise { exercise_id: i64 },
+    LibraryExercise { exercise_id: String },
     #[route("/settings")]
     SettingsTab,
     #[end_layout]
@@ -251,7 +251,7 @@ fn WorkoutHistory() -> Element {
 }
 
 #[component]
-fn WorkoutHistoryExercise(exercise_id: i64) -> Element {
+fn WorkoutHistoryExercise(exercise_id: String) -> Element {
     let state = consume_context::<WorkoutState>();
     let navigator = use_navigator();
     rsx! { HistoryView { state, exercise_id: Some(exercise_id), on_back: move |_| { navigator.push(Route::WorkoutHistory); } } }
@@ -269,7 +269,7 @@ fn SettingsTab() -> Element {
 }
 
 #[component]
-fn LibraryExercise(exercise_id: i64) -> Element {
+fn LibraryExercise(exercise_id: String) -> Element {
     let workout_state = consume_context::<WorkoutState>();
     let navigator = use_navigator();
     let mut show_edit_form = use_signal(|| false);
@@ -277,7 +277,7 @@ fn LibraryExercise(exercise_id: i64) -> Element {
     let exercises = workout_state.exercises();
     let exercise = exercises
         .iter()
-        .find(|e| e.id == Some(exercise_id))
+        .find(|e| e.id.as_deref() == Some(exercise_id.as_str()))
         .cloned();
 
     let Some(exercise) = exercise else {
@@ -479,16 +479,16 @@ pub fn App() -> Element {
                 }
                 sync_attempted.set(true);
                 spawn(async move {
-                    log::debug!("[Sync] App ready — starting background sync");
+                    js_log("[Sync] App ready — starting background sync");
                     WorkoutStateManager::trigger_background_sync(&workout_state).await;
-                    log::debug!("[Sync] Background sync complete");
+                    js_log("[Sync] Background sync complete");
 
                     // Periodic sync every 30 seconds while the app is open.
                     loop {
                         gloo_timers::future::sleep(std::time::Duration::from_secs(30)).await;
-                        log::debug!("[Sync] Periodic sync tick");
+                        js_log("[Sync] Periodic sync tick");
                         WorkoutStateManager::trigger_background_sync(&workout_state).await;
-                        log::debug!("[Sync] Periodic sync complete");
+                        js_log("[Sync] Periodic sync complete");
                     }
                 });
             }
@@ -910,12 +910,12 @@ pub fn ActiveSession(state: WorkoutState, session: crate::state::WorkoutSession)
     let mut weight_input = use_signal(|| session.predicted.weight.map(|w| w as f64).unwrap_or(0.0));
 
     // Sync inputs when session or predicted changes (e.g., after logging a set or starting a new session)
-    let mut last_session_id = use_signal(|| session.session_id);
+    let mut last_session_id = use_signal(|| session.session_id.clone());
     let mut last_predicted = use_signal(|| session.predicted);
 
     if *last_session_id.peek() != session.session_id || *last_predicted.peek() != session.predicted
     {
-        last_session_id.set(session.session_id);
+        last_session_id.set(session.session_id.clone());
         last_predicted.set(session.predicted);
         reps_input.set(session.predicted.reps as f64);
         rpe_input.set(session.predicted.rpe as f64);
@@ -954,7 +954,7 @@ pub fn ActiveSession(state: WorkoutState, session: crate::state::WorkoutSession)
     };
 
     let navigator = use_navigator();
-    let history_exercise_id = session_for_display.exercise.id.unwrap_or(0);
+    let history_exercise_id = session_for_display.exercise.id.clone().unwrap_or_default();
 
     rsx! {
         div {
@@ -982,7 +982,7 @@ pub fn ActiveSession(state: WorkoutState, session: crate::state::WorkoutSession)
                                 "aria-label": "View exercise history",
                                 "data-testid": "history-icon-btn",
                                 onclick: move |_| {
-                                    navigator.push(Route::WorkoutHistoryExercise { exercise_id: history_exercise_id });
+                                    navigator.push(Route::WorkoutHistoryExercise { exercise_id: history_exercise_id.clone() });
                                 },
                                 svg {
                                     xmlns: "http://www.w3.org/2000/svg",
@@ -1151,11 +1151,11 @@ pub fn ActiveSession(state: WorkoutState, session: crate::state::WorkoutSession)
             }
 
             // Previous Sessions — collapsible history for this exercise (AC #1–#6)
-            if let Some(eid) = session_for_display.exercise.id {
+            if let Some(ref eid) = session_for_display.exercise.id {
                 PreviousSessions {
                     key: "{eid}",
                     state: state,
-                    exercise_id: eid,
+                    exercise_id: eid.clone(),
                     completed_sets_count: session_for_display.completed_sets.len(),
                 }
             }

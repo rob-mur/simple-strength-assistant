@@ -16,9 +16,10 @@ WORKDIR /app
 COPY --from=build /app/node_modules ./node_modules
 COPY --from=build /app/dist ./dist
 COPY package.json ./
+COPY schemas ./schemas
 
 ENV DATA_DIR=/data
-ENV SCHEMA_DIR=/schemas
+ENV SCHEMA_DIR=/app/schemas
 ENV PORT=3000
 
 RUN mkdir -p /data /schemas && chown -R node:node /data /schemas

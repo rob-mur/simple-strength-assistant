@@ -164,11 +164,11 @@ pub fn LibraryView() -> Element {
                     class: "grid gap-4",
                     for exercise in filtered_exercises() {
                         div {
-                            key: "{exercise.id.unwrap_or(0)}",
+                            key: "{exercise.id.clone().unwrap_or_default()}",
                             class: "card bg-base-100 shadow-md hover:shadow-lg transition-all border border-base-200 cursor-pointer",
                             onclick: {
-                                let id = exercise.id.unwrap_or(0);
-                                move |_| { navigator.push(Route::LibraryExercise { exercise_id: id }); }
+                                let id = exercise.id.clone().unwrap_or_default();
+                                move |_| { navigator.push(Route::LibraryExercise { exercise_id: id.clone() }); }
                             },
                             div {
                                 class: "card-body p-4",

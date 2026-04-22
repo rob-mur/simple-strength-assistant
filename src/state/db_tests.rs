@@ -119,10 +119,10 @@ mod workout_state_manager_tests {
             .iter()
             .find(|e| e.name == "Bench Press")
             .expect("Bench Press exercise must exist in DB");
-        let bench_id = bench.id.expect("Bench Press must have an id");
+        let bench_id = bench.id.clone().expect("Bench Press must have an id");
 
         let persisted_sets = db
-            .get_sets_for_exercise(bench_id, 10, 0)
+            .get_sets_for_exercise(&bench_id, 10, 0)
             .await
             .expect("get_sets_for_exercise failed");
 
@@ -244,7 +244,10 @@ async fn test_log_set_weighted() {
         set_type: SetType::Weighted { weight: 135.0 },
     };
 
-    let set_id = db.log_set(exercise_id, &set).await.expect("log_set failed");
+    let set_id = db
+        .log_set(&exercise_id, &set)
+        .await
+        .expect("log_set failed");
 
     assert!(set_id > 0, "Set ID should be positive");
 }
@@ -275,7 +278,7 @@ async fn test_log_set_bodyweight() {
     };
 
     let set_id = db
-        .log_set(exercise_id, &set)
+        .log_set(&exercise_id, &set)
         .await
         .expect("log_set bodyweight failed");
 
@@ -314,19 +317,21 @@ async fn test_get_sets_for_exercise_pagination() {
                 weight: 60.0 + (i as f32 * 5.0),
             },
         };
-        db.log_set(exercise_id, &set).await.expect("log_set failed");
+        db.log_set(&exercise_id, &set)
+            .await
+            .expect("log_set failed");
     }
 
     // Page 1: first 2 results (most recent first)
     let page1 = db
-        .get_sets_for_exercise(exercise_id, 2, 0)
+        .get_sets_for_exercise(&exercise_id, 2, 0)
         .await
         .expect("get_sets_for_exercise failed");
     assert_eq!(page1.len(), 2, "Page 1 should have 2 results");
 
     // Page 2: remaining 1 result
     let page2 = db
-        .get_sets_for_exercise(exercise_id, 2, 2)
+        .get_sets_for_exercise(&exercise_id, 2, 2)
         .await
         .expect("get_sets_for_exercise page 2 failed");
     assert_eq!(page2.len(), 1, "Page 2 should have 1 result");
@@ -374,7 +379,7 @@ async fn test_get_sets_for_exercise_isolation() {
     let id_b = db.save_exercise(&ex_b).await.expect("Save B failed");
 
     db.log_set(
-        id_a,
+        &id_a,
         &CompletedSet {
             set_number: 1,
             reps: 5,
@@ -385,7 +390,7 @@ async fn test_get_sets_for_exercise_isolation() {
     .await
     .expect("log set A failed");
     db.log_set(
-        id_b,
+        &id_b,
         &CompletedSet {
             set_number: 1,
             reps: 3,
@@ -397,11 +402,11 @@ async fn test_get_sets_for_exercise_isolation() {
     .expect("log set B failed");
 
     let sets_a = db
-        .get_sets_for_exercise(id_a, 10, 0)
+        .get_sets_for_exercise(&id_a, 10, 0)
         .await
         .expect("query A failed");
     assert_eq!(sets_a.len(), 1);
-    assert_eq!(sets_a[0].exercise_id, id_a);
+    assert_eq!(sets_a[0].exercise_id, id_a, "exercise_id should match");
     assert_eq!(sets_a[0].reps, 5);
 }
 
@@ -449,15 +454,15 @@ async fn test_get_sets_for_exercise_before_excludes_today() {
         set_type: SetType::Weighted { weight: 110.0 },
     };
 
-    db.log_set_at(exercise_id, &yesterday_set, yesterday_ms)
+    db.log_set_at(&exercise_id, &yesterday_set, yesterday_ms)
         .await
         .expect("log yesterday set failed");
-    db.log_set(exercise_id, &today_set)
+    db.log_set(&exercise_id, &today_set)
         .await
         .expect("log today set failed");
 
     let results = db
-        .get_sets_for_exercise_before(exercise_id, start_of_today_utc, 10, 0)
+        .get_sets_for_exercise_before(&exercise_id, start_of_today_utc, 10, 0)
         .await
         .expect("get_sets_for_exercise_before failed");
 
@@ -494,7 +499,7 @@ async fn test_get_all_sets_paginated() {
     let id2 = db.save_exercise(&ex2).await.expect("Save 2 failed");
 
     db.log_set(
-        id1,
+        &id1,
         &CompletedSet {
             set_number: 1,
             reps: 10,
@@ -505,7 +510,7 @@ async fn test_get_all_sets_paginated() {
     .await
     .expect("log 1 failed");
     db.log_set(
-        id2,
+        &id2,
         &CompletedSet {
             set_number: 1,
             reps: 8,
@@ -523,8 +528,8 @@ async fn test_get_all_sets_paginated() {
 
     assert_eq!(all.len(), 2, "Should return 2 sets total");
     // Most recently logged should come first
-    assert_eq!(all[0].exercise_id, id2);
-    assert_eq!(all[1].exercise_id, id1);
+    assert_eq!(all[0].exercise_id, id2, "Most recent should be exercise 2");
+    assert_eq!(all[1].exercise_id, id1, "Second should be exercise 1");
 }
 
 /// RED: update_set persists changes; subsequent reads reflect the update.
@@ -554,7 +559,10 @@ async fn test_update_set() {
         rpe: 7.0,
         set_type: SetType::Weighted { weight: 50.0 },
     };
-    let set_id = db.log_set(exercise_id, &set).await.expect("log_set failed");
+    let set_id = db
+        .log_set(&exercise_id, &set)
+        .await
+        .expect("log_set failed");
 
     // Update: change reps to 10, rpe to 8.0, weight to 55.0 (keep same recorded_at)
     let original_recorded_at = 1_700_000_000_000.0_f64;
@@ -563,7 +571,7 @@ async fn test_update_set() {
         .expect("update_set failed");
 
     let updated = db
-        .get_sets_for_exercise(exercise_id, 1, 0)
+        .get_sets_for_exercise(&exercise_id, 1, 0)
         .await
         .expect("read after update failed");
 
@@ -607,7 +615,7 @@ async fn test_update_set_recorded_at() {
         set_type: SetType::Weighted { weight: 100.0 },
     };
     let set_id = db
-        .log_set_at(exercise_id, &set, yesterday_ms)
+        .log_set_at(&exercise_id, &set, yesterday_ms)
         .await
         .expect("log_set_at failed");
 
@@ -618,7 +626,7 @@ async fn test_update_set_recorded_at() {
         .expect("update_set failed");
 
     let updated = db
-        .get_sets_for_exercise(exercise_id, 1, 0)
+        .get_sets_for_exercise(&exercise_id, 1, 0)
         .await
         .expect("read after update failed");
 
@@ -652,7 +660,7 @@ async fn test_delete_set() {
 
     let set_id = db
         .log_set(
-            exercise_id,
+            &exercise_id,
             &CompletedSet {
                 set_number: 1,
                 reps: 8,
@@ -666,7 +674,7 @@ async fn test_delete_set() {
     db.delete_set(set_id).await.expect("delete_set failed");
 
     let remaining = db
-        .get_sets_for_exercise(exercise_id, 10, 0)
+        .get_sets_for_exercise(&exercise_id, 10, 0)
         .await
         .expect("read after delete failed");
 
@@ -696,7 +704,7 @@ async fn test_get_last_set_for_exercise_new_schema() {
 
     // Log two sets — most recent should be returned
     db.log_set(
-        exercise_id,
+        &exercise_id,
         &CompletedSet {
             set_number: 1,
             reps: 8,
@@ -708,7 +716,7 @@ async fn test_get_last_set_for_exercise_new_schema() {
     .expect("log set 1 failed");
 
     db.log_set(
-        exercise_id,
+        &exercise_id,
         &CompletedSet {
             set_number: 2,
             reps: 5,
@@ -720,7 +728,7 @@ async fn test_get_last_set_for_exercise_new_schema() {
     .expect("log set 2 failed");
 
     let last = db
-        .get_last_set_for_exercise(exercise_id)
+        .get_last_set_for_exercise(&exercise_id)
         .await
         .expect("get_last_set_for_exercise failed");
 
@@ -768,9 +776,9 @@ async fn test_save_exercise() {
     assert!(result.is_ok(), "Save exercise should succeed");
     let inserted_id = result.unwrap();
 
-    // Test explicit UPDATE WHERE id = ?
+    // Test explicit UPDATE WHERE uuid = ?
     let updated_exercise_with_id = ExerciseMetadata {
-        id: Some(inserted_id),
+        id: Some(inserted_id.clone()),
         name: "Deadlift Modified".to_string(),
         set_type_config: SetTypeConfig::Weighted {
             min_weight: 145.0,
@@ -913,7 +921,7 @@ async fn test_export_import_round_trip() {
         rpe: 7.5,
         set_type: SetType::Weighted { weight: 135.0 },
     };
-    db1.log_set(exercise_id, &set)
+    db1.log_set(&exercise_id, &set)
         .await
         .expect("log_set failed");
 
@@ -942,7 +950,7 @@ async fn test_export_import_round_trip() {
     // Verify we can log another set in the imported database
     let new_set_id = db2
         .log_set(
-            exercise_id,
+            &exercise_id,
             &CompletedSet {
                 set_number: 2,
                 reps: 6,
@@ -1092,8 +1100,8 @@ async fn test_new_exercise_has_uuid() {
 
     let result = db
         .execute(
-            "SELECT uuid, updated_at FROM exercises WHERE id = ?",
-            &[wasm_bindgen::JsValue::from_f64(exercise_id as f64)],
+            "SELECT uuid, updated_at FROM exercises WHERE uuid = ?",
+            &[wasm_bindgen::JsValue::from_str(&exercise_id)],
         )
         .await
         .expect("Query failed");
@@ -1150,7 +1158,10 @@ async fn test_new_set_has_uuid_and_updated_at() {
         rpe: 7.5,
         set_type: SetType::Weighted { weight: 80.0 },
     };
-    let set_id = db.log_set(exercise_id, &set).await.expect("log_set failed");
+    let set_id = db
+        .log_set(&exercise_id, &set)
+        .await
+        .expect("log_set failed");
 
     let result = db
         .execute(
@@ -1205,7 +1216,7 @@ async fn test_update_set_updates_updated_at() {
 
     let set_id = db
         .log_set(
-            exercise_id,
+            &exercise_id,
             &CompletedSet {
                 set_number: 1,
                 reps: 8,
@@ -1291,7 +1302,7 @@ async fn test_delete_set_is_soft_delete() {
 
     let set_id = db
         .log_set(
-            exercise_id,
+            &exercise_id,
             &CompletedSet {
                 set_number: 1,
                 reps: 8,
@@ -1333,7 +1344,7 @@ async fn test_delete_set_is_soft_delete() {
 
     // The set must not appear in normal queries.
     let visible = db
-        .get_sets_for_exercise(exercise_id, 10, 0)
+        .get_sets_for_exercise(&exercise_id, 10, 0)
         .await
         .expect("get_sets_for_exercise failed");
     assert_eq!(
@@ -1368,7 +1379,7 @@ async fn test_uuids_are_unique_across_records() {
 
     let id1 = db
         .log_set(
-            exercise_id,
+            &exercise_id,
             &CompletedSet {
                 set_number: 1,
                 reps: 5,
@@ -1380,7 +1391,7 @@ async fn test_uuids_are_unique_across_records() {
         .expect("log set 1 failed");
     let id2 = db
         .log_set(
-            exercise_id,
+            &exercise_id,
             &CompletedSet {
                 set_number: 2,
                 reps: 5,
@@ -1446,8 +1457,8 @@ async fn test_edit_exercise_updates_updated_at() {
     // Read the initial updated_at
     let before_result = db
         .execute(
-            "SELECT updated_at FROM exercises WHERE id = ?",
-            &[wasm_bindgen::JsValue::from_f64(exercise_id as f64)],
+            "SELECT updated_at FROM exercises WHERE uuid = ?",
+            &[wasm_bindgen::JsValue::from_str(&exercise_id)],
         )
         .await
         .expect("SELECT before failed");
@@ -1461,7 +1472,7 @@ async fn test_edit_exercise_updates_updated_at() {
 
     // Update the exercise
     let updated = ExerciseMetadata {
-        id: Some(exercise_id),
+        id: Some(exercise_id.clone()),
         name: "Squat".to_string(),
         set_type_config: SetTypeConfig::Weighted {
             min_weight: 20.0,
@@ -1474,8 +1485,8 @@ async fn test_edit_exercise_updates_updated_at() {
 
     let after_result = db
         .execute(
-            "SELECT updated_at FROM exercises WHERE id = ?",
-            &[wasm_bindgen::JsValue::from_f64(exercise_id as f64)],
+            "SELECT updated_at FROM exercises WHERE uuid = ?",
+            &[wasm_bindgen::JsValue::from_str(&exercise_id)],
         )
         .await
         .expect("SELECT after failed");
@@ -1501,7 +1512,7 @@ async fn test_edit_exercise_updates_updated_at() {
 // ── History query tests for e1RM calculation (#131) ─────────────────────────
 
 /// Helper: creates a fresh DB with a weighted exercise and returns (db, exercise_id).
-async fn setup_exercise_for_history() -> (Database, i64) {
+async fn setup_exercise_for_history() -> (Database, String) {
     let mut db = Database::new();
     db.init(None).await.expect("DB init failed");
 
@@ -1542,7 +1553,7 @@ async fn test_best_set_returns_highest_e1rm() {
         rpe: 8.0,
         set_type: SetType::Weighted { weight: 100.0 },
     };
-    db.log_set_at(eid, &set_a, day(3) + 1000.0)
+    db.log_set_at(&eid, &set_a, day(3) + 1000.0)
         .await
         .expect("log A");
 
@@ -1553,7 +1564,7 @@ async fn test_best_set_returns_highest_e1rm() {
         rpe: 9.0,
         set_type: SetType::Weighted { weight: 120.0 },
     };
-    db.log_set_at(eid, &set_b, day(5) + 1000.0)
+    db.log_set_at(&eid, &set_b, day(5) + 1000.0)
         .await
         .expect("log B");
 
@@ -1564,12 +1575,12 @@ async fn test_best_set_returns_highest_e1rm() {
         rpe: 7.0,
         set_type: SetType::Weighted { weight: 80.0 },
     };
-    db.log_set_at(eid, &set_c, day(7) + 1000.0)
+    db.log_set_at(&eid, &set_c, day(7) + 1000.0)
         .await
         .expect("log C");
 
     let best = db
-        .get_best_set_for_exercise(eid, day(0), today_start, today_end)
+        .get_best_set_for_exercise(&eid, day(0), today_start, today_end)
         .await
         .expect("query failed");
 
@@ -1600,7 +1611,7 @@ async fn test_best_set_excludes_today() {
         rpe: 10.0,
         set_type: SetType::Weighted { weight: 200.0 },
     };
-    db.log_set_at(eid, &set_today, today_start + 5000.0)
+    db.log_set_at(&eid, &set_today, today_start + 5000.0)
         .await
         .expect("log today");
 
@@ -1611,12 +1622,12 @@ async fn test_best_set_excludes_today() {
         rpe: 8.0,
         set_type: SetType::Weighted { weight: 100.0 },
     };
-    db.log_set_at(eid, &set_history, day(5) + 1000.0)
+    db.log_set_at(&eid, &set_history, day(5) + 1000.0)
         .await
         .expect("log history");
 
     let best = db
-        .get_best_set_for_exercise(eid, day(0), today_start, today_end)
+        .get_best_set_for_exercise(&eid, day(0), today_start, today_end)
         .await
         .expect("query failed");
 
@@ -1638,7 +1649,7 @@ async fn test_best_set_empty_history() {
     let day = |d: i64| d as f64 * MS_PER_DAY;
 
     let best = db
-        .get_best_set_for_exercise(eid, day(0), day(10), day(11))
+        .get_best_set_for_exercise(&eid, day(0), day(10), day(11))
         .await
         .expect("query failed");
 
@@ -1661,12 +1672,12 @@ async fn test_best_set_all_sets_today() {
         rpe: 8.0,
         set_type: SetType::Weighted { weight: 100.0 },
     };
-    db.log_set_at(eid, &set, today_start + 1000.0)
+    db.log_set_at(&eid, &set, today_start + 1000.0)
         .await
         .expect("log");
 
     let best = db
-        .get_best_set_for_exercise(eid, day(0), today_start, today_end)
+        .get_best_set_for_exercise(&eid, day(0), today_start, today_end)
         .await
         .expect("query failed");
 
@@ -1687,7 +1698,7 @@ async fn test_best_set_respects_since_date() {
         rpe: 10.0,
         set_type: SetType::Weighted { weight: 200.0 },
     };
-    db.log_set_at(eid, &old_set, day(2) + 1000.0)
+    db.log_set_at(&eid, &old_set, day(2) + 1000.0)
         .await
         .expect("log old");
 
@@ -1698,13 +1709,13 @@ async fn test_best_set_respects_since_date() {
         rpe: 8.0,
         set_type: SetType::Weighted { weight: 100.0 },
     };
-    db.log_set_at(eid, &recent_set, day(8) + 1000.0)
+    db.log_set_at(&eid, &recent_set, day(8) + 1000.0)
         .await
         .expect("log recent");
 
     // Window starts at day 5, so old_set (day 2) is excluded
     let best = db
-        .get_best_set_for_exercise(eid, day(5), day(10), day(11))
+        .get_best_set_for_exercise(&eid, day(5), day(10), day(11))
         .await
         .expect("query failed");
 
@@ -1729,7 +1740,7 @@ async fn test_latest_set_today_returns_most_recent() {
         rpe: 7.0,
         set_type: SetType::Weighted { weight: 80.0 },
     };
-    db.log_set_at(eid, &set_early, today_start + 1000.0)
+    db.log_set_at(&eid, &set_early, today_start + 1000.0)
         .await
         .expect("log early");
 
@@ -1740,12 +1751,12 @@ async fn test_latest_set_today_returns_most_recent() {
         rpe: 9.0,
         set_type: SetType::Weighted { weight: 100.0 },
     };
-    db.log_set_at(eid, &set_late, today_start + 5000.0)
+    db.log_set_at(&eid, &set_late, today_start + 5000.0)
         .await
         .expect("log late");
 
     let latest = db
-        .get_latest_set_today(eid, today_start, today_end)
+        .get_latest_set_today(&eid, today_start, today_end)
         .await
         .expect("query failed");
 
@@ -1763,7 +1774,7 @@ async fn test_latest_set_today_none_when_empty() {
     let day = |d: i64| d as f64 * MS_PER_DAY;
 
     let latest = db
-        .get_latest_set_today(eid, day(10), day(11))
+        .get_latest_set_today(&eid, day(10), day(11))
         .await
         .expect("query failed");
 
@@ -1786,12 +1797,12 @@ async fn test_latest_set_today_ignores_other_days() {
         rpe: 8.0,
         set_type: SetType::Weighted { weight: 100.0 },
     };
-    db.log_set_at(eid, &yesterday_set, day(9) + 5000.0)
+    db.log_set_at(&eid, &yesterday_set, day(9) + 5000.0)
         .await
         .expect("log yesterday");
 
     let latest = db
-        .get_latest_set_today(eid, today_start, today_end)
+        .get_latest_set_today(&eid, today_start, today_end)
         .await
         .expect("query failed");
 
