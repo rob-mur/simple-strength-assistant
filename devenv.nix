@@ -9,6 +9,8 @@
     binaryen
     devcontainer
     chromium
+    sops
+    age
   ];
 
   languages.rust = {

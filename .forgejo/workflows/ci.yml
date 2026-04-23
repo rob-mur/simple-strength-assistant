@@ -1,0 +1,36 @@
+name: CI
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened]
+
+x-devenv: &devenv
+  runs-on: docker
+  container:
+    image: ghcr.io/cachix/devenv/devenv:v1.11.1
+    volumes:
+      - /tmp/devenv-cache:/tmp/devenv-cache
+      - /var/lib/devenv-nix-cache:/nix
+
+defaults:
+  run:
+    shell: devenv shell bash -- -e {0}
+
+jobs:
+  lint:
+    <<: *devenv
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Setup devenv
+        uses: ./.forgejo/actions/setup-devenv
+
+      - name: Run linting checks
+        run: lint
+        env:
+          FORGEJO_ACTIONS: "true"
+          BASE_SHA: ${{ gitea.event.pull_request.base.sha }}
+          HEAD_SHA: ${{ gitea.event.pull_request.head.sha }}

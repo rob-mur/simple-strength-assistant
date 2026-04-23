@@ -1,0 +1,13 @@
+name: Setup devenv
+description: Configure PATH for the devenv container (no Nix/cachix/devenv install needed)
+
+runs:
+  using: composite
+  steps:
+    - name: Setup PATH
+      shell: bash
+      run: devenv shell printenv PATH >> "$GITHUB_PATH"
+
+    - name: Install npm dependencies
+      shell: bash
+      run: devenv shell npm ci
