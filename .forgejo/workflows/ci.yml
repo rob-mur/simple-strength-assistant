@@ -3,27 +3,18 @@ name: CI
 on:
   pull_request:
 
-x-devenv: &devenv
-  runs-on: docker
-  container:
-    image: ghcr.io/cachix/devenv/devenv:v1.11.1
-    volumes:
-      - /tmp/devenv-cache:/tmp/devenv-cache
-
 defaults:
   run:
     shell: devenv shell bash -- -e {0}
 
 jobs:
   lint:
-    <<: *devenv
+    runs-on: docker
+    container:
+      image: ghcr.io/cachix/devenv/devenv:v1.11.1
+      volumes:
+        - /var/cache/forgejo-devenv:/home/devenv/.cache
     steps:
-      - name: Link persistent cache
-        shell: bash
-        run: |
-          rm -rf /home/devenv/.cache 2>/dev/null || true
-          ln -sf /tmp/devenv-cache /home/devenv/.cache
-
       - name: Checkout
         shell: bash
         run: |
