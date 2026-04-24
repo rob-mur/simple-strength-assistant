@@ -32,5 +32,3 @@ jobs:
         run: lint
         env:
           FORGEJO_ACTIONS: "true"
-          BASE_SHA: ${{ gitea.event.pull_request.base.sha }}
-          HEAD_SHA: ${{ gitea.event.pull_request.head.sha }}
