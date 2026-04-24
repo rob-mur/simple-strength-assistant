@@ -19,17 +19,16 @@ jobs:
   lint:
     <<: *devenv
     steps:
-      - name: Setup caches and checkout
+      - name: Link persistent cache
         shell: bash
         run: |
           rm -rf /home/devenv/.cache 2>/dev/null || true
           ln -sf /tmp/devenv-cache /home/devenv/.cache
-          BRANCH="${GITHUB_HEAD_REF:-$GITHUB_REF_NAME}"
-          REPO_URL="https://x-access-token:${GITHUB_TOKEN}@${GITHUB_SERVER_URL#https://}/${GITHUB_REPOSITORY}.git"
-          git clone --branch="${BRANCH}" "${REPO_URL}" .
-          git fetch origin "${GITHUB_BASE_REF}" --depth=1
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
 
       - name: Install npm dependencies
         run: npm ci
