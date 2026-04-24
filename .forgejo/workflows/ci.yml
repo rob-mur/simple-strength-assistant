@@ -14,6 +14,7 @@ jobs:
       image: ghcr.io/cachix/devenv/devenv:v1.11.1
       volumes:
         - /var/cache/forgejo-devenv:/home/devenv/.cache
+        - /etc/forgejo-runner/nix.conf:/etc/nix/nix.conf:ro
     steps:
       - name: Checkout
         shell: bash
