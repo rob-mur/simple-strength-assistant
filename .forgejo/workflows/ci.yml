@@ -15,6 +15,7 @@ jobs:
       volumes:
         - /var/cache/forgejo-devenv:/home/devenv/.cache
         - /etc/forgejo-runner/nix.conf:/etc/nix/nix.conf:ro
+        - /nix/store:/mnt/host-nix-store:ro
     steps:
       - name: Checkout
         shell: bash
