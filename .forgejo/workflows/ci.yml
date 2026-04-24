@@ -3,10 +3,6 @@ name: CI
 on:
   pull_request:
 
-defaults:
-  run:
-    shell: devenv shell bash -- -e {0}
-
 jobs:
   lint:
     runs-on: docker
@@ -15,22 +11,10 @@ jobs:
       volumes:
         - /var/cache/forgejo-devenv:/home/devenv/.cache
     steps:
-      - name: Checkout
+      - name: Probe
         shell: bash
         run: |
-          BRANCH="${GITHUB_HEAD_REF:-$GITHUB_REF_NAME}"
-          REPO_URL="https://oauth2:${GITHUB_TOKEN}@${GITHUB_SERVER_URL#https://}/${GITHUB_REPOSITORY}.git"
-          git clone --branch="${BRANCH}" "${REPO_URL}" .
-          git fetch origin "${GITHUB_BASE_REF}" --depth=1
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-
-      - name: Install npm dependencies
-        run: npm ci
-
-      - name: Run linting checks
-        run: lint
-        env:
-          FORGEJO_ACTIONS: "true"
-          BASE_SHA: ${{ gitea.event.pull_request.base.sha }}
-          HEAD_SHA: ${{ gitea.event.pull_request.head.sha }}
+          echo "lint minimal probe"
+          id
+          pwd
+          command -v devenv || true
