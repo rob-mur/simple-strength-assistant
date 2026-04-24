@@ -3,6 +3,10 @@ name: CI
 on:
   pull_request:
 
+defaults:
+  run:
+    shell: devenv shell bash -- -e {0}
+
 jobs:
   lint:
     runs-on: docker
@@ -11,10 +15,11 @@ jobs:
       volumes:
         - /var/cache/forgejo-devenv:/home/devenv/.cache
     steps:
-      - name: Probe
+      - name: Probe bash
         shell: bash
         run: |
-          echo "lint minimal probe"
-          id
-          pwd
-          command -v devenv || true
+          echo "probe bash $(id -un)"
+
+      - name: Probe devenv default
+        run: |
+          echo "probe devenv default $(id -un)"
