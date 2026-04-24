@@ -9,7 +9,6 @@ x-devenv: &devenv
     image: ghcr.io/cachix/devenv/devenv:v1.11.1
     volumes:
       - /tmp/devenv-cache:/tmp/devenv-cache
-      - /var/lib/devenv-nix-cache:/nix
 
 defaults:
   run:
