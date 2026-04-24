@@ -2,7 +2,6 @@ name: CI
 
 on:
   pull_request:
-    types: [opened, synchronize, reopened]
 
 x-devenv: &devenv
   runs-on: docker
@@ -20,13 +19,10 @@ jobs:
   lint:
     <<: *devenv
     steps:
-      - name: Checkout code
-        uses: actions/checkout@v4
-        with:
-          fetch-depth: 0
+      - uses: https://forgejo.clarob.uk/rob/ci-setup@main
 
-      - name: Setup devenv
-        uses: ./.forgejo/actions/setup-devenv
+      - name: Install npm dependencies
+        run: npm ci
 
       - name: Run linting checks
         run: lint
