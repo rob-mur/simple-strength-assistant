@@ -9,23 +9,12 @@ defaults:
 
 jobs:
   lint:
-    runs-on: docker
-    container:
-      image: ghcr.io/cachix/devenv/devenv:v1.11.1
-      volumes:
-        - /var/cache/forgejo-devenv:/home/devenv/.cache
-        - /etc/forgejo-runner/nix.conf:/etc/nix/nix.conf:ro
-        - /nix/store:/mnt/host-nix-store:ro
+    runs-on: nix-host
     steps:
       - name: Checkout
-        shell: bash
-        run: |
-          BRANCH="${GITHUB_HEAD_REF:-$GITHUB_REF_NAME}"
-          REPO_URL="https://oauth2:${GITHUB_TOKEN}@${GITHUB_SERVER_URL#https://}/${GITHUB_REPOSITORY}.git"
-          git clone --branch="${BRANCH}" "${REPO_URL}" .
-          git fetch origin "${GITHUB_BASE_REF}" --depth=1
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
 
       - name: Install npm dependencies
         run: npm ci
