@@ -6,9 +6,9 @@ echo ""
 
 # Commit message validation
 # Locally, the commit-msg hook handles this; only validate in CI where we check the full PR range.
-if [ -n "$GITHUB_ACTIONS" ] && [ -z "$BASE_SHA" ]; then
+if [ -n "${FORGEJO_ACTIONS:-$GITHUB_ACTIONS}" ] && [ -z "$BASE_SHA" ]; then
   echo "↷ Skipping commit lint (devenv test context)"
-elif [ -n "$GITHUB_ACTIONS" ] && [ -n "$BASE_SHA" ] && [ -n "$HEAD_SHA" ]; then
+elif [ -n "${FORGEJO_ACTIONS:-$GITHUB_ACTIONS}" ] && [ -n "$BASE_SHA" ] && [ -n "$HEAD_SHA" ]; then
   echo "→ Validating commit messages..."
   npx commitlint --from "$BASE_SHA" --to "$HEAD_SHA" --verbose
   echo "✓ Commit messages valid"
