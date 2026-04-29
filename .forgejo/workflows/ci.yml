@@ -34,3 +34,17 @@ jobs:
           FORGEJO_ACTIONS: "true"
           BASE_SHA: ${{ gitea.event.pull_request.base.sha }}
           HEAD_SHA: ${{ gitea.event.pull_request.head.sha }}
+
+  test:
+    <<: *devenv
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Setup devenv
+        uses: ./.forgejo/actions/setup-devenv
+
+      - name: Run Rust tests
+        run: cargo test
