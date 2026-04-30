@@ -34,3 +34,44 @@ jobs:
 
       - name: Run Rust tests
         run: cargo test
+
+  fast-test:
+    runs-on: nix-host
+    timeout-minutes: 20
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install npm dependencies
+        run: npm ci
+
+      - name: Run fast Playwright tests
+        run: |
+          DX_LOG=$(mktemp)
+          dx serve --port 3000 > "$DX_LOG" 2>&1 &
+          DX_PID=$!
+          echo "Waiting for dx serve to build and serve WASM..."
+          for i in $(seq 1 120); do
+            if grep -q "Build completed successfully" "$DX_LOG" 2>/dev/null; then
+              echo "Build completed after $((i * 5))s"
+              break
+            fi
+            if grep -q "Build failed" "$DX_LOG" 2>/dev/null; then
+              echo "Build failed:"
+              cat "$DX_LOG"
+              exit 1
+            fi
+            if ! kill -0 $DX_PID 2>/dev/null; then
+              echo "dx serve exited unexpectedly:"
+              cat "$DX_LOG"
+              exit 1
+            fi
+            if [ $i -eq 120 ]; then
+              echo "Timed out waiting for WASM build (600s):"
+              cat "$DX_LOG"
+              exit 1
+            fi
+            sleep 5
+          done
+          npx bddgen --config playwright.fast.config.ts
+          npx playwright test --config playwright.fast.config.ts

@@ -11,6 +11,7 @@
     chromium
     sops
     age
+    freefont_ttf
   ];
 
   languages.rust = {
@@ -31,6 +32,7 @@
   env = {
     CHROMIUM_EXECUTABLE_PATH = "${pkgs.chromium}/bin/chromium";
     PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD = "1";
+    FONTCONFIG_FILE = "${pkgs.makeFontsConf { fontDirectories = [ pkgs.freefont_ttf ]; }}";
   };
   enterShell = ''
     export PATH="$PATH:/$DEVENV_PROFILE/bin/";
