@@ -34,3 +34,11 @@ jobs:
           FORGEJO_ACTIONS: "true"
           BASE_SHA: ${{ gitea.event.pull_request.base.sha }}
           HEAD_SHA: ${{ gitea.event.pull_request.head.sha }}
+
+  build-and-deploy:
+    uses: ./.forgejo/workflows/build-and-deploy.yml
+    with:
+      git-ref: ${{ gitea.event.pull_request.head.sha }}
+      vercel-environment: "preview"
+      build-command: "build"
+    secrets: inherit
