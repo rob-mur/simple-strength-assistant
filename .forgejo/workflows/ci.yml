@@ -75,3 +75,45 @@ jobs:
           done
           npx bddgen --config playwright.fast.config.ts
           npx playwright test --config playwright.fast.config.ts
+
+  build-and-deploy:
+    runs-on: nix-host
+    outputs:
+      deployment-url: ${{ steps.deploy.outputs.preview-url }}
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
+          fetch-depth: 0
+
+      - name: Install npm dependencies
+        run: npm ci
+
+      - name: Decrypt secrets
+        run: sops --decrypt --output-type dotenv secrets.yaml >> "$GITHUB_ENV"
+        env:
+          SOPS_AGE_KEY: ${{ secrets.SOPS_AGE_KEY }}
+
+      - name: Build project
+        run: build
+
+      - name: Inject SYNC_BASE_URL into build output
+        run: bash scripts/inject-sync-url.sh dist/public/index.html
+
+      - name: Deploy to Vercel
+        id: deploy
+        run: |
+          url=$(npx vercel \
+            --token=$VERCEL_TOKEN \
+            --scope=$VERCEL_ORG_ID \
+            -m gitCommitSha=${{ github.sha }} \
+            -m gitCommitAuthorName="${{ github.actor }}" \
+            -m gitCommitAuthorLogin="${{ github.actor }}" \
+            -m gitDeployment=1 \
+            -m gitOrg="${{ github.repository_owner }}" \
+            -m gitRepo="${{ github.event.repository.name }}" \
+            -m gitCommitMessage="$(git log -1 --pretty=format:"%s")" \
+            -m gitCommitRef="${{ github.ref_name }}" \
+            ./dist/public)
+          echo "preview-url=$url" >> "$GITHUB_OUTPUT"
