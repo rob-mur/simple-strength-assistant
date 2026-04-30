@@ -159,7 +159,7 @@ Then("the step control value should stay at the minimum", async ({ page }) => {
       .locator('text[text-anchor="middle"]')
       .first()
       .textContent();
-    expect(stillMinValue).toBe(process.env.STEP_MIN_VALUE);
+    expect(stillMinValue).toBe(process.env.STEP_MIN_VALUE ?? "0");
   }
 });
 
