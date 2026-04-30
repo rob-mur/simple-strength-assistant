@@ -1,0 +1,131 @@
+name: Deploy
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+    inputs:
+      dry-run:
+        description: "Run semantic-release in dry-run mode (no publish, no deploy)"
+        required: false
+        type: boolean
+        default: false
+
+defaults:
+  run:
+    shell: devenv shell bash -- -e {0}
+
+jobs:
+  build:
+    runs-on: nix-host
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Install npm dependencies
+        run: npm ci
+
+      - name: Decrypt secrets
+        run: sops --decrypt --output-type dotenv secrets.yaml >> "$GITHUB_ENV"
+        env:
+          SOPS_AGE_KEY: ${{ secrets.SOPS_AGE_KEY }}
+
+      - name: Build project
+        run: build
+
+      - name: Inject SYNC_BASE_URL into build output
+        run: bash scripts/inject-sync-url.sh dist/public/index.html
+
+      - name: Archive build output
+        shell: bash
+        run: cd dist/public && tar czf ../../dist.tar.gz .
+
+      - name: Upload build artifact
+        uses: forgejo/upload-artifact@v4
+        with:
+          name: dist
+          path: |
+            dist/public/
+            dist.tar.gz
+
+  release:
+    runs-on: nix-host
+    needs: [build]
+    outputs:
+      new-release-published: ${{ steps.semantic.outputs.new_release_published }}
+      new-release-version: ${{ steps.semantic.outputs.new_release_version }}
+      new-release-git-tag: ${{ steps.semantic.outputs.new_release_git_tag }}
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Install npm dependencies
+        run: npm ci
+
+      - name: Download build artifact
+        uses: forgejo/download-artifact@v4
+        with:
+          name: dist
+
+      - name: Decrypt secrets
+        run: sops --decrypt --output-type dotenv secrets.yaml >> "$GITHUB_ENV"
+        env:
+          SOPS_AGE_KEY: ${{ secrets.SOPS_AGE_KEY }}
+
+      - name: Run semantic-release
+        id: semantic
+        run: |
+          ARGS=""
+          if [ "${{ inputs.dry-run }}" = "true" ]; then
+            ARGS="--dry-run"
+          fi
+          npx semantic-release $ARGS
+        env:
+          GITEA_TOKEN: ${{ secrets.FORGEJO_TOKEN }}
+          GITEA_URL: ${{ github.server_url }}
+
+  deploy-production:
+    runs-on: nix-host
+    needs: [build, release]
+    if: ${{ needs.release.outputs.new-release-published == 'true' && inputs.dry-run != true }}
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Install npm dependencies
+        run: npm ci
+
+      - name: Download build artifact
+        uses: forgejo/download-artifact@v4
+        with:
+          name: dist
+
+      - name: Decrypt secrets
+        run: sops --decrypt --output-type dotenv secrets.yaml >> "$GITHUB_ENV"
+        env:
+          SOPS_AGE_KEY: ${{ secrets.SOPS_AGE_KEY }}
+
+      - name: Deploy to Vercel (production)
+        id: deploy
+        run: |
+          url=$(npx vercel \
+            --token=$VERCEL_TOKEN \
+            --scope=$VERCEL_ORG_ID \
+            --prod \
+            -m gitCommitSha=${{ github.sha }} \
+            -m gitCommitAuthorName="${{ github.actor }}" \
+            -m gitCommitAuthorLogin="${{ github.actor }}" \
+            -m gitDeployment=1 \
+            -m gitOrg="${{ github.repository_owner }}" \
+            -m gitRepo="${{ github.event.repository.name }}" \
+            -m gitCommitMessage="$(git log -1 --pretty=format:"%s")" \
+            -m gitCommitRef="${{ github.ref_name }}" \
+            ./dist/public)
+          echo "production-url=$url" >> "$GITHUB_OUTPUT"
+          echo "Deployed to production: $url"

@@ -96,11 +96,11 @@
       }
     ],
     [
-      "@semantic-release/github",
+      "@saithodev/semantic-release-gitea",
       {
         "assets": [
           {
-            "path": "dist.zip",
+            "path": "dist.tar.gz",
             "label": "Build Artifact"
           }
         ]

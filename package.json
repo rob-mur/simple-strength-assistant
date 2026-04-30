@@ -16,6 +16,7 @@
     "@cucumber/cucumber": "^12.7.0",
     "@playwright/test": "^1.48.0",
     "@semantic-release/changelog": "^6.0.3",
+    "@saithodev/semantic-release-gitea": "^2.1.0",
     "@semantic-release/exec": "^7.1.0",
     "@types/bun": "latest",
     "@types/node": "^22.10.2",
