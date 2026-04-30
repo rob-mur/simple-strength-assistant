@@ -101,6 +101,49 @@ jobs:
           PLAYWRIGHT_BASE_URL: ${{ needs.build-and-deploy.outputs.deployment-url }}
           VERCEL_AUTOMATION_BYPASS_SECRET: ${{ env.VERCEL_AUTOMATION_BYPASS_SECRET }}
 
+  claude-review:
+    runs-on: nix-host
+    needs: [lint, test, fast-test]
+    continue-on-error: true
+    timeout-minutes: 10
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Decrypt secrets
+        run: sops --decrypt --output-type dotenv secrets.yaml >> "$GITHUB_ENV"
+        env:
+          SOPS_AGE_KEY: ${{ secrets.SOPS_AGE_KEY }}
+
+      - name: Run Claude review
+        id: review
+        run: |
+          REVIEW=$(claude -p \
+            --allowedTools "" \
+            --max-budget-usd 1 \
+            "/review")
+          {
+            echo 'REVIEW_BODY<<CLAUDE_REVIEW_EOF'
+            echo "$REVIEW"
+            echo 'CLAUDE_REVIEW_EOF'
+          } >> "$GITHUB_ENV"
+        env:
+          CLAUDE_CODE_OAUTH_TOKEN: ${{ env.CLAUDE_CODE_OAUTH_TOKEN }}
+
+      - name: Post review as PR comment
+        run: |
+          PR_NUMBER="${{ github.event.pull_request.number }}"
+          FORGEJO_URL="${{ github.server_url }}"
+          REPO="${{ github.repository }}"
+          COMMENT_BODY=$(jq -n --arg body "$REVIEW_BODY" '{body: $body}')
+          curl -sf -X POST \
+            -H "Authorization: token ${{ secrets.FORGEJO_TOKEN }}" \
+            -H "Content-Type: application/json" \
+            -d "$COMMENT_BODY" \
+            "${FORGEJO_URL}/api/v1/repos/${REPO}/issues/${PR_NUMBER}/comments"
+
   build-and-deploy:
     runs-on: nix-host
     outputs:

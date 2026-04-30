@@ -12,6 +12,8 @@
     sops
     age
     freefont_ttf
+    claude-code
+    jq
   ];
 
   languages.rust = {
