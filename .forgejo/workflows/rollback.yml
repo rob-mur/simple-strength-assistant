@@ -1,0 +1,79 @@
+name: Rollback
+
+on:
+  workflow_dispatch:
+    inputs:
+      version-tag:
+        description: "Release version tag to roll back to (e.g., v1.0.0)"
+        required: true
+        type: string
+      dry-run:
+        description: "Validate build without deploying"
+        required: false
+        type: boolean
+        default: false
+
+defaults:
+  run:
+    shell: devenv shell bash -- -e {0}
+
+jobs:
+  rollback:
+    runs-on: nix-host
+    steps:
+      - name: Validate release tag
+        run: git ls-remote --tags --exit-code https://forgejo.clarob.uk/${{ github.repository }} "${{ inputs.version-tag }}"
+        shell: bash
+
+      - name: Checkout release tag
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.version-tag }}
+          fetch-depth: 1
+
+      - name: Resolve tag commit SHA
+        id: tag-sha
+        run: echo "sha=$(git rev-list -n 1 HEAD)" >> "$GITHUB_OUTPUT"
+        shell: bash
+
+      - name: Install npm dependencies
+        run: npm ci
+
+      - name: Decrypt secrets
+        run: sops --decrypt --output-type dotenv secrets.yaml >> "$GITHUB_ENV"
+        env:
+          SOPS_AGE_KEY: ${{ secrets.SOPS_AGE_KEY }}
+
+      - name: Build from release tag
+        run: |
+          build
+          bash scripts/inject-sync-url.sh dist/public/index.html
+          echo "Built from tag ${{ inputs.version-tag }}"
+          ls -la dist/public/
+
+      - name: Deploy to Vercel (production)
+        if: inputs.dry-run == false
+        id: deploy
+        run: |
+          url=$(npx vercel \
+            --scope=$VERCEL_ORG_ID \
+            --prod \
+            -m gitCommitSha=${{ steps.tag-sha.outputs.sha }} \
+            -m gitCommitAuthorName="${{ github.actor }}" \
+            -m gitCommitAuthorLogin="${{ github.actor }}" \
+            -m gitDeployment=1 \
+            -m gitOrg="${{ github.repository_owner }}" \
+            -m gitRepo="${{ github.event.repository.name }}" \
+            -m gitCommitMessage="rollback to ${{ inputs.version-tag }}" \
+            -m gitCommitRef="${{ inputs.version-tag }}" \
+            ./dist/public)
+          echo "production-url=$url" >> "$GITHUB_OUTPUT"
+          echo "Rolled back to ${{ inputs.version-tag }}: $url"
+
+      - name: Dry-run summary
+        if: inputs.dry-run == true
+        run: |
+          echo "Dry-run complete. Built from tag ${{ inputs.version-tag }}."
+          echo "Contents of dist/public/:"
+          ls -la dist/public/
+          echo "Skipped Vercel deployment (dry-run mode)."
