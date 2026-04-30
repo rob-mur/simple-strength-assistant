@@ -120,29 +120,37 @@ jobs:
       - name: Run Claude review
         id: review
         run: |
+          DELIMITER=$(uuidgen)
           REVIEW=$(claude -p \
-            --allowedTools "" \
             --max-budget-usd 1 \
-            "/review")
+            "Review PR #${PR_NUMBER} on this repo. The PR title is: ${PR_TITLE}
+
+          Use git diff origin/main...HEAD to see the changes, and explore the surrounding codebase as needed to understand context.
+
+          Provide a concise code review focusing on bugs, security issues, and significant design concerns. Skip style nits.")
           {
-            echo 'REVIEW_BODY<<CLAUDE_REVIEW_EOF'
+            echo "REVIEW_BODY<<${DELIMITER}"
             echo "$REVIEW"
-            echo 'CLAUDE_REVIEW_EOF'
+            echo "${DELIMITER}"
           } >> "$GITHUB_ENV"
         env:
           CLAUDE_CODE_OAUTH_TOKEN: ${{ env.CLAUDE_CODE_OAUTH_TOKEN }}
+          PR_TITLE: ${{ github.event.pull_request.title }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
 
       - name: Post review as PR comment
+        if: ${{ env.REVIEW_BODY != '' }}
         run: |
-          PR_NUMBER="${{ github.event.pull_request.number }}"
-          FORGEJO_URL="${{ github.server_url }}"
-          REPO="${{ github.repository }}"
           COMMENT_BODY=$(jq -n --arg body "$REVIEW_BODY" '{body: $body}')
-          curl -sf -X POST \
+          curl -Sf -X POST \
             -H "Authorization: token ${{ secrets.FORGEJO_TOKEN }}" \
             -H "Content-Type: application/json" \
             -d "$COMMENT_BODY" \
             "${FORGEJO_URL}/api/v1/repos/${REPO}/issues/${PR_NUMBER}/comments"
+        env:
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+          FORGEJO_URL: ${{ github.server_url }}
+          REPO: ${{ github.repository }}
 
   build-and-deploy:
     runs-on: nix-host
