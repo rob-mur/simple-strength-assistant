@@ -117,3 +117,25 @@ jobs:
             -m gitCommitRef="${{ github.ref_name }}" \
             ./dist/public)
           echo "preview-url=$url" >> "$GITHUB_OUTPUT"
+
+  e2e-test:
+    runs-on: nix-host
+    needs: [build-and-deploy]
+    timeout-minutes: 20
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install npm dependencies
+        run: npm ci
+
+      - name: Decrypt SOPS secrets
+        run: sops --decrypt --output-type dotenv secrets.yaml >> "$GITHUB_ENV"
+        env:
+          SOPS_AGE_KEY: ${{ secrets.SOPS_AGE_KEY }}
+
+      - name: Run E2E tests against preview deployment
+        run: npm run test:e2e
+        env:
+          PLAYWRIGHT_BASE_URL: ${{ needs.build-and-deploy.outputs.deployment-url }}
+          CI: "true"
