@@ -34,3 +34,42 @@ jobs:
           FORGEJO_ACTIONS: "true"
           BASE_SHA: ${{ gitea.event.pull_request.base.sha }}
           HEAD_SHA: ${{ gitea.event.pull_request.head.sha }}
+
+  claude-review:
+    <<: *devenv
+    needs: [lint, test, fast-test, e2e-test, build-and-deploy]
+    if: always() && gitea.event_name == 'pull_request'
+    continue-on-error: true
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Setup devenv
+        uses: ./.forgejo/actions/setup-devenv
+
+      - name: Decrypt secrets
+        run: |
+          sops --decrypt secrets.yaml > /tmp/secrets-decrypted.yaml
+        env:
+          SOPS_AGE_KEY: ${{ secrets.SOPS_AGE_KEY }}
+
+      - name: Run Claude Code review
+        run: |
+          export CLAUDE_CODE_OAUTH_TOKEN=$(grep '^CLAUDE_CODE_OAUTH_TOKEN:' /tmp/secrets-decrypted.yaml | sed 's/^CLAUDE_CODE_OAUTH_TOKEN: //')
+          PR_NUMBER="${{ gitea.event.pull_request.number }}"
+          REPO="${{ gitea.repository }}"
+
+          REVIEW=$(claude --print \
+            --allowedTools 'Bash(gh pr diff:*)' 'Bash(gh pr view:*)' \
+            "Review PR #${PR_NUMBER} in ${REPO}. Use gh pr diff and gh pr view to understand the changes. Provide feedback on code quality, potential bugs, performance, security, and test coverage. Be constructive and concise.")
+
+          gh pr comment "${PR_NUMBER}" --body "${REVIEW}"
+        env:
+          FORGEJO_TOKEN: ${{ secrets.FORGEJO_TOKEN }}
+          GH_TOKEN: ${{ secrets.FORGEJO_TOKEN }}
+
+      - name: Cleanup secrets
+        if: always()
+        run: rm -f /tmp/secrets-decrypted.yaml
