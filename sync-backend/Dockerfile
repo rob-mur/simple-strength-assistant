@@ -29,3 +29,4 @@ USER node
 EXPOSE 3000
 
 ENTRYPOINT ["sh", "-c", "mkdir -p \"$DATA_DIR\" \"$SCHEMA_DIR\" && exec node dist/index.js"]
+
