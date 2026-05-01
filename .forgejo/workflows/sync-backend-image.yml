@@ -26,16 +26,16 @@ jobs:
           SOPS_AGE_KEY: ${{ secrets.SOPS_AGE_KEY }}
 
       - name: Log in to Forgejo container registry
-        run: echo "$FORGEJO_REGISTRY_PASSWORD" | podman login "${{ env.REGISTRY }}" -u "$FORGEJO_REGISTRY_USER" --password-stdin
+        run: echo "$FORGEJO_REGISTRY_PASSWORD" | docker login "${{ env.REGISTRY }}" -u "$FORGEJO_REGISTRY_USER" --password-stdin
 
       - name: Set short SHA
         id: sha
         run: echo "short=$(echo '${{ github.sha }}' | cut -c1-7)" >> "$GITHUB_OUTPUT"
 
       - name: Build container image
-        run: podman build -t "${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ steps.sha.outputs.short }}" -t "${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:latest" sync-backend
+        run: docker build -t "${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ steps.sha.outputs.short }}" -t "${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:latest" sync-backend
 
       - name: Push container image
         run: |
-          podman push "${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ steps.sha.outputs.short }}"
-          podman push "${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:latest"
+          docker push "${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ steps.sha.outputs.short }}"
+          docker push "${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:latest"
