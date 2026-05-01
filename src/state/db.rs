@@ -1960,6 +1960,39 @@ impl Database {
         }
         Ok(counts)
     }
+
+    /// Get the most recent recorded_at timestamp for any set belonging to
+    /// the given exercise IDs since a given time. Returns None if no sets found.
+    pub async fn get_latest_set_time(
+        &self,
+        exercise_ids: &[String],
+        since_ms: f64,
+    ) -> Result<Option<f64>, DatabaseError> {
+        if exercise_ids.is_empty() {
+            return Ok(None);
+        }
+        let placeholders: Vec<&str> = exercise_ids.iter().map(|_| "?").collect();
+        let sql = format!(
+            "SELECT MAX(recorded_at) as latest FROM completed_sets WHERE exercise_id IN ({}) AND recorded_at >= ? AND deleted_at IS NULL",
+            placeholders.join(",")
+        );
+        let mut params: Vec<JsValue> = exercise_ids
+            .iter()
+            .map(|id| JsValue::from_str(id))
+            .collect();
+        params.push(JsValue::from_f64(since_ms));
+
+        let result = self.execute(&sql, &params).await?;
+        let array = match result.dyn_ref::<js_sys::Array>() {
+            Some(a) if a.length() > 0 => a,
+            _ => return Ok(None),
+        };
+        let row = array.get(0);
+        let latest = js_sys::Reflect::get(&row, &JsValue::from_str("latest"))
+            .ok()
+            .and_then(|v| v.as_f64());
+        Ok(latest)
+    }
 }
 
 impl Default for Database {

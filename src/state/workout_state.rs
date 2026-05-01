@@ -597,9 +597,41 @@ impl WorkoutStateManager {
     }
 
     /// Resume an active plan on app load. Called during initialization.
+    /// Auto-closes plans that have been inactive for > 4 hours.
     pub async fn resume_active_plan(state: &WorkoutState) -> Result<(), WorkoutError> {
+        const AUTO_CLOSE_MS: f64 = 4.0 * 60.0 * 60.0 * 1000.0; // 4 hours
+
         let db = state.database().ok_or(WorkoutError::NotInitialized)?;
         if let Some(plan) = db.get_active_plan().await.map_err(WorkoutError::Database)? {
+            let now = js_sys::Date::now();
+            let started_at = plan.started_at.unwrap_or(0.0);
+
+            // Check for auto-close: find the most recent set activity
+            let exercise_ids: Vec<String> = plan
+                .exercises
+                .iter()
+                .filter_map(|pe| pe.exercise.id.clone())
+                .collect();
+
+            let last_activity = db
+                .get_latest_set_time(&exercise_ids, started_at)
+                .await
+                .map_err(WorkoutError::Database)?;
+
+            let reference_time = last_activity.unwrap_or(started_at);
+
+            if now - reference_time > AUTO_CLOSE_MS {
+                js_log(&format!(
+                    "[Plan] Auto-closing plan {} (inactive for > 4h, last activity: {})",
+                    plan.id, reference_time
+                ));
+                db.end_plan(&plan.id)
+                    .await
+                    .map_err(WorkoutError::Database)?;
+                state.set_current_plan(None);
+                return Ok(());
+            }
+
             js_log(&format!(
                 "[Plan] Resuming active plan {} with {} exercises",
                 plan.id,
