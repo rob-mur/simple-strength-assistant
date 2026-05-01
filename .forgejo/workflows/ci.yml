@@ -49,7 +49,8 @@ jobs:
       - name: Run fast Playwright tests
         run: |
           DX_LOG=$(mktemp)
-          dx serve --port 3000 > "$DX_LOG" 2>&1 &
+          FAST_PORT=$((4000 + (${{ github.run_id }} % 100)))
+          dx serve --port "$FAST_PORT" > "$DX_LOG" 2>&1 &
           DX_PID=$!
           echo "Waiting for dx serve to build and serve WASM..."
           for i in $(seq 1 120); do
@@ -74,8 +75,8 @@ jobs:
             fi
             sleep 5
           done
-          npx bddgen --config playwright.fast.config.ts
-          npx playwright test --config playwright.fast.config.ts
+          PLAYWRIGHT_BASE_URL="http://localhost:$FAST_PORT" npx bddgen --config playwright.fast.config.ts
+          PLAYWRIGHT_BASE_URL="http://localhost:$FAST_PORT" npx playwright test --config playwright.fast.config.ts
 
   e2e-test:
     runs-on: nix-host
@@ -93,13 +94,60 @@ jobs:
         env:
           SOPS_AGE_KEY: ${{ secrets.SOPS_AGE_KEY }}
 
+      - name: Build sync backend image
+        shell: bash
+        run: docker build -t sync-backend-${{ github.run_id }} sync-backend/
+
       - name: Run Playwright E2E tests
         run: |
-          npx bddgen
-          npx playwright test
-        env:
-          PLAYWRIGHT_BASE_URL: ${{ needs.build-and-deploy.outputs.deployment-url }}
-          VERCEL_AUTOMATION_BYPASS_SECRET: ${{ env.VERCEL_AUTOMATION_BYPASS_SECRET }}
+          # Use run-unique ports to avoid conflicts with parallel jobs
+          SYNC_PORT=$((8090 + (${{ github.run_id }} % 100)))
+          APP_PORT=$((3001 + (${{ github.run_id }} % 100)))
+          CONTAINER_NAME="sync-backend-${{ github.run_id }}"
+
+          # Start sync backend container on host network
+          docker rm -f "$CONTAINER_NAME" 2>/dev/null || true
+          docker run -d --name "$CONTAINER_NAME" --network host \
+            -e PORT=$SYNC_PORT -e DATA_DIR=/data -e SCHEMA_DIR=/app/schemas \
+            "sync-backend-${{ github.run_id }}"
+          for i in $(seq 1 30); do
+            if curl -sf "http://localhost:$SYNC_PORT/health" >/dev/null 2>&1; then
+              echo "Sync backend ready on port $SYNC_PORT after ${i}s"
+              break
+            fi
+            if [ $i -eq 30 ]; then
+              echo "Sync backend failed to start"
+              docker logs "$CONTAINER_NAME"
+              exit 1
+            fi
+            sleep 1
+          done
+          # Start local app server
+          SYNC_BASE_URL="http://localhost:$SYNC_PORT" dx serve --port "$APP_PORT" > /tmp/dx-serve.log 2>&1 &
+          echo "Waiting for dx serve to build on port $APP_PORT..."
+          for i in $(seq 1 120); do
+            if grep -q "Build completed successfully" /tmp/dx-serve.log 2>/dev/null; then
+              echo "Build completed after $((i * 5))s"
+              break
+            fi
+            if grep -q "Build failed" /tmp/dx-serve.log 2>/dev/null; then
+              echo "Build failed:"; cat /tmp/dx-serve.log; exit 1
+            fi
+            if [ $i -eq 120 ]; then
+              echo "Timed out waiting for WASM build (600s):"; cat /tmp/dx-serve.log; exit 1
+            fi
+            sleep 5
+          done
+          # Run tests
+          SYNC_BASE_URL="http://localhost:$SYNC_PORT" \
+          PLAYWRIGHT_BASE_URL="http://localhost:$APP_PORT" \
+            npx bddgen
+          SYNC_BASE_URL="http://localhost:$SYNC_PORT" \
+          PLAYWRIGHT_BASE_URL="http://localhost:$APP_PORT" \
+            npx playwright test
+
+          # Cleanup
+          docker rm -f "$CONTAINER_NAME" 2>/dev/null || true
 
   claude-review:
     runs-on: nix-host

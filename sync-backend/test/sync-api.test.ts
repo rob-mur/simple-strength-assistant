@@ -91,7 +91,7 @@ describe("vlcn.io sync server", () => {
     // Encode room info in sec-websocket-protocol as vlcn.io expects
     // Strip base64 padding — '=' is not valid in WebSocket subprotocol values (RFC 6455 §4.1)
     const room = btoa(
-      "room=test-room,schemaName=default,schemaVersion=589454654283815490",
+      "room=test-room,schemaName=default,schemaVersion=7730284589046626158",
     ).replace(/=+$/, "");
 
     const ws = new WebSocket(wsUrl, [room]);
@@ -126,10 +126,10 @@ describe("vlcn.io sync server", () => {
 
   test("WebSocket connections to different sync_ids are isolated", async () => {
     const room1 = btoa(
-      "room=room-a,schemaName=default,schemaVersion=589454654283815490",
+      "room=room-a,schemaName=default,schemaVersion=7730284589046626158",
     );
     const room2 = btoa(
-      "room=room-b,schemaName=default,schemaVersion=589454654283815490",
+      "room=room-b,schemaName=default,schemaVersion=7730284589046626158",
     );
 
     const ws1 = new WebSocket(`ws://localhost:${port}/sync/room-a`, [room1]);

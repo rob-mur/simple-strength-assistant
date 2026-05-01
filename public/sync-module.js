@@ -4,7 +4,7 @@ const _textDecoder = new TextDecoder();
 
 // Schema identity — must match sync-backend/schemas/default via cryb64 hash.
 const SCHEMA_NAME = "default";
-const SCHEMA_VERSION = 589454654283815490n;
+const SCHEMA_VERSION = 7730284589046626158n;
 
 // WebSocket-based CRR changeset sync module using the vlcn.io binary wire protocol.
 //

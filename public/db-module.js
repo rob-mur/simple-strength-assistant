@@ -12,7 +12,7 @@ const CRSQLITE_WASM_URL = "/vendor/crsqlite/crsqlite-wasm.mjs";
 const DB_NAME = "workout-data";
 
 // Tables that must be marked as CRRs for CRDT-based replication.
-const CRR_TABLES = ["exercises", "completed_sets", "settings"];
+const CRR_TABLES = ["exercises", "completed_sets", "settings", "workout_plans", "workout_plan_exercises", "workout_templates", "workout_template_exercises"];
 
 // Migration sentinel key — checked in both localStorage (legacy) and in the DB
 // itself (new: stored atomically with the migrated data).

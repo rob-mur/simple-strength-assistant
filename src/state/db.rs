@@ -61,7 +61,7 @@ extern "C" {
 }
 
 /// Current schema version. Bump this when the schema changes.
-const SCHEMA_VERSION: i64 = 6;
+const SCHEMA_VERSION: i64 = 7;
 
 #[derive(Clone, PartialEq)]
 pub struct Database {
@@ -231,6 +231,12 @@ impl Database {
         if current_version < 6 {
             log::debug!("[DB] Applying v6 migration: UUID primary key for exercises");
             self.apply_v6_migration().await?;
+        }
+
+        // ── v7 migration: workout plans, templates, and default_planned_sets ─
+        if current_version < 7 {
+            log::debug!("[DB] Applying v7 migration: workout plans and templates tables");
+            self.apply_v7_migration().await?;
         }
 
         // Stamp the new version
@@ -598,6 +604,70 @@ impl Database {
         .await?;
 
         log::debug!("[DB] v6 migration complete — exercises now use UUID primary key");
+        Ok(())
+    }
+
+    /// v7 migration: create workout_plans, workout_plan_exercises,
+    /// workout_templates, workout_template_exercises tables and add
+    /// default_planned_sets to settings.
+    async fn apply_v7_migration(&self) -> Result<(), DatabaseError> {
+        self.execute_internal(
+            "CREATE TABLE IF NOT EXISTS workout_plans (
+                id TEXT PRIMARY KEY NOT NULL,
+                started_at INTEGER,
+                ended_at INTEGER,
+                updated_at INTEGER NOT NULL DEFAULT 0,
+                deleted_at INTEGER
+            )",
+            &[],
+        )
+        .await?;
+
+        self.execute_internal(
+            "CREATE TABLE IF NOT EXISTS workout_plan_exercises (
+                id TEXT PRIMARY KEY NOT NULL,
+                plan_id TEXT NOT NULL DEFAULT '',
+                exercise_id TEXT NOT NULL DEFAULT '',
+                planned_sets INTEGER NOT NULL DEFAULT 1,
+                position INTEGER NOT NULL DEFAULT 0,
+                updated_at INTEGER NOT NULL DEFAULT 0,
+                deleted_at INTEGER
+            )",
+            &[],
+        )
+        .await?;
+
+        self.execute_internal(
+            "CREATE TABLE IF NOT EXISTS workout_templates (
+                id TEXT PRIMARY KEY NOT NULL,
+                name TEXT NOT NULL DEFAULT '',
+                updated_at INTEGER NOT NULL DEFAULT 0,
+                deleted_at INTEGER
+            )",
+            &[],
+        )
+        .await?;
+
+        self.execute_internal(
+            "CREATE TABLE IF NOT EXISTS workout_template_exercises (
+                id TEXT PRIMARY KEY NOT NULL,
+                template_id TEXT NOT NULL DEFAULT '',
+                exercise_id TEXT NOT NULL DEFAULT '',
+                planned_sets INTEGER NOT NULL DEFAULT 1,
+                position INTEGER NOT NULL DEFAULT 0,
+                updated_at INTEGER NOT NULL DEFAULT 0,
+                deleted_at INTEGER
+            )",
+            &[],
+        )
+        .await?;
+
+        self.add_column_if_missing(
+            "ALTER TABLE settings ADD COLUMN default_planned_sets INTEGER NOT NULL DEFAULT 3",
+        )
+        .await?;
+
+        log::debug!("[DB] v7 migration complete — workout plans and templates tables created");
         Ok(())
     }
 
