@@ -15,3 +15,10 @@ pub struct WorkoutPlan {
     pub ended_at: Option<f64>,
     pub exercises: Vec<PlanExercise>,
 }
+
+#[derive(Clone, Debug, PartialEq)]
+pub struct WorkoutTemplate {
+    pub id: String,
+    pub name: String,
+    pub exercises: Vec<PlanExercise>,
+}

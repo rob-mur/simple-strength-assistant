@@ -1,5 +1,6 @@
 use crate::models::{
     CompletedSet, ExerciseMetadata, HistorySet, PlanExercise, SetType, SetTypeConfig, WorkoutPlan,
+    WorkoutTemplate,
 };
 use thiserror::Error;
 #[cfg(test)]
@@ -1992,6 +1993,192 @@ impl Database {
             .ok()
             .and_then(|v| v.as_f64());
         Ok(latest)
+    }
+
+    // ── Workout Template CRUD ────────────────────────────────────────────────
+
+    pub async fn save_template(
+        &self,
+        name: &str,
+        exercises: &[PlanExercise],
+    ) -> Result<String, DatabaseError> {
+        let id = Self::generate_uuid();
+        let now = js_sys::Date::now();
+
+        self.execute(
+            "INSERT INTO workout_templates (id, name, updated_at) VALUES (?, ?, ?)",
+            &[
+                JsValue::from_str(&id),
+                JsValue::from_str(name),
+                JsValue::from_f64(now),
+            ],
+        )
+        .await?;
+
+        for (pos, pe) in exercises.iter().enumerate() {
+            let te_id = Self::generate_uuid();
+            let exercise_id = pe.exercise.id.clone().unwrap_or_default();
+            self.execute(
+                "INSERT INTO workout_template_exercises (id, template_id, exercise_id, planned_sets, position, updated_at) VALUES (?, ?, ?, ?, ?, ?)",
+                &[
+                    JsValue::from_str(&te_id),
+                    JsValue::from_str(&id),
+                    JsValue::from_str(&exercise_id),
+                    JsValue::from_f64(pe.planned_sets as f64),
+                    JsValue::from_f64(pos as f64),
+                    JsValue::from_f64(now),
+                ],
+            )
+            .await?;
+        }
+
+        Ok(id)
+    }
+
+    pub async fn list_templates(&self) -> Result<Vec<WorkoutTemplate>, DatabaseError> {
+        let result = self
+            .execute(
+                "SELECT id, name FROM workout_templates WHERE deleted_at IS NULL ORDER BY updated_at DESC",
+                &[],
+            )
+            .await?;
+
+        let array = match result.dyn_ref::<js_sys::Array>() {
+            Some(a) => a,
+            None => return Ok(Vec::new()),
+        };
+
+        let mut templates = Vec::new();
+        for i in 0..array.length() {
+            let row = array.get(i);
+            let id = js_sys::Reflect::get(&row, &JsValue::from_str("id"))
+                .ok()
+                .and_then(|v| v.as_string())
+                .unwrap_or_default();
+            let name = js_sys::Reflect::get(&row, &JsValue::from_str("name"))
+                .ok()
+                .and_then(|v| v.as_string())
+                .unwrap_or_default();
+
+            let exercises = self.get_template_exercises(&id).await?;
+            templates.push(WorkoutTemplate {
+                id,
+                name,
+                exercises,
+            });
+        }
+        Ok(templates)
+    }
+
+    async fn get_template_exercises(
+        &self,
+        template_id: &str,
+    ) -> Result<Vec<PlanExercise>, DatabaseError> {
+        let result = self
+            .execute(
+                r#"
+                SELECT te.id, te.exercise_id, te.planned_sets, te.position,
+                       e.name, e.is_weighted, e.min_weight, e.increment, e.min_reps, e.max_reps
+                FROM workout_template_exercises te
+                JOIN exercises e ON te.exercise_id = e.uuid
+                WHERE te.template_id = ? AND te.deleted_at IS NULL
+                ORDER BY te.position ASC
+                "#,
+                &[JsValue::from_str(template_id)],
+            )
+            .await?;
+
+        let array = match result.dyn_ref::<js_sys::Array>() {
+            Some(a) => a,
+            None => return Ok(Vec::new()),
+        };
+
+        let mut exercises = Vec::new();
+        for i in 0..array.length() {
+            let row = array.get(i);
+            let get_str = |key: &str| -> String {
+                js_sys::Reflect::get(&row, &JsValue::from_str(key))
+                    .ok()
+                    .and_then(|v| v.as_string())
+                    .unwrap_or_default()
+            };
+            let get_f64 = |key: &str| -> f64 {
+                js_sys::Reflect::get(&row, &JsValue::from_str(key))
+                    .ok()
+                    .and_then(|v| v.as_f64())
+                    .unwrap_or(0.0)
+            };
+
+            let is_weighted = get_f64("is_weighted") != 0.0;
+            let set_type_config = if is_weighted {
+                SetTypeConfig::Weighted {
+                    min_weight: get_f64("min_weight") as f32,
+                    increment: get_f64("increment") as f32,
+                }
+            } else {
+                SetTypeConfig::Bodyweight
+            };
+
+            let exercise_id = get_str("exercise_id");
+            let max_reps_val = js_sys::Reflect::get(&row, &JsValue::from_str("max_reps"))
+                .ok()
+                .and_then(|v| v.as_f64());
+
+            exercises.push(PlanExercise {
+                id: get_str("id"),
+                exercise: ExerciseMetadata {
+                    id: Some(exercise_id),
+                    name: get_str("name"),
+                    set_type_config,
+                    min_reps: get_f64("min_reps") as i32,
+                    max_reps: max_reps_val.map(|v| v as i32),
+                },
+                planned_sets: get_f64("planned_sets") as u32,
+                position: get_f64("position") as u32,
+            });
+        }
+        Ok(exercises)
+    }
+
+    /// Load a template's exercises into a plan, replacing current contents.
+    pub async fn load_template_into_plan(
+        &self,
+        plan_id: &str,
+        template_id: &str,
+    ) -> Result<(), DatabaseError> {
+        let now = js_sys::Date::now();
+
+        // Soft-delete all current plan exercises
+        self.execute(
+            "UPDATE workout_plan_exercises SET deleted_at = ?, updated_at = ? WHERE plan_id = ? AND deleted_at IS NULL",
+            &[
+                JsValue::from_f64(now),
+                JsValue::from_f64(now),
+                JsValue::from_str(plan_id),
+            ],
+        )
+        .await?;
+
+        // Copy template exercises into plan
+        let template_exercises = self.get_template_exercises(template_id).await?;
+        for (pos, te) in template_exercises.iter().enumerate() {
+            let pe_id = Self::generate_uuid();
+            let exercise_id = te.exercise.id.clone().unwrap_or_default();
+            self.execute(
+                "INSERT INTO workout_plan_exercises (id, plan_id, exercise_id, planned_sets, position, updated_at) VALUES (?, ?, ?, ?, ?, ?)",
+                &[
+                    JsValue::from_str(&pe_id),
+                    JsValue::from_str(plan_id),
+                    JsValue::from_str(&exercise_id),
+                    JsValue::from_f64(te.planned_sets as f64),
+                    JsValue::from_f64(pos as f64),
+                    JsValue::from_f64(now),
+                ],
+            )
+            .await?;
+        }
+
+        Ok(())
     }
 }
 

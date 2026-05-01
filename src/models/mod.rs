@@ -22,4 +22,4 @@ pub use validation::{
     validate_weight,
 };
 #[allow(unused_imports)]
-pub use workout_plan::{PlanExercise, WorkoutPlan};
+pub use workout_plan::{PlanExercise, WorkoutPlan, WorkoutTemplate};
