@@ -1,1 +1,4 @@
-# sync-backend
+node_modules
+test
+*.test.ts
+.dockerignore
