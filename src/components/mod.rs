@@ -3,6 +3,7 @@ pub mod data_management;
 pub mod debug_panel;
 pub mod edit_set_modal;
 pub mod exercise_form;
+pub mod exercise_tab_strip;
 pub mod history_view;
 pub mod library_view;
 pub mod pairing;

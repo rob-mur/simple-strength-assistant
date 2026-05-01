@@ -1915,6 +1915,51 @@ impl Database {
             exercises,
         }))
     }
+
+    /// Count completed sets per exercise since a given timestamp.
+    /// Returns a Vec of (exercise_id, count) pairs.
+    pub async fn count_sets_since(
+        &self,
+        exercise_ids: &[String],
+        since_ms: f64,
+    ) -> Result<Vec<(String, u32)>, DatabaseError> {
+        if exercise_ids.is_empty() {
+            return Ok(Vec::new());
+        }
+
+        let placeholders: Vec<&str> = exercise_ids.iter().map(|_| "?").collect();
+        let sql = format!(
+            "SELECT exercise_id, COUNT(*) as cnt FROM completed_sets WHERE exercise_id IN ({}) AND recorded_at >= ? AND deleted_at IS NULL GROUP BY exercise_id",
+            placeholders.join(",")
+        );
+
+        let mut params: Vec<JsValue> = exercise_ids
+            .iter()
+            .map(|id| JsValue::from_str(id))
+            .collect();
+        params.push(JsValue::from_f64(since_ms));
+
+        let result = self.execute(&sql, &params).await?;
+        let array = match result.dyn_ref::<js_sys::Array>() {
+            Some(a) => a,
+            None => return Ok(Vec::new()),
+        };
+
+        let mut counts = Vec::new();
+        for i in 0..array.length() {
+            let row = array.get(i);
+            let eid = js_sys::Reflect::get(&row, &JsValue::from_str("exercise_id"))
+                .ok()
+                .and_then(|v| v.as_string())
+                .unwrap_or_default();
+            let cnt = js_sys::Reflect::get(&row, &JsValue::from_str("cnt"))
+                .ok()
+                .and_then(|v| v.as_f64())
+                .unwrap_or(0.0) as u32;
+            counts.push((eid, cnt));
+        }
+        Ok(counts)
+    }
 }
 
 impl Default for Database {
