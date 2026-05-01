@@ -1,4 +1,4 @@
+# Exclude test and dev files from build context
 node_modules
 test
 *.test.ts
-.dockerignore
