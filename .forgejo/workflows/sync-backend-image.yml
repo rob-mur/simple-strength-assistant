@@ -31,7 +31,7 @@ jobs:
 
       - name: Build and push container image
         run: |
-          nix-shell -p buildah skopeo --run '
+          nix shell nixpkgs#buildah nixpkgs#skopeo --command bash -e -c '
             buildah bud \
               -t "${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ steps.sha.outputs.short }}" \
               -t "${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:latest" \
