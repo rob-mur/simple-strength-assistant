@@ -7,6 +7,10 @@ on:
       - "sync-backend/**"
   workflow_dispatch:
 
+defaults:
+  run:
+    shell: devenv shell bash -- -e {0}
+
 env:
   REGISTRY: forgejo.clarob.uk
   IMAGE_NAME: ${{ gitea.repository_owner }}/sync-backend
@@ -19,8 +23,13 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v4
 
+      - name: Decrypt secrets
+        run: sops --decrypt --output-type dotenv secrets.yaml >> "$GITHUB_ENV"
+        env:
+          SOPS_AGE_KEY: ${{ secrets.SOPS_AGE_KEY }}
+
       - name: Log in to Forgejo container registry
-        run: echo "${{ secrets.FORGEJO_TOKEN }}" | podman login "${{ env.REGISTRY }}" -u "${{ gitea.actor }}" --password-stdin
+        run: echo "$FORGEJO_REGISTRY_PASSWORD" | podman login "${{ env.REGISTRY }}" -u "$FORGEJO_REGISTRY_USER" --password-stdin
 
       - name: Set short SHA
         id: sha
