@@ -10,9 +10,10 @@ pub fn WorkoutView(state: WorkoutState) -> Element {
     let current_plan = state.current_plan();
     let mut active_tab_index = use_signal(|| 0usize);
     let mut set_counts = use_signal(Vec::<u32>::new);
+    let mut prompt_dismissed = use_signal(|| false);
 
     match (&current_plan, &current_session) {
-        // Plan started — show tab strip + recorder
+        // Plan started — show tab strip + recorder + end workout
         (Some(plan), _) if plan.started_at.is_some() && plan.ended_at.is_none() => {
             let exercises = plan.exercises.clone();
             let plan_started_at = plan.started_at.unwrap_or(0.0);
@@ -39,7 +40,6 @@ pub fn WorkoutView(state: WorkoutState) -> Element {
                                             result[pos] = *cnt;
                                         }
                                     }
-                                    // Add in-memory session sets for current exercise
                                     if let Some(session) = state.current_session()
                                         && let Some(sid) = &session.exercise.id
                                         && let Some(pos) = eids.iter().position(|id| id == sid)
@@ -58,7 +58,6 @@ pub fn WorkoutView(state: WorkoutState) -> Element {
                 });
             }
 
-            // Ensure counts vector matches exercises length
             let counts = {
                 let c = set_counts();
                 if c.len() == exercises.len() {
@@ -68,7 +67,6 @@ pub fn WorkoutView(state: WorkoutState) -> Element {
                 }
             };
 
-            // Update counts for current session's exercise (in-memory sets)
             let mut display_counts = counts.clone();
             if let Some(ref session) = current_session
                 && let Some(ref sid) = session.exercise.id
@@ -81,9 +79,37 @@ pub fn WorkoutView(state: WorkoutState) -> Element {
                 }
             }
 
+            // Check if current exercise exceeds planned sets
+            let over_plan = if let Some(ref session) = current_session {
+                let current_sets = session.completed_sets.len() as u32;
+                exercises
+                    .get(active_idx)
+                    .map(|pe| current_sets > pe.planned_sets)
+                    .unwrap_or(false)
+            } else {
+                false
+            };
+
             rsx! {
                 div {
                     class: "max-w-2xl mx-auto",
+
+                    // End Workout button
+                    div {
+                        class: "flex justify-end px-4 py-2",
+                        button {
+                            class: "btn btn-ghost btn-sm text-error",
+                            "data-testid": "end-workout-button",
+                            onclick: move |_| {
+                                spawn(async move {
+                                    if let Err(e) = WorkoutStateManager::end_plan(&state).await {
+                                        log::warn!("Failed to end plan: {}", e);
+                                    }
+                                });
+                            },
+                            "End Workout"
+                        }
+                    }
 
                     ExerciseTabStrip {
                         exercises: exercises.clone(),
@@ -91,7 +117,7 @@ pub fn WorkoutView(state: WorkoutState) -> Element {
                         completed_counts: display_counts,
                         on_select: move |idx: usize| {
                             active_tab_index.set(idx);
-                            // Start session for the selected exercise
+                            prompt_dismissed.set(false);
                             if let Some(pe) = exercises.get(idx) {
                                 let exercise = pe.exercise.clone();
                                 spawn(async move {
@@ -101,6 +127,24 @@ pub fn WorkoutView(state: WorkoutState) -> Element {
                                 });
                             }
                         },
+                    }
+
+                    // Over-plan soft prompt
+                    if over_plan && !prompt_dismissed() {
+                        div {
+                            class: "alert alert-warning mx-4 mb-4 flex justify-between items-center",
+                            "data-testid": "over-plan-prompt",
+                            span {
+                                class: "text-sm",
+                                "You've completed all planned sets for this exercise. Consider moving to the next one."
+                            }
+                            button {
+                                class: "btn btn-ghost btn-xs",
+                                "data-testid": "dismiss-prompt",
+                                onclick: move |_| prompt_dismissed.set(true),
+                                "✕"
+                            }
+                        }
                     }
 
                     if let Some(session) = current_session {
