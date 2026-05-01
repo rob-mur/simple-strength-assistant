@@ -3284,6 +3284,15 @@ details.collapse summary::-webkit-details-marker {
 .mb-8 {
   margin-bottom: 2rem;
 }
+.ml-1 {
+  margin-left: 0.25rem;
+}
+.ml-2 {
+  margin-left: 0.5rem;
+}
+.ml-3 {
+  margin-left: 0.75rem;
+}
 .mr-1 {
   margin-right: 0.25rem;
 }
@@ -3371,8 +3380,14 @@ details.collapse summary::-webkit-details-marker {
 .w-6 {
   width: 1.5rem;
 }
+.w-8 {
+  width: 2rem;
+}
 .w-full {
   width: 100%;
+}
+.min-w-0 {
+  min-width: 0px;
 }
 .min-w-\[70px\] {
   min-width: 70px;
@@ -3509,6 +3524,9 @@ details.collapse summary::-webkit-details-marker {
 .border-2 {
   border-width: 2px;
 }
+.border-b {
+  border-bottom-width: 1px;
+}
 .border-t {
   border-top-width: 1px;
 }
@@ -3564,6 +3582,9 @@ details.collapse summary::-webkit-details-marker {
 .p-2 {
   padding: 0.5rem;
 }
+.p-3 {
+  padding: 0.75rem;
+}
 .p-4 {
   padding: 1rem;
 }
@@ -3581,10 +3602,6 @@ details.collapse summary::-webkit-details-marker {
 .px-4 {
   padding-left: 1rem;
   padding-right: 1rem;
-}
-.px-8 {
-  padding-left: 2rem;
-  padding-right: 2rem;
 }
 .py-12 {
   padding-top: 3rem;
@@ -3739,9 +3756,6 @@ details.collapse summary::-webkit-details-marker {
 .text-primary-content {
   --tw-text-opacity: 1;
   color: var(--fallback-pc,oklch(var(--pc)/var(--tw-text-opacity, 1)));
-}
-.text-primary\/40 {
-  color: var(--fallback-p,oklch(var(--p)/0.4));
 }
 .text-success {
   --tw-text-opacity: 1;

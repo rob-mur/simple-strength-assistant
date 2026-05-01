@@ -35,7 +35,5 @@ Then("I should be on the library page", async ({ page }) => {
 });
 
 Then("I should be on the workout root page", async ({ page }) => {
-  await expect(
-    page.locator('[data-testid="workout-empty-state"]'),
-  ).toBeVisible();
+  await expect(page.locator('[data-testid="plan-builder"]')).toBeVisible();
 });

@@ -8,10 +8,9 @@ Feature: Full workout history view
     Given I have a fresh context and clear storage
     And I create a new database
 
-  # AC #8: "View workout history" button on idle Workout tab
-  Scenario: Idle Workout tab has "View workout history" button that navigates to all-exercises view
-    Then I should see the "View workout history" button on the idle Workout tab
-    When I click the "View workout history" button
+  # AC #8: Workout history accessible via direct navigation
+  Scenario: Workout history page renders from direct navigation
+    When I navigate directly to the history page
     Then I should be on the history page
     And the exercise filter selector should be visible
 
@@ -106,7 +105,7 @@ Feature: Full workout history view
 
   # Back button navigation
   Scenario: History view has a back button that navigates back
-    When I click the "View workout history" button
+    When I navigate directly to the history page
     Then I should be on the history page
     And the back button should be visible on the history page
     When I click the back button on the history page

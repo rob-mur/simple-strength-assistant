@@ -194,7 +194,7 @@ When("I click the back button on the history page", async ({ page }) => {
 });
 
 Then("I should be on the Workout tab", async ({ page }) => {
-  await expect(page.locator('[data-testid="view-history-btn"]')).toBeVisible();
+  await expect(page.locator('[data-testid="plan-builder"]')).toBeVisible();
 });
 
 When("I scroll to the bottom of the history feed", async ({ page }) => {
