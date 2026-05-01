@@ -3422,6 +3422,9 @@ details.collapse summary::-webkit-details-marker {
 .min-w-0 {
   min-width: 0px;
 }
+.min-w-\[44px\] {
+  min-width: 44px;
+}
 .min-w-\[70px\] {
   min-width: 70px;
 }
@@ -3576,6 +3579,9 @@ details.collapse summary::-webkit-details-marker {
 .border-t-4 {
   border-top-width: 4px;
 }
+.border-dashed {
+  border-style: dashed;
+}
 .border-base-200 {
   --tw-border-opacity: 1;
   border-color: var(--fallback-b2,oklch(var(--b2)/var(--tw-border-opacity, 1)));
@@ -3654,6 +3660,10 @@ details.collapse summary::-webkit-details-marker {
 .px-2 {
   padding-left: 0.5rem;
   padding-right: 0.5rem;
+}
+.px-3 {
+  padding-left: 0.75rem;
+  padding-right: 0.75rem;
 }
 .px-4 {
   padding-left: 1rem;
@@ -3791,6 +3801,9 @@ details.collapse summary::-webkit-details-marker {
 }
 .text-base-content\/30 {
   color: var(--fallback-bc,oklch(var(--bc)/0.3));
+}
+.text-base-content\/40 {
+  color: var(--fallback-bc,oklch(var(--bc)/0.4));
 }
 .text-base-content\/50 {
   color: var(--fallback-bc,oklch(var(--bc)/0.5));

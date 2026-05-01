@@ -1,6 +1,6 @@
 use crate::app::ActiveSession;
 use crate::components::exercise_tab_strip::ExerciseTabStrip;
-use crate::components::plan_builder::PlanBuilder;
+use crate::components::plan_builder::{ExercisePickerModal, PlanBuilder};
 use crate::state::{WorkoutState, WorkoutStateManager};
 use dioxus::prelude::*;
 
@@ -11,6 +11,8 @@ pub fn WorkoutView(state: WorkoutState) -> Element {
     let mut active_tab_index = use_signal(|| 0usize);
     let mut set_counts = use_signal(Vec::<u32>::new);
     let mut prompt_dismissed = use_signal(|| false);
+    let mut show_add_exercise = use_signal(|| false);
+    let mut add_search_query = use_signal(String::new);
 
     match (&current_plan, &current_session) {
         // Plan started — show tab strip + recorder + end workout
@@ -115,6 +117,10 @@ pub fn WorkoutView(state: WorkoutState) -> Element {
                         exercises: exercises.clone(),
                         active_index: active_idx,
                         completed_counts: display_counts,
+                        on_add: move |_| {
+                            add_search_query.set(String::new());
+                            show_add_exercise.set(true);
+                        },
                         on_select: move |idx: usize| {
                             active_tab_index.set(idx);
                             prompt_dismissed.set(false);
@@ -154,6 +160,16 @@ pub fn WorkoutView(state: WorkoutState) -> Element {
                             class: "text-center py-8 text-base-content/50",
                             "data-testid": "plan-active-state",
                             p { "Tap an exercise tab above to start recording." }
+                        }
+                    }
+
+                    // Exercise picker modal for adding mid-workout
+                    if show_add_exercise() {
+                        ExercisePickerModal {
+                            state,
+                            search_query: add_search_query,
+                            default_planned_sets: state.settings().default_planned_sets,
+                            on_close: move |_| show_add_exercise.set(false),
                         }
                     }
                 }

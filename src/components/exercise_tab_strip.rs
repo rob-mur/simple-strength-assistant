@@ -7,24 +7,28 @@ pub fn ExerciseTabStrip(
     active_index: usize,
     completed_counts: Vec<u32>,
     on_select: EventHandler<usize>,
+    #[props(default)] on_add: Option<EventHandler<()>>,
 ) -> Element {
+    let show_add = on_add.is_some();
+
     rsx! {
         div {
             class: "relative w-full mb-4",
             "data-testid": "exercise-tab-strip",
 
-            // Scroll arrows (visible on desktop via hidden sm:flex)
             button {
                 class: "hidden sm:flex absolute left-0 top-1/2 -translate-y-1/2 z-10 btn btn-circle btn-ghost btn-sm bg-base-100/80",
                 "data-testid": "scroll-left",
                 onclick: move |_| {
-                    // Scroll left via JS
                     #[cfg(target_arch = "wasm32")]
                     {
                         use wasm_bindgen::JsCast;
                         if let Some(el) = web_sys::window()
                             .and_then(|w| w.document())
-                            .and_then(|d| d.query_selector("[data-testid=\"tab-scroll-container\"]").ok())
+                            .and_then(|d| {
+                                d.query_selector("[data-testid=\"tab-scroll-container\"]")
+                                    .ok()
+                            })
                             .flatten()
                         {
                             let container = el.dyn_ref::<web_sys::HtmlElement>().unwrap();
@@ -35,7 +39,6 @@ pub fn ExerciseTabStrip(
                 "‹"
             }
 
-            // Scrollable tab container
             div {
                 class: "overflow-x-auto scrollbar-none px-8 sm:px-10",
                 "data-testid": "tab-scroll-container",
@@ -59,8 +62,6 @@ pub fn ExerciseTabStrip(
                                     },
                                     "data-testid": "exercise-tab",
                                     onclick: move |_| on_select.call(idx),
-
-                                    // Exercise name + checkmark
                                     div {
                                         class: "flex items-center gap-1",
                                         span {
@@ -75,8 +76,6 @@ pub fn ExerciseTabStrip(
                                             }
                                         }
                                     }
-
-                                    // Progress dots
                                     div {
                                         class: "flex gap-1 mt-1",
                                         for dot_idx in 0..planned {
@@ -95,10 +94,21 @@ pub fn ExerciseTabStrip(
                             }
                         }
                     }
+                    if show_add {
+                        button {
+                            class: "flex items-center justify-center px-3 py-2 rounded-lg min-w-[44px] bg-base-200 hover:bg-base-300 transition-all border-2 border-dashed border-base-content/20",
+                            "data-testid": "add-exercise-tab",
+                            onclick: move |_| {
+                                if let Some(ref handler) = on_add {
+                                    handler.call(());
+                                }
+                            },
+                            span { class: "text-lg font-bold text-base-content/40", "+" }
+                        }
+                    }
                 }
             }
 
-            // Scroll right arrow
             button {
                 class: "hidden sm:flex absolute right-0 top-1/2 -translate-y-1/2 z-10 btn btn-circle btn-ghost btn-sm bg-base-100/80",
                 "data-testid": "scroll-right",
@@ -108,7 +118,10 @@ pub fn ExerciseTabStrip(
                         use wasm_bindgen::JsCast;
                         if let Some(el) = web_sys::window()
                             .and_then(|w| w.document())
-                            .and_then(|d| d.query_selector("[data-testid=\"tab-scroll-container\"]").ok())
+                            .and_then(|d| {
+                                d.query_selector("[data-testid=\"tab-scroll-container\"]")
+                                    .ok()
+                            })
                             .flatten()
                         {
                             let container = el.dyn_ref::<web_sys::HtmlElement>().unwrap();

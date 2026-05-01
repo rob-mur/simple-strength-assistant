@@ -183,7 +183,7 @@ pub fn PlanBuilder(state: WorkoutState) -> Element {
 }
 
 #[component]
-fn ExercisePickerModal(
+pub fn ExercisePickerModal(
     state: WorkoutState,
     search_query: Signal<String>,
     default_planned_sets: u32,
