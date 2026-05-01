@@ -1,0 +1,39 @@
+name: Build and Push Sync Backend Image
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "sync-backend/**"
+  workflow_dispatch:
+
+env:
+  REGISTRY: forgejo.clarob.uk
+  IMAGE_NAME: ${{ gitea.repository_owner }}/sync-backend
+
+jobs:
+  build-and-push:
+    runs-on: docker
+    container:
+      image: catthehacker/ubuntu:act-latest
+      volumes:
+        - /var/run/docker.sock:/var/run/docker.sock
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Log in to Forgejo container registry
+        run: echo "${{ secrets.FORGEJO_TOKEN }}" | docker login "${{ env.REGISTRY }}" -u "${{ gitea.actor }}" --password-stdin
+
+      - name: Set short SHA
+        id: sha
+        run: echo "short=$(echo '${{ gitea.sha }}' | cut -c1-7)" >> "$GITHUB_OUTPUT"
+
+      - name: Build Docker image
+        run: docker build -t "${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ steps.sha.outputs.short }}" -t "${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:latest" sync-backend
+
+      - name: Push Docker image
+        run: |
+          docker push "${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ steps.sha.outputs.short }}"
+          docker push "${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:latest"
