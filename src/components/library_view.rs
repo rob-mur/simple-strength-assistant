@@ -219,23 +219,50 @@ pub fn LibraryView() -> Element {
                                                 }
                                             }
                                         }
-                                        button {
-                                            class: "btn btn-primary btn-sm px-4 font-bold shadow-sm",
-                                            onclick: {
-                                                let e = exercise.clone();
-                                                move |evt| {
-                                                    evt.stop_propagation();
-                                                    let e_clone = e.clone();
-                                                    spawn(async move {
-                                                        if let Err(err) = WorkoutStateManager::start_session(&workout_state, e_clone).await {
-                                                            WorkoutStateManager::handle_error(&workout_state, err);
-                                                        } else {
-                                                            navigator.push(Route::WorkoutTab);
-                                                        }
-                                                    });
+                                        if workout_state.current_plan().is_some() {
+                                            {
+                                                let eid = exercise.id.clone().unwrap_or_default();
+                                                let default_sets = workout_state.settings().default_planned_sets;
+                                                rsx! {
+                                                    button {
+                                                        class: "btn btn-secondary btn-sm px-4 font-bold shadow-sm",
+                                                        "data-testid": "add-to-workout-btn",
+                                                        onclick: move |evt| {
+                                                            evt.stop_propagation();
+                                                            let eid = eid.clone();
+                                                            spawn(async move {
+                                                                if let Err(e) = WorkoutStateManager::add_exercise_to_plan(&workout_state, &eid, default_sets).await {
+                                                                    log::warn!("Failed to add exercise to plan: {}", e);
+                                                                } else {
+                                                                    navigator.push(Route::WorkoutTab);
+                                                                }
+                                                            });
+                                                        },
+                                                        "Add to workout"
+                                                    }
                                                 }
-                                            },
-                                            "START"
+                                            }
+                                        } else {
+                                            {
+                                                let e = exercise.clone();
+                                                rsx! {
+                                                    button {
+                                                        class: "btn btn-primary btn-sm px-4 font-bold shadow-sm",
+                                                        onclick: move |evt| {
+                                                            evt.stop_propagation();
+                                                            let e_clone = e.clone();
+                                                            spawn(async move {
+                                                                if let Err(err) = WorkoutStateManager::start_session(&workout_state, e_clone).await {
+                                                                    WorkoutStateManager::handle_error(&workout_state, err);
+                                                                } else {
+                                                                    navigator.push(Route::WorkoutTab);
+                                                                }
+                                                            });
+                                                        },
+                                                        "START"
+                                                    }
+                                                }
+                                            }
                                         }
                                     }
                                 }

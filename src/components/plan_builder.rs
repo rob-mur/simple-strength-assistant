@@ -15,17 +15,6 @@ pub fn PlanBuilder(state: WorkoutState) -> Element {
         .unwrap_or_default();
     let has_exercises = !exercises.is_empty();
 
-    // Ensure a plan exists in DB
-    use_effect(move || {
-        if state.current_plan().is_none() && state.database().is_some() {
-            spawn(async move {
-                if let Err(e) = WorkoutStateManager::create_plan(&state).await {
-                    log::warn!("Failed to create plan: {}", e);
-                }
-            });
-        }
-    });
-
     rsx! {
         div {
             class: "max-w-md mx-auto py-6",
@@ -272,6 +261,14 @@ fn ExercisePickerModal(
                                                     let sets = default_planned_sets;
                                                     let on_close = on_close;
                                                     spawn(async move {
+                                                        // Lazily create plan if none exists
+                                                        if state.current_plan().is_none()
+                                                            && let Err(e) = WorkoutStateManager::create_plan(&state).await
+                                                        {
+                                                            log::warn!("Failed to create plan: {}", e);
+                                                            on_close.call(());
+                                                            return;
+                                                        }
                                                         if let Err(e) = WorkoutStateManager::add_exercise_to_plan(&state, &eid, sets).await {
                                                             log::warn!("Failed to add exercise to plan: {}", e);
                                                         }
