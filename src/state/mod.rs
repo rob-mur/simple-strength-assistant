@@ -9,6 +9,7 @@ mod db_tests;
 #[cfg(test)]
 mod file_system_tests;
 
+pub use crate::models::{PlanExercise, WorkoutPlan};
 pub use db::{Database, DatabaseError};
 pub use error::WorkoutError;
 pub use file_system::FileSystemError;

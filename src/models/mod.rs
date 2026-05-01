@@ -6,6 +6,7 @@ pub mod exercise;
 pub mod set;
 pub mod settings;
 pub mod validation;
+pub mod workout_plan;
 
 // Re-export commonly used types for easier access
 // Allow unused imports as these are re-exported for public use by consumers of this module
@@ -20,3 +21,5 @@ pub use validation::{
     ValidationError, validate_completed_set, validate_reps, validate_rpe, validate_set_number,
     validate_weight,
 };
+#[allow(unused_imports)]
+pub use workout_plan::{PlanExercise, WorkoutPlan};

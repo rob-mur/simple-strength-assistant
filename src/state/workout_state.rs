@@ -1,4 +1,4 @@
-use crate::models::{CompletedSet, ExerciseMetadata, SetType, Settings};
+use crate::models::{CompletedSet, ExerciseMetadata, SetType, Settings, WorkoutPlan};
 use crate::state::{Database, Storage, error::WorkoutError};
 #[cfg(not(test))]
 use crate::sync::SyncCredentials;
@@ -94,6 +94,8 @@ pub struct WorkoutState {
     sync_status: Signal<SyncStatus>,
     /// Global application settings (target RPE, history window, blend factor).
     settings: Signal<Settings>,
+    /// Active workout plan (being built or in progress).
+    current_plan: Signal<Option<WorkoutPlan>>,
 }
 
 impl Default for WorkoutState {
@@ -115,6 +117,7 @@ impl WorkoutState {
             exercises: Signal::new(Vec::new()),
             settings: Signal::new(Settings::default()),
             sync_status: Signal::new(SyncStatus::Idle),
+            current_plan: Signal::new(None),
         }
     }
 
@@ -206,6 +209,15 @@ impl WorkoutState {
     pub fn set_sync_status(&self, status: SyncStatus) {
         let mut sig = self.sync_status;
         sig.set(status);
+    }
+
+    pub fn current_plan(&self) -> Option<WorkoutPlan> {
+        (self.current_plan)()
+    }
+
+    pub fn set_current_plan(&self, plan: Option<WorkoutPlan>) {
+        let mut sig = self.current_plan;
+        sig.set(plan);
     }
 }
 
@@ -307,6 +319,10 @@ impl WorkoutStateManager {
 
         if let Err(e) = Self::load_settings(state).await {
             js_log(&format!("[DB Init] load_settings warning: {}", e));
+        }
+
+        if let Err(e) = Self::resume_active_plan(state).await {
+            js_log(&format!("[DB Init] resume_active_plan warning: {}", e));
         }
 
         state.set_initialization_state(InitializationState::Ready);
@@ -508,6 +524,103 @@ impl WorkoutStateManager {
         Ok(())
     }
 
+    // ── Workout Plan lifecycle ─────────────────────────────────────────────
+
+    pub async fn create_plan(state: &WorkoutState) -> Result<String, WorkoutError> {
+        let db = state.database().ok_or(WorkoutError::NotInitialized)?;
+        let plan_id = db.create_plan().await.map_err(WorkoutError::Database)?;
+        let plan = db
+            .get_plan(&plan_id)
+            .await
+            .map_err(WorkoutError::Database)?;
+        state.set_current_plan(plan);
+        Ok(plan_id)
+    }
+
+    pub async fn add_exercise_to_plan(
+        state: &WorkoutState,
+        exercise_id: &str,
+        planned_sets: u32,
+    ) -> Result<(), WorkoutError> {
+        let plan = state.current_plan().ok_or(WorkoutError::NoActiveSession)?;
+        let db = state.database().ok_or(WorkoutError::NotInitialized)?;
+        db.add_exercise_to_plan(&plan.id, exercise_id, planned_sets)
+            .await
+            .map_err(WorkoutError::Database)?;
+        let refreshed = db
+            .get_plan(&plan.id)
+            .await
+            .map_err(WorkoutError::Database)?;
+        state.set_current_plan(refreshed);
+        Ok(())
+    }
+
+    pub async fn remove_exercise_from_plan(
+        state: &WorkoutState,
+        plan_exercise_id: &str,
+    ) -> Result<(), WorkoutError> {
+        let plan = state.current_plan().ok_or(WorkoutError::NoActiveSession)?;
+        let db = state.database().ok_or(WorkoutError::NotInitialized)?;
+        db.remove_exercise_from_plan(plan_exercise_id)
+            .await
+            .map_err(WorkoutError::Database)?;
+        let refreshed = db
+            .get_plan(&plan.id)
+            .await
+            .map_err(WorkoutError::Database)?;
+        state.set_current_plan(refreshed);
+        Ok(())
+    }
+
+    pub async fn start_plan(state: &WorkoutState) -> Result<(), WorkoutError> {
+        let plan = state.current_plan().ok_or(WorkoutError::NoActiveSession)?;
+        let db = state.database().ok_or(WorkoutError::NotInitialized)?;
+        db.start_plan(&plan.id)
+            .await
+            .map_err(WorkoutError::Database)?;
+        let refreshed = db
+            .get_plan(&plan.id)
+            .await
+            .map_err(WorkoutError::Database)?;
+        state.set_current_plan(refreshed);
+        Ok(())
+    }
+
+    pub async fn end_plan(state: &WorkoutState) -> Result<(), WorkoutError> {
+        let plan = state.current_plan().ok_or(WorkoutError::NoActiveSession)?;
+        let db = state.database().ok_or(WorkoutError::NotInitialized)?;
+        db.end_plan(&plan.id)
+            .await
+            .map_err(WorkoutError::Database)?;
+        state.set_current_plan(None);
+        Ok(())
+    }
+
+    /// Resume an active plan on app load. Called during initialization.
+    pub async fn resume_active_plan(state: &WorkoutState) -> Result<(), WorkoutError> {
+        let db = state.database().ok_or(WorkoutError::NotInitialized)?;
+        if let Some(plan) = db.get_active_plan().await.map_err(WorkoutError::Database)? {
+            js_log(&format!(
+                "[Plan] Resuming active plan {} with {} exercises",
+                plan.id,
+                plan.exercises.len()
+            ));
+            state.set_current_plan(Some(plan));
+        } else if let Some(plan) = db
+            .get_unstarted_plan()
+            .await
+            .map_err(WorkoutError::Database)?
+        {
+            js_log(&format!(
+                "[Plan] Resuming unstarted plan {} with {} exercises",
+                plan.id,
+                plan.exercises.len()
+            ));
+            state.set_current_plan(Some(plan));
+        }
+        Ok(())
+    }
+
     fn calculate_initial_predictions(
         exercise: &ExerciseMetadata,
         last_set: Option<&CompletedSet>,
@@ -612,6 +725,10 @@ impl WorkoutStateManager {
 
         if let Err(e) = Self::sync_exercises(state).await {
             js_log(&format!("[UI] sync_exercises warning: {}", e));
+        }
+
+        if let Err(e) = Self::resume_active_plan(state).await {
+            js_log(&format!("[UI] resume_active_plan warning: {}", e));
         }
 
         state.set_initialization_state(InitializationState::Ready);

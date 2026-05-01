@@ -1,4 +1,6 @@
-use crate::models::{CompletedSet, ExerciseMetadata, HistorySet, SetType};
+use crate::models::{
+    CompletedSet, ExerciseMetadata, HistorySet, PlanExercise, SetType, SetTypeConfig, WorkoutPlan,
+};
 use thiserror::Error;
 #[cfg(test)]
 use uuid::Uuid;
@@ -1641,6 +1643,270 @@ impl Database {
 
         self.execute(sql, &params).await?;
         Ok(())
+    }
+
+    // ── Workout Plan CRUD ────────────────────────────────────────────────────
+
+    pub async fn create_plan(&self) -> Result<String, DatabaseError> {
+        let id = Self::generate_uuid();
+        let now = js_sys::Date::now();
+        self.execute(
+            "INSERT INTO workout_plans (id, updated_at) VALUES (?, ?)",
+            &[JsValue::from_str(&id), JsValue::from_f64(now)],
+        )
+        .await?;
+        Ok(id)
+    }
+
+    pub async fn add_exercise_to_plan(
+        &self,
+        plan_id: &str,
+        exercise_id: &str,
+        planned_sets: u32,
+    ) -> Result<String, DatabaseError> {
+        let id = Self::generate_uuid();
+        let now = js_sys::Date::now();
+
+        // Position = count of existing non-deleted exercises in this plan
+        let result = self
+            .execute(
+                "SELECT COUNT(*) as cnt FROM workout_plan_exercises WHERE plan_id = ? AND deleted_at IS NULL",
+                &[JsValue::from_str(plan_id)],
+            )
+            .await?;
+        let position = result
+            .dyn_ref::<js_sys::Array>()
+            .and_then(|a| if a.length() > 0 { Some(a.get(0)) } else { None })
+            .and_then(|row| {
+                js_sys::Reflect::get(&row, &JsValue::from_str("cnt"))
+                    .ok()
+                    .and_then(|v| v.as_f64())
+            })
+            .unwrap_or(0.0) as u32;
+
+        self.execute(
+            "INSERT INTO workout_plan_exercises (id, plan_id, exercise_id, planned_sets, position, updated_at) VALUES (?, ?, ?, ?, ?, ?)",
+            &[
+                JsValue::from_str(&id),
+                JsValue::from_str(plan_id),
+                JsValue::from_str(exercise_id),
+                JsValue::from_f64(planned_sets as f64),
+                JsValue::from_f64(position as f64),
+                JsValue::from_f64(now),
+            ],
+        )
+        .await?;
+        Ok(id)
+    }
+
+    pub async fn remove_exercise_from_plan(
+        &self,
+        plan_exercise_id: &str,
+    ) -> Result<(), DatabaseError> {
+        let now = js_sys::Date::now();
+        self.execute(
+            "UPDATE workout_plan_exercises SET deleted_at = ?, updated_at = ? WHERE id = ?",
+            &[
+                JsValue::from_f64(now),
+                JsValue::from_f64(now),
+                JsValue::from_str(plan_exercise_id),
+            ],
+        )
+        .await?;
+        Ok(())
+    }
+
+    pub async fn start_plan(&self, plan_id: &str) -> Result<(), DatabaseError> {
+        let now = js_sys::Date::now();
+        self.execute(
+            "UPDATE workout_plans SET started_at = ?, updated_at = ? WHERE id = ?",
+            &[
+                JsValue::from_f64(now),
+                JsValue::from_f64(now),
+                JsValue::from_str(plan_id),
+            ],
+        )
+        .await?;
+        Ok(())
+    }
+
+    pub async fn end_plan(&self, plan_id: &str) -> Result<(), DatabaseError> {
+        let now = js_sys::Date::now();
+        self.execute(
+            "UPDATE workout_plans SET ended_at = ?, updated_at = ? WHERE id = ?",
+            &[
+                JsValue::from_f64(now),
+                JsValue::from_f64(now),
+                JsValue::from_str(plan_id),
+            ],
+        )
+        .await?;
+        Ok(())
+    }
+
+    pub async fn get_active_plan(&self) -> Result<Option<WorkoutPlan>, DatabaseError> {
+        let result = self
+            .execute(
+                "SELECT id, started_at, ended_at FROM workout_plans WHERE started_at IS NOT NULL AND ended_at IS NULL AND deleted_at IS NULL LIMIT 1",
+                &[],
+            )
+            .await?;
+
+        let array = match result.dyn_ref::<js_sys::Array>() {
+            Some(a) if a.length() > 0 => a,
+            _ => return Ok(None),
+        };
+
+        let row = array.get(0);
+        let plan_id = js_sys::Reflect::get(&row, &JsValue::from_str("id"))
+            .ok()
+            .and_then(|v| v.as_string())
+            .unwrap_or_default();
+
+        let started_at = js_sys::Reflect::get(&row, &JsValue::from_str("started_at"))
+            .ok()
+            .and_then(|v| v.as_f64());
+        let ended_at = js_sys::Reflect::get(&row, &JsValue::from_str("ended_at"))
+            .ok()
+            .and_then(|v| v.as_f64());
+
+        let exercises = self.get_plan_exercises(&plan_id).await?;
+
+        Ok(Some(WorkoutPlan {
+            id: plan_id,
+            started_at,
+            ended_at,
+            exercises,
+        }))
+    }
+
+    pub async fn get_plan(&self, plan_id: &str) -> Result<Option<WorkoutPlan>, DatabaseError> {
+        let result = self
+            .execute(
+                "SELECT id, started_at, ended_at FROM workout_plans WHERE id = ? AND deleted_at IS NULL",
+                &[JsValue::from_str(plan_id)],
+            )
+            .await?;
+
+        let array = match result.dyn_ref::<js_sys::Array>() {
+            Some(a) if a.length() > 0 => a,
+            _ => return Ok(None),
+        };
+
+        let row = array.get(0);
+        let started_at = js_sys::Reflect::get(&row, &JsValue::from_str("started_at"))
+            .ok()
+            .and_then(|v| v.as_f64());
+        let ended_at = js_sys::Reflect::get(&row, &JsValue::from_str("ended_at"))
+            .ok()
+            .and_then(|v| v.as_f64());
+
+        let exercises = self.get_plan_exercises(plan_id).await?;
+
+        Ok(Some(WorkoutPlan {
+            id: plan_id.to_string(),
+            started_at,
+            ended_at,
+            exercises,
+        }))
+    }
+
+    async fn get_plan_exercises(&self, plan_id: &str) -> Result<Vec<PlanExercise>, DatabaseError> {
+        let result = self
+            .execute(
+                r#"
+                SELECT pe.id, pe.exercise_id, pe.planned_sets, pe.position,
+                       e.name, e.is_weighted, e.min_weight, e.increment, e.min_reps, e.max_reps
+                FROM workout_plan_exercises pe
+                JOIN exercises e ON pe.exercise_id = e.uuid
+                WHERE pe.plan_id = ? AND pe.deleted_at IS NULL
+                ORDER BY pe.position ASC
+                "#,
+                &[JsValue::from_str(plan_id)],
+            )
+            .await?;
+
+        let array = match result.dyn_ref::<js_sys::Array>() {
+            Some(a) => a,
+            None => return Ok(Vec::new()),
+        };
+
+        let mut exercises = Vec::new();
+        for i in 0..array.length() {
+            let row = array.get(i);
+            let get_str = |key: &str| -> String {
+                js_sys::Reflect::get(&row, &JsValue::from_str(key))
+                    .ok()
+                    .and_then(|v| v.as_string())
+                    .unwrap_or_default()
+            };
+            let get_f64 = |key: &str| -> f64 {
+                js_sys::Reflect::get(&row, &JsValue::from_str(key))
+                    .ok()
+                    .and_then(|v| v.as_f64())
+                    .unwrap_or(0.0)
+            };
+
+            let is_weighted = get_f64("is_weighted") != 0.0;
+            let set_type_config = if is_weighted {
+                SetTypeConfig::Weighted {
+                    min_weight: get_f64("min_weight") as f32,
+                    increment: get_f64("increment") as f32,
+                }
+            } else {
+                SetTypeConfig::Bodyweight
+            };
+
+            let exercise_id = get_str("exercise_id");
+            let max_reps_val = js_sys::Reflect::get(&row, &JsValue::from_str("max_reps"))
+                .ok()
+                .and_then(|v| v.as_f64());
+
+            exercises.push(PlanExercise {
+                id: get_str("id"),
+                exercise: ExerciseMetadata {
+                    id: Some(exercise_id),
+                    name: get_str("name"),
+                    set_type_config,
+                    min_reps: get_f64("min_reps") as i32,
+                    max_reps: max_reps_val.map(|v| v as i32),
+                },
+                planned_sets: get_f64("planned_sets") as u32,
+                position: get_f64("position") as u32,
+            });
+        }
+
+        Ok(exercises)
+    }
+
+    /// Get the most recent unstarted plan (for resuming plan builder).
+    pub async fn get_unstarted_plan(&self) -> Result<Option<WorkoutPlan>, DatabaseError> {
+        let result = self
+            .execute(
+                "SELECT id, started_at, ended_at FROM workout_plans WHERE started_at IS NULL AND deleted_at IS NULL ORDER BY rowid DESC LIMIT 1",
+                &[],
+            )
+            .await?;
+
+        let array = match result.dyn_ref::<js_sys::Array>() {
+            Some(a) if a.length() > 0 => a,
+            _ => return Ok(None),
+        };
+
+        let row = array.get(0);
+        let plan_id = js_sys::Reflect::get(&row, &JsValue::from_str("id"))
+            .ok()
+            .and_then(|v| v.as_string())
+            .unwrap_or_default();
+
+        let exercises = self.get_plan_exercises(&plan_id).await?;
+
+        Ok(Some(WorkoutPlan {
+            id: plan_id,
+            started_at: None,
+            ended_at: None,
+            exercises,
+        }))
     }
 }
 
