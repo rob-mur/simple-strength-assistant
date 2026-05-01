@@ -7,10 +7,6 @@ on:
       - "sync-backend/**"
   workflow_dispatch:
 
-defaults:
-  run:
-    shell: devenv shell bash -- -e {0}
-
 env:
   REGISTRY: forgejo.clarob.uk
   IMAGE_NAME: ${{ gitea.repository_owner }}/sync-backend
@@ -24,6 +20,7 @@ jobs:
         uses: actions/checkout@v4
 
       - name: Decrypt secrets
+        shell: devenv shell bash -- -e {0}
         run: sops --decrypt --output-type dotenv secrets.yaml >> "$GITHUB_ENV"
         env:
           SOPS_AGE_KEY: ${{ secrets.SOPS_AGE_KEY }}
