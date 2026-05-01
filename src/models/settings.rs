@@ -9,6 +9,8 @@ pub struct Settings {
     pub history_window_days: i32,
     /// Blend factor for today's session vs. historical data (default: 0.5)
     pub today_blend_factor: f64,
+    /// Default number of planned sets when adding an exercise to a plan (default: 3)
+    pub default_planned_sets: u32,
 }
 
 impl Default for Settings {
@@ -17,6 +19,7 @@ impl Default for Settings {
             target_rpe: 8.0,
             history_window_days: 30,
             today_blend_factor: 0.5,
+            default_planned_sets: 3,
         }
     }
 }
@@ -31,6 +34,7 @@ mod tests {
         assert_eq!(s.target_rpe, 8.0);
         assert_eq!(s.history_window_days, 30);
         assert_eq!(s.today_blend_factor, 0.5);
+        assert_eq!(s.default_planned_sets, 3);
     }
 
     #[test]
@@ -39,6 +43,7 @@ mod tests {
             target_rpe: 7.5,
             history_window_days: 14,
             today_blend_factor: 0.3,
+            default_planned_sets: 5,
         };
         let json = serde_json::to_string(&original).expect("serialize");
         let deserialized: Settings = serde_json::from_str(&json).expect("deserialize");

@@ -1200,8 +1200,7 @@ impl Database {
         // Ensure the settings row exists (idempotent).
         self.seed_settings().await?;
 
-        let sql =
-            "SELECT target_rpe, history_window_days, today_blend_factor FROM settings WHERE id = 1";
+        let sql = "SELECT target_rpe, history_window_days, today_blend_factor, default_planned_sets FROM settings WHERE id = 1";
         let result = self.execute(sql, &[]).await?;
 
         let array = result
@@ -1225,10 +1224,17 @@ impl Database {
                 .as_f64()
                 .unwrap_or(0.5);
 
+        let default_planned_sets =
+            js_sys::Reflect::get(&row, &JsValue::from_str("default_planned_sets"))
+                .ok()
+                .and_then(|v| v.as_f64())
+                .unwrap_or(3.0) as u32;
+
         Ok(crate::models::Settings {
             target_rpe,
             history_window_days,
             today_blend_factor,
+            default_planned_sets,
         })
     }
 
@@ -1237,13 +1243,14 @@ impl Database {
         &self,
         settings: &crate::models::Settings,
     ) -> Result<(), DatabaseError> {
-        let sql = "UPDATE settings SET target_rpe = ?, history_window_days = ?, today_blend_factor = ? WHERE id = 1";
+        let sql = "UPDATE settings SET target_rpe = ?, history_window_days = ?, today_blend_factor = ?, default_planned_sets = ? WHERE id = 1";
         self.execute(
             sql,
             &[
                 JsValue::from_f64(settings.target_rpe),
                 JsValue::from_f64(settings.history_window_days as f64),
                 JsValue::from_f64(settings.today_blend_factor),
+                JsValue::from_f64(settings.default_planned_sets as f64),
             ],
         )
         .await?;

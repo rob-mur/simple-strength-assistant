@@ -474,6 +474,46 @@ pub fn SettingsView(state: WorkoutState) -> Element {
                 }
             }
 
+            // ── Workout planning card ─────────────────────────────────────────
+            div {
+                class: "card bg-base-100 shadow-xl mb-6",
+                div {
+                    class: "card-body",
+                    h3 { class: "card-title text-base font-bold mb-4", "Workout Planning" }
+
+                    div {
+                        class: "form-control mb-2",
+                        label {
+                            class: "label",
+                            span { class: "label-text font-semibold", "Default Planned Sets" }
+                        }
+                        input {
+                            r#type: "number",
+                            min: "1",
+                            value: "{settings.default_planned_sets}",
+                            class: "input input-bordered w-full",
+                            "data-testid": "default-planned-sets-input",
+                            oninput: move |evt| {
+                                if let Ok(val) = evt.value().parse::<u32>()
+                                    && val >= 1
+                                {
+                                    let mut s = settings;
+                                    s.default_planned_sets = val;
+                                    persist(s);
+                                }
+                            }
+                        }
+                        label {
+                            class: "label",
+                            span {
+                                class: "label-text-alt opacity-60",
+                                "Number of sets pre-filled when adding an exercise to a plan"
+                            }
+                        }
+                    }
+                }
+            }
+
             // ── Data management card (existing) ─────────────────────────────
             div {
                 class: "card bg-base-100 shadow-xl",
