@@ -11,6 +11,8 @@
     chromium
     sops
     age
+    buildah
+    skopeo
     freefont_ttf
     claude-code
     jq
