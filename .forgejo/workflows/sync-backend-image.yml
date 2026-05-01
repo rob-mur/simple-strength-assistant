@@ -13,27 +13,23 @@ env:
 
 jobs:
   build-and-push:
-    runs-on: docker
-    container:
-      image: catthehacker/ubuntu:act-latest@sha256:ee77eaa905d10ad76345b58b0803d698ea63faa9a27047898530cbcd47f90eb9
-      volumes:
-        - /var/run/docker.sock:/var/run/docker.sock
+    runs-on: nix-host
 
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
 
       - name: Log in to Forgejo container registry
-        run: echo "${{ secrets.FORGEJO_TOKEN }}" | docker login "${{ env.REGISTRY }}" -u "${{ gitea.actor }}" --password-stdin
+        run: echo "${{ secrets.FORGEJO_TOKEN }}" | podman login "${{ env.REGISTRY }}" -u "${{ gitea.actor }}" --password-stdin
 
       - name: Set short SHA
         id: sha
         run: echo "short=$(echo '${{ gitea.sha }}' | cut -c1-7)" >> "$GITHUB_OUTPUT"
 
-      - name: Build Docker image
-        run: docker build -t "${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ steps.sha.outputs.short }}" -t "${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:latest" sync-backend
+      - name: Build container image
+        run: podman build -t "${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ steps.sha.outputs.short }}" -t "${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:latest" sync-backend
 
-      - name: Push Docker image
+      - name: Push container image
         run: |
-          docker push "${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ steps.sha.outputs.short }}"
-          docker push "${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:latest"
+          podman push "${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ steps.sha.outputs.short }}"
+          podman push "${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:latest"
