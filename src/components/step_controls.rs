@@ -27,7 +27,7 @@ pub fn StepControls(props: StepControlsProps) -> Element {
 
     rsx! {
         div {
-            class: "flex flex-row justify-between items-center w-full mt-6 px-1 gap-4",
+            class: "flex flex-row justify-between items-center w-full mt-2 px-1 gap-4",
 
             // Left side (Decrements)
             div {

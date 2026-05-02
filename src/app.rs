@@ -990,16 +990,16 @@ pub fn ActiveSession(state: WorkoutState, session: crate::state::WorkoutSession)
             div {
                 class: "card bg-base-100 shadow-xl",
                 div {
-                    class: "card-body p-4 sm:p-6",
+                    class: "card-body p-3 sm:p-6",
                     div {
-                        class: "flex flex-col gap-12 items-stretch w-full",
+                        class: "flex flex-col gap-4 items-stretch w-full",
 
                         // Weight Input
                         if let SetTypeConfig::Weighted { min_weight, increment } = session_for_display.exercise.set_type_config {
                             div {
                                 class: "form-control w-full",
                                 label {
-                                    class: "label justify-center mb-2",
+                                    class: "label justify-center mb-0",
                                     span {
                                         class: "label-text font-black text-xl text-base-content/70 uppercase tracking-widest",
                                         "Weight"
@@ -1013,7 +1013,7 @@ pub fn ActiveSession(state: WorkoutState, session: crate::state::WorkoutSession)
                                     on_change: move |val| weight_input.set(val)
                                 }
                                 div {
-                                    class: "text-center text-5xl font-black text-primary my-4",
+                                    class: "text-center text-3xl font-black text-primary my-1",
                                     "{crate::format::fmt_weight(weight_input())} kg"
                                 }
                                 StepControls {
@@ -1030,7 +1030,7 @@ pub fn ActiveSession(state: WorkoutState, session: crate::state::WorkoutSession)
                         div {
                             class: "form-control w-full",
                             label {
-                                class: "label justify-center mb-2",
+                                class: "label justify-center mb-0",
                                 span {
                                     class: "label-text font-black text-xl text-base-content/70 uppercase tracking-widest",
                                     "Reps"
@@ -1044,7 +1044,7 @@ pub fn ActiveSession(state: WorkoutState, session: crate::state::WorkoutSession)
                                 on_change: move |val| reps_input.set(val)
                             }
                             div {
-                                class: "text-center text-5xl font-black text-primary my-4",
+                                class: "text-center text-3xl font-black text-primary my-1",
                                 "{reps_input} reps"
                             }
                             StepControls {
@@ -1060,7 +1060,7 @@ pub fn ActiveSession(state: WorkoutState, session: crate::state::WorkoutSession)
                         div {
                             class: "form-control w-full",
                             label {
-                                class: "label justify-center mb-2",
+                                class: "label justify-center mb-0",
                                 span {
                                     class: "label-text font-black text-xl text-base-content/70 uppercase tracking-widest",
                                     "Intensity (RPE)"
@@ -1075,9 +1075,9 @@ pub fn ActiveSession(state: WorkoutState, session: crate::state::WorkoutSession)
 
                     // Log Set Button
                     div {
-                        class: "mt-12",
+                        class: "mt-4",
                         button {
-                            class: "btn btn-primary btn-lg btn-block h-24 text-2xl font-black shadow-lg",
+                            class: "btn btn-primary btn-lg btn-block h-14 text-xl font-black shadow-lg",
                             onclick: log_set,
                             "LOG SET"
                         }

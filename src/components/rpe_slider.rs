@@ -29,13 +29,13 @@ pub fn RPESlider(props: RPESliderProps) -> Element {
 
     rsx! {
         div {
-            class: "rpe-slider-container w-full py-4 px-2",
+            class: "rpe-slider-container w-full py-1 px-2",
 
             // Value Display
             div {
-                class: "flex justify-center mb-4",
+                class: "flex justify-center mb-1",
                 div {
-                    class: "text-6xl font-black {text_color_class} transition-colors duration-300",
+                    class: "text-3xl font-black {text_color_class} transition-colors duration-300",
                     "{props.value:.1}"
                 }
             }
@@ -60,7 +60,7 @@ pub fn RPESlider(props: RPESliderProps) -> Element {
 
             // Legend/Context
             div {
-                class: "flex justify-center mt-6",
+                class: "flex justify-center mt-2",
                 div {
                     class: "badge badge-outline opacity-70",
                     match props.value {
