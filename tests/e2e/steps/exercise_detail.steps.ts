@@ -79,12 +79,14 @@ Then("the user should be on the Workout tab", async ({ page }) => {
 
 Then(
   "a session for {string} should be active",
-  async ({ page }, name: string) => {
-    // Exercises are typically shown in uppercase in the session header
-    const locator = page.locator("h2", { hasText: name });
-    await expect(locator).toBeAttached();
-    await expect(locator).toHaveText(name);
-    await expect(page.locator('div.badge:has-text("Set 1")')).toBeVisible();
+  async ({ page }, _name: string) => {
+    // After issue #154, the duplicate exercise header card was removed.
+    // The active session is identified by the presence of the history icon
+    // and the LOG SET button in the workout input area.
+    await expect(
+      page.locator('[data-testid="history-icon-btn"]'),
+    ).toBeVisible();
+    await expect(page.locator('button:has-text("LOG SET")')).toBeVisible();
   },
 );
 
