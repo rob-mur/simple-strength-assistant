@@ -2874,13 +2874,6 @@ details.collapse summary::-webkit-details-marker {
   padding-left: 0.438rem;
   padding-right: 0.438rem;
 }
-.badge-lg {
-  height: 1.5rem;
-  font-size: 1rem;
-  line-height: 1.5rem;
-  padding-left: 0.688rem;
-  padding-right: 0.688rem;
-}
 .btm-nav-xs > *:where(.active) {
   border-top-width: 1px;
 }
@@ -3289,6 +3282,9 @@ details.collapse summary::-webkit-details-marker {
   margin-top: 1rem;
   margin-bottom: 1rem;
 }
+.-mb-2 {
+  margin-bottom: -0.5rem;
+}
 .mb-1 {
   margin-bottom: 0.25rem;
 }
@@ -3530,10 +3526,10 @@ details.collapse summary::-webkit-details-marker {
 .gap-8 {
   gap: 2rem;
 }
-.space-y-8 > :not([hidden]) ~ :not([hidden]) {
+.space-y-4 > :not([hidden]) ~ :not([hidden]) {
   --tw-space-y-reverse: 0;
-  margin-top: calc(2rem * calc(1 - var(--tw-space-y-reverse)));
-  margin-bottom: calc(2rem * var(--tw-space-y-reverse));
+  margin-top: calc(1rem * calc(1 - var(--tw-space-y-reverse)));
+  margin-bottom: calc(1rem * var(--tw-space-y-reverse));
 }
 .overflow-hidden {
   overflow: hidden;
@@ -3579,9 +3575,6 @@ details.collapse summary::-webkit-details-marker {
 .border-t {
   border-top-width: 1px;
 }
-.border-t-4 {
-  border-top-width: 4px;
-}
 .border-dashed {
   border-style: dashed;
 }
@@ -3598,10 +3591,6 @@ details.collapse summary::-webkit-details-marker {
 }
 .border-error\/30 {
   border-color: var(--fallback-er,oklch(var(--er)/0.3));
-}
-.border-primary {
-  --tw-border-opacity: 1;
-  border-color: var(--fallback-p,oklch(var(--p)/var(--tw-border-opacity, 1)));
 }
 .border-success\/30 {
   border-color: var(--fallback-su,oklch(var(--su)/0.3));

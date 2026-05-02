@@ -958,46 +958,29 @@ pub fn ActiveSession(state: WorkoutState, session: crate::state::WorkoutSession)
 
     rsx! {
         div {
-            class: "max-w-md mx-auto space-y-8 pb-10",
-            // Exercise Header
+            class: "max-w-md mx-auto space-y-4 pb-10",
+
+            // History icon — relocated from removed exercise header card (issue #154)
             div {
-                class: "card bg-base-100 shadow-xl border-t-4 border-primary",
-                div {
-                    class: "card-body p-6",
-                    div {
-                        class: "flex justify-between items-center",
-                        h2 {
-                            class: "card-title text-2xl font-black",
-                            {session_for_display.exercise.name.clone()}
-                        }
-                        div {
-                            class: "flex items-center gap-2",
-                            div {
-                                class: "badge badge-primary badge-lg font-bold",
-                                "Set {session_for_display.completed_sets.len() + 1}"
-                            }
-                            // History icon — AC #7
-                            button {
-                                class: "btn btn-ghost btn-sm btn-circle",
-                                "aria-label": "View exercise history",
-                                "data-testid": "history-icon-btn",
-                                onclick: move |_| {
-                                    navigator.push(Route::WorkoutHistoryExercise { exercise_id: history_exercise_id.clone() });
-                                },
-                                svg {
-                                    xmlns: "http://www.w3.org/2000/svg",
-                                    fill: "none",
-                                    view_box: "0 0 24 24",
-                                    stroke_width: "1.5",
-                                    stroke: "currentColor",
-                                    class: "w-5 h-5",
-                                    path {
-                                        stroke_linecap: "round",
-                                        stroke_linejoin: "round",
-                                        d: "M12 6v6h4.5m4.5 0a9 9 0 1 1-18 0 9 9 0 0 1 18 0Z"
-                                    }
-                                }
-                            }
+                class: "flex justify-end px-4 -mb-2",
+                button {
+                    class: "btn btn-ghost btn-sm btn-circle",
+                    "aria-label": "View exercise history",
+                    "data-testid": "history-icon-btn",
+                    onclick: move |_| {
+                        navigator.push(Route::WorkoutHistoryExercise { exercise_id: history_exercise_id.clone() });
+                    },
+                    svg {
+                        xmlns: "http://www.w3.org/2000/svg",
+                        fill: "none",
+                        view_box: "0 0 24 24",
+                        stroke_width: "1.5",
+                        stroke: "currentColor",
+                        class: "w-5 h-5",
+                        path {
+                            stroke_linecap: "round",
+                            stroke_linejoin: "round",
+                            d: "M12 6v6h4.5m4.5 0a9 9 0 1 1-18 0 9 9 0 0 1 18 0Z"
                         }
                     }
                 }
