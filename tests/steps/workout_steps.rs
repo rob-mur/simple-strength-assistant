@@ -223,15 +223,23 @@ async fn step_new_session_zero_sets(world: &mut WorkoutWorld, exercise_name: Str
 // Issue 154: Active workout view does not duplicate the exercise name below the tab strip
 #[then("I should not see a duplicate exercise header card")]
 async fn step_no_duplicate_header(world: &mut WorkoutWorld) {
-    // The old "Exercise Header" card had class "card" with "border-primary" and rendered
-    // the exercise name + "Set N" badge. After removal, the exercise name should NOT
-    // appear in a card-title heading within the active session area.
-    // The exercise name should only appear in the tab strip (uppercase).
-    let header_card_pattern = "border-primary";
+    // The old "Exercise Header" card had classes "border-t-4 border-primary" and rendered
+    // the exercise name in a card-title heading. After removal, that combination should
+    // not appear. Checking for the pair avoids false positives if border-primary is used
+    // elsewhere (e.g. a button or badge).
     assert!(
-        !world.rendered_html.contains(header_card_pattern),
-        "Expected no duplicate exercise header card with border-primary class in the active session area"
+        !world.rendered_html.contains("border-t-4 border-primary"),
+        "Expected no exercise header card with 'border-t-4 border-primary' in the rendered HTML"
     );
+    // Also verify no card-title heading contains the exercise name inside the session area
+    if let Some(ref session) = world.current_session {
+        let pattern = format!("card-title\">{}", session.exercise.name);
+        assert!(
+            !world.rendered_html.contains(&pattern),
+            "Expected no card-title heading with exercise name '{}' in the active session area",
+            session.exercise.name
+        );
+    }
 }
 
 // Issue 154: History icon remains accessible from the active workout input area

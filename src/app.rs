@@ -958,11 +958,11 @@ pub fn ActiveSession(state: WorkoutState, session: crate::state::WorkoutSession)
 
     rsx! {
         div {
-            class: "max-w-md mx-auto space-y-8 pb-10",
+            class: "max-w-md mx-auto space-y-4 pb-10",
 
             // History icon — relocated from removed exercise header card (issue #154)
             div {
-                class: "flex justify-end px-4",
+                class: "flex justify-end px-4 -mb-2",
                 button {
                     class: "btn btn-ghost btn-sm btn-circle",
                     "aria-label": "View exercise history",
