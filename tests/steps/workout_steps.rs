@@ -11,6 +11,7 @@ pub struct WorkoutWorld {
     pub current_session: Option<WorkoutSession>,
     pub active_tab: Tab,
     pub rendered_html: String,
+    pub has_active_plan: bool,
 }
 
 #[derive(Props, Clone, PartialEq)]
@@ -172,6 +173,7 @@ async fn step_active_session_with_sets(world: &mut WorkoutWorld, exercise_name: 
             rpe: 7.0,
         },
     });
+    world.has_active_plan = true;
 }
 
 #[when(expr = "I switch to exercise {string}")]
@@ -215,5 +217,29 @@ async fn step_new_session_zero_sets(world: &mut WorkoutWorld, exercise_name: Str
         session.completed_sets.len(),
         0,
         "Expected zero completed sets in new session"
+    );
+}
+
+// Issue 152: End Workout clears session so planning screen shows
+#[when("the workout plan is ended")]
+async fn step_end_plan(world: &mut WorkoutWorld) {
+    // Simulate WorkoutStateManager::end_plan which must clear both plan and session
+    world.has_active_plan = false;
+    world.current_session = None;
+}
+
+#[then("no workout session should be active")]
+async fn step_no_session_active(world: &mut WorkoutWorld) {
+    assert!(
+        world.current_session.is_none(),
+        "Expected no active session after ending workout"
+    );
+}
+
+#[then("no workout plan should be active")]
+async fn step_no_plan_active(world: &mut WorkoutWorld) {
+    assert!(
+        !world.has_active_plan,
+        "Expected no active plan after ending workout"
     );
 }

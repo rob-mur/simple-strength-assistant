@@ -593,6 +593,7 @@ impl WorkoutStateManager {
             .await
             .map_err(WorkoutError::Database)?;
         state.set_current_plan(None);
+        state.set_current_session(None);
         Ok(())
     }
 

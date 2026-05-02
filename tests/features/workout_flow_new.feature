@@ -41,3 +41,10 @@ Feature: Streamlined Workout Flow
     Given an active session for "Bench Press" with completed sets
     When I switch to exercise "Squat"
     Then the new session for "Squat" should have zero completed sets
+
+  # Issue 152: End Workout clears session so planning screen shows
+  Scenario: End Workout returns to the planning screen
+    Given an active session for "Bench Press" with completed sets
+    When the workout plan is ended
+    Then no workout session should be active
+    And no workout plan should be active
