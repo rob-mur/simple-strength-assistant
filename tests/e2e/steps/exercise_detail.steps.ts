@@ -89,9 +89,11 @@ Then(
     await expect(page.locator('button:has-text("LOG SET")')).toBeVisible();
 
     // Verify the correct exercise is active by checking for its name
-    // in the tab strip's active tab.
+    // in the tab strip's active tab (uses bg-primary class, name is uppercased).
     await expect(
-      page.locator('button[role="tab"].tab-active', { hasText: name }),
+      page.locator('[data-testid="exercise-tab"].bg-primary', {
+        hasText: name.toUpperCase(),
+      }),
     ).toBeVisible();
   },
 );
