@@ -220,6 +220,29 @@ async fn step_new_session_zero_sets(world: &mut WorkoutWorld, exercise_name: Str
     );
 }
 
+// Issue 154: Active workout view does not duplicate the exercise name below the tab strip
+#[then("I should not see a duplicate exercise header card")]
+async fn step_no_duplicate_header(world: &mut WorkoutWorld) {
+    // The old "Exercise Header" card had class "card" with "border-primary" and rendered
+    // the exercise name + "Set N" badge. After removal, the exercise name should NOT
+    // appear in a card-title heading within the active session area.
+    // The exercise name should only appear in the tab strip (uppercase).
+    let header_card_pattern = "border-primary";
+    assert!(
+        !world.rendered_html.contains(header_card_pattern),
+        "Expected no duplicate exercise header card with border-primary class in the active session area"
+    );
+}
+
+// Issue 154: History icon remains accessible from the active workout input area
+#[then("I should see a history icon in the input area")]
+async fn step_history_icon_in_input_area(world: &mut WorkoutWorld) {
+    assert!(
+        world.rendered_html.contains("history-icon-btn"),
+        "Expected history icon button (data-testid='history-icon-btn') to be present in the rendered HTML"
+    );
+}
+
 // Issue 152: End Workout clears session so planning screen shows
 #[when("the workout plan is ended")]
 async fn step_end_plan(world: &mut WorkoutWorld) {

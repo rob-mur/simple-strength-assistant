@@ -42,6 +42,20 @@ Feature: Streamlined Workout Flow
     When I switch to exercise "Squat"
     Then the new session for "Squat" should have zero completed sets
 
+  # Issue 154: Exercise name appears only in the tab strip, not duplicated below
+  Scenario: Active workout view does not duplicate the exercise name below the tab strip
+    Given the Library tab is open
+    When I select the "Bench Press" exercise
+    And I click the "Start Session" button
+    Then I should not see a duplicate exercise header card
+
+  # Issue 154: History icon remains accessible after removing the duplicate header
+  Scenario: History icon is accessible from the active workout input area
+    Given the Library tab is open
+    When I select the "Bench Press" exercise
+    And I click the "Start Session" button
+    Then I should see a history icon in the input area
+
   # Issue 152: End Workout clears session so planning screen shows
   Scenario: End Workout returns to the planning screen
     Given an active session for "Bench Press" with completed sets
