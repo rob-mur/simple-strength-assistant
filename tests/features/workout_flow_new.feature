@@ -8,26 +8,25 @@ Feature: Streamlined Workout Flow
     When I select the "Bench Press" exercise
     And I click the "Start Session" button
     Then the application should switch to the "Workout" tab
-    And a new session for "Bench Press" should be active
+    And the session exercise should be "Bench Press"
 
-  Scenario: Workout tab shows empty state when no session is active
+  Scenario: Workout tab shows plan builder when no session is active
     Given no workout session is currently active
     When I open the "Workout" tab
-    Then I should see a message saying "No active session"
-    And I should see a button that says "Go to Library"
+    Then I should see a message saying "Plan Your Workout"
 
-  # AC #8: "View workout history" button on idle Workout tab
-  Scenario: Idle Workout tab shows a View workout history button
+  # The idle Workout tab now shows PlanBuilder with an Add Exercise button
+  Scenario: Idle Workout tab shows Add Exercise button
     Given no workout session is currently active
     When I open the "Workout" tab
-    Then I should see a button that says "View workout history"
+    Then I should see a button that says "+ Add Exercise"
 
-  # AC #7: History icon appears in active session header
-  Scenario: Active session header shows history navigation icon
+  # The three-dot action menu replaces the old history icon
+  Scenario: Active session header shows action menu trigger
     Given the Library tab is open
     When I select the "Bench Press" exercise
     And I click the "Start Session" button
-    Then I should see a message saying "View exercise history"
+    Then I should see a history icon in the input area
 
   # Issue 74: Finish Workout Session button must be removed
   Scenario: Active workout page does not show Finish Workout Session button

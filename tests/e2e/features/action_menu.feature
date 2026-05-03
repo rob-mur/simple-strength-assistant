@@ -80,7 +80,7 @@ Feature: Three-dot action menu in active session
     Then the confirmation dialog should not be visible
 
   Scenario: Confirming discard returns to plan builder
-    Given I start a test session with "Squat"
+    Given I start a plan-based session with "Squat"
     And I log a set in the current session
     When I tap the action menu trigger
     And I tap "Discard Workout" in the bottom sheet
@@ -88,7 +88,7 @@ Feature: Three-dot action menu in active session
     Then I should see the plan builder
 
   Scenario: Tapping Complete Workout ends the workout
-    Given I start a test session with "Squat"
+    Given I start a plan-based session with "Squat"
     And I log a set in the current session
     When I tap the action menu trigger
     And I tap "Complete Workout" in the bottom sheet

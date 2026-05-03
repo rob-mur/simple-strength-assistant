@@ -76,6 +76,52 @@ Given(
   },
 );
 
+Given(
+  "I start a plan-based session with {string}",
+  async ({ page }, exerciseName: string) => {
+    // 1. Create the exercise in the Library
+    await page.click('button:has-text("Library")');
+    const addBtn = page
+      .locator(
+        'button:has-text("Add First Exercise"), button:has-text("Add New Exercise")',
+      )
+      .first();
+    if (await addBtn.isVisible()) {
+      await addBtn.click();
+    } else {
+      await page.locator("button.btn-circle.btn-primary").click();
+    }
+    await setDioxusInput(page, "#exercise-name-input", exerciseName);
+    await page.click('button:has-text("Save Exercise")');
+    await page.waitForTimeout(300);
+
+    // 2. Navigate to the Workout tab (shows PlanBuilder)
+    await page.click('[data-testid="tab-workout"]');
+    await page.waitForSelector('[data-testid="plan-builder"]', {
+      timeout: 5000,
+    });
+
+    // 3. Add exercise to plan via the picker modal
+    await page.click('[data-testid="add-exercise-button"]');
+    await page.waitForSelector('[data-testid="exercise-picker-modal"]', {
+      timeout: 5000,
+    });
+    // Click the exercise in the picker list (force to bypass fixed-position backdrop)
+    await page
+      .locator('[data-testid="exercise-picker-item"]', {
+        hasText: exerciseName.toUpperCase(),
+      })
+      .click({ force: true });
+    await page.waitForTimeout(500);
+
+    // 4. Start the plan-based workout
+    await page.click('[data-testid="start-workout-button"]');
+    await page.waitForSelector('button:has-text("LOG SET")', {
+      timeout: 10000,
+    });
+  },
+);
+
 When("I log a set in the current session", async ({ page }) => {
   await page.locator('button:has-text("LOG SET")').click();
   // Wait for the set to be persisted and state to refresh

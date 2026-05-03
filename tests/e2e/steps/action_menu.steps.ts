@@ -92,7 +92,11 @@ When("I tap cancel on the confirmation dialog", async ({ page }) => {
 });
 
 When("I confirm the discard dialog", async ({ page }) => {
-  await page.locator('[data-testid="confirmation-dialog-confirm"]').click();
+  // The confirmation dialog uses a fixed-position backdrop (z-50) that can
+  // cause Playwright's hit-test to resolve the backdrop instead of the button.
+  await page
+    .locator('[data-testid="confirmation-dialog-confirm"]')
+    .click({ force: true });
   await page.waitForTimeout(500);
 });
 

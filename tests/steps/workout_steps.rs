@@ -110,6 +110,19 @@ async fn step_check_session_active(world: &mut WorkoutWorld, name: String) {
     assert!(world.rendered_html.contains(&name));
 }
 
+#[then(expr = "the session exercise should be {string}")]
+async fn step_check_session_exercise(world: &mut WorkoutWorld, name: String) {
+    let session = world
+        .current_session
+        .as_ref()
+        .expect("Expected an active session");
+    assert_eq!(
+        session.exercise.name, name,
+        "Expected session exercise '{}', got '{}'",
+        name, session.exercise.name
+    );
+}
+
 #[given("no workout session is currently active")]
 async fn step_no_active_session(world: &mut WorkoutWorld) {
     world.current_session = None;
