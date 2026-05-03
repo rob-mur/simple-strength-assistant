@@ -14,6 +14,8 @@ pub struct BottomSheetItem {
     pub label: String,
     pub icon: Option<Element>,
     pub variant: BottomSheetVariant,
+    /// Optional custom `data-testid`. Falls back to `bottom-sheet-item-{idx}`.
+    pub testid: Option<String>,
 }
 
 /// A bottom sheet pinned to the viewport bottom with full-width tap targets.
@@ -53,7 +55,7 @@ pub fn BottomSheet(
                         {
                             let label = item.label.clone();
                             let is_danger = item.variant == BottomSheetVariant::Danger;
-                            let testid = format!("bottom-sheet-item-{idx}");
+                            let testid = item.testid.clone().unwrap_or_else(|| format!("bottom-sheet-item-{idx}"));
 
                             rsx! {
                                 button {
@@ -89,6 +91,7 @@ mod tests {
             label: "Test".to_string(),
             icon: None,
             variant: BottomSheetVariant::Default,
+            testid: None,
         };
         assert_eq!(item.variant, BottomSheetVariant::Default);
     }
@@ -99,6 +102,7 @@ mod tests {
             label: "Delete".to_string(),
             icon: None,
             variant: BottomSheetVariant::Danger,
+            testid: None,
         };
         assert_eq!(item.variant, BottomSheetVariant::Danger);
     }
@@ -110,11 +114,13 @@ mod tests {
                 label: "View History".to_string(),
                 icon: None,
                 variant: BottomSheetVariant::Default,
+                testid: None,
             },
             BottomSheetItem {
                 label: "Cancel".to_string(),
                 icon: None,
                 variant: BottomSheetVariant::Default,
+                testid: None,
             },
         ];
         assert_eq!(items.len(), 2);
