@@ -46,6 +46,9 @@ jobs:
       - name: Install npm dependencies
         run: npm ci
 
+      - name: Pre-fetch crate registry
+        run: cargo fetch
+
       - name: Run fast Playwright tests
         run: |
           DX_LOG=$(mktemp)
@@ -93,6 +96,9 @@ jobs:
         run: sops --decrypt --output-type dotenv secrets.yaml >> "$GITHUB_ENV"
         env:
           SOPS_AGE_KEY: ${{ secrets.SOPS_AGE_KEY }}
+
+      - name: Pre-fetch crate registry
+        run: cargo fetch
 
       - name: Build sync backend image
         shell: bash
@@ -218,6 +224,9 @@ jobs:
         run: sops --decrypt --output-type dotenv secrets.yaml >> "$GITHUB_ENV"
         env:
           SOPS_AGE_KEY: ${{ secrets.SOPS_AGE_KEY }}
+
+      - name: Pre-fetch crate registry
+        run: cargo fetch
 
       - name: Build project
         run: build
