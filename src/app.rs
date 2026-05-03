@@ -1,6 +1,6 @@
+use crate::components::bottom_sheet::{BottomSheet, BottomSheetItem, BottomSheetVariant};
 #[cfg(debug_assertions)]
 use crate::components::debug_panel::DebugPanel;
-use crate::components::bottom_sheet::{BottomSheet, BottomSheetItem, BottomSheetVariant};
 use crate::components::exercise_form::ExerciseForm;
 use crate::components::history_view::HistoryView;
 use crate::components::library_view::LibraryView;
