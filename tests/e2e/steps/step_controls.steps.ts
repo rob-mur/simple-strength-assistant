@@ -106,7 +106,7 @@ Then(
 Then(
   "the step control buttons should contain valid SVG icons",
   async ({ page }) => {
-    const buttons = page.locator("button.btn-circle");
+    const buttons = page.locator("button[data-testid^='step-btn-']");
     const buttonCount = await buttons.count();
     if (buttonCount > 0) {
       const firstButton = buttons.first();

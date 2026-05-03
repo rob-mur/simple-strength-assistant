@@ -365,12 +365,7 @@ async fn each_tab_has_icon_and_label(world: &mut TabNavigationWorld) {
 }
 
 #[then(regex = r#"^the tabs should be "([^"]*)", "([^"]*)", and "([^"]*)"$"#)]
-async fn tabs_should_be(
-    world: &mut TabNavigationWorld,
-    tab1: String,
-    tab2: String,
-    tab3: String,
-) {
+async fn tabs_should_be(world: &mut TabNavigationWorld, tab1: String, tab2: String, tab3: String) {
     let expected = vec![tab1, tab2, tab3];
     assert_eq!(
         world.tabs_visible, expected,
