@@ -1,3 +1,5 @@
+pub mod bottom_sheet;
+pub mod confirmation_dialog;
 pub mod data_management;
 #[cfg(debug_assertions)]
 pub mod debug_panel;

@@ -28,8 +28,8 @@ Feature: Full workout history view
     Then I should be on the history page
     And the exercise toggle should be active
 
-  # AC #7: History icon in active session header
-  Scenario: History icon is visible in active session header
+  # AC #7: Three-dot action menu replaces history icon (issue #163)
+  Scenario: Action menu trigger is visible in active session header
     Given I start a test session with "Squat"
     Then the history icon should be visible in the session header
 
@@ -111,15 +111,15 @@ Feature: Full workout history view
     When I click the back button on the history page
     Then I should be on the Workout tab
 
-  Scenario: Back button from exercise-specific history navigates to all-exercises history
+  # Issue #163: Back from exercise-specific history returns to workout, not all-exercises history
+  Scenario: Back button from exercise-specific history navigates to workout
     Given I start a test session with "Squat"
     And I log a set in the current session
     When I click the history icon in the session header
     Then I should be on the history page
     And the exercise toggle should be active
     When I click the back button on the history page
-    Then I should be on the history page
-    And the exercise filter selector should be visible
+    Then I should be on the Workout tab
 
   # AC #11: Exercise filter dropdown on idle history view
   Scenario: Idle history view has exercise filter dropdown that can filter by exercise

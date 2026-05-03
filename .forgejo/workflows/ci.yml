@@ -104,6 +104,9 @@ jobs:
         shell: bash
         run: docker build -t sync-backend-${{ github.run_id }} sync-backend/
 
+      - name: Pre-fetch crate registry
+        run: cargo fetch
+
       - name: Run Playwright E2E tests
         run: |
           # Use run-unique ports to avoid conflicts with parallel jobs

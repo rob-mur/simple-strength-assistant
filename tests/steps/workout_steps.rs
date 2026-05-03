@@ -243,12 +243,12 @@ async fn step_no_duplicate_header(world: &mut WorkoutWorld) {
     }
 }
 
-// Issue 154: History icon remains accessible from the active workout input area
+// Issue 163: Three-dot action menu replaces the history icon in the active session
 #[then("I should see a history icon in the input area")]
 async fn step_history_icon_in_input_area(world: &mut WorkoutWorld) {
     assert!(
-        world.rendered_html.contains("history-icon-btn"),
-        "Expected history icon button (data-testid='history-icon-btn') to be present in the rendered HTML"
+        world.rendered_html.contains("action-menu-trigger"),
+        "Expected action menu trigger button (data-testid='action-menu-trigger') to be present in the rendered HTML"
     );
 }
 

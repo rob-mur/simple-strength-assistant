@@ -1,3 +1,4 @@
+use crate::components::bottom_sheet::{BottomSheet, BottomSheetItem, BottomSheetVariant};
 #[cfg(debug_assertions)]
 use crate::components::debug_panel::DebugPanel;
 use crate::components::exercise_form::ExerciseForm;
@@ -262,7 +263,7 @@ fn WorkoutHistory() -> Element {
 fn WorkoutHistoryExercise(exercise_id: String) -> Element {
     let state = consume_context::<WorkoutState>();
     let navigator = use_navigator();
-    rsx! { HistoryView { state, exercise_id: Some(exercise_id), on_back: move |_| { navigator.push(Route::WorkoutHistory); } } }
+    rsx! { HistoryView { state, exercise_id: Some(exercise_id), on_back: move |_| { navigator.push(Route::WorkoutTab); } } }
 }
 
 #[component]
@@ -1042,36 +1043,11 @@ pub fn ActiveSession(state: WorkoutState, session: crate::state::WorkoutSession)
 
     let navigator = use_navigator();
     let history_exercise_id = session_for_display.exercise.id.clone().unwrap_or_default();
+    let mut show_action_menu = use_signal(|| false);
 
     rsx! {
         div {
             class: "max-w-md mx-auto space-y-4 pb-10",
-
-            // History icon — relocated from removed exercise header card (issue #154)
-            div {
-                class: "flex justify-end px-4 -mb-2",
-                button {
-                    class: "btn btn-ghost btn-sm btn-circle",
-                    "aria-label": "View exercise history",
-                    "data-testid": "history-icon-btn",
-                    onclick: move |_| {
-                        navigator.push(Route::WorkoutHistoryExercise { exercise_id: history_exercise_id.clone() });
-                    },
-                    svg {
-                        xmlns: "http://www.w3.org/2000/svg",
-                        fill: "none",
-                        view_box: "0 0 24 24",
-                        stroke_width: "1.5",
-                        stroke: "currentColor",
-                        class: "w-5 h-5",
-                        path {
-                            stroke_linecap: "round",
-                            stroke_linejoin: "round",
-                            d: "M12 6v6h4.5m4.5 0a9 9 0 1 1-18 0 9 9 0 0 1 18 0Z"
-                        }
-                    }
-                }
-            }
 
             // Input Section
             div {
@@ -1160,13 +1136,65 @@ pub fn ActiveSession(state: WorkoutState, session: crate::state::WorkoutSession)
                         }
                     }
 
-                    // Log Set Button
+                    // Log Set Button + Action Menu Trigger
                     div {
-                        class: "mt-4",
+                        class: "mt-4 flex gap-2",
                         button {
-                            class: "btn btn-primary btn-lg btn-block h-14 text-xl font-black shadow-lg",
+                            class: "btn btn-primary btn-lg flex-1 h-14 text-xl font-black shadow-lg",
                             onclick: log_set,
                             "LOG SET"
+                        }
+                        button {
+                            class: "btn btn-ghost btn-lg w-14 h-14",
+                            "aria-label": "More actions",
+                            "data-testid": "action-menu-trigger",
+                            onclick: move |_| show_action_menu.set(true),
+                            // Vertical ellipsis icon
+                            svg {
+                                xmlns: "http://www.w3.org/2000/svg",
+                                fill: "none",
+                                view_box: "0 0 24 24",
+                                stroke_width: "1.5",
+                                stroke: "currentColor",
+                                class: "w-6 h-6",
+                                path {
+                                    stroke_linecap: "round",
+                                    stroke_linejoin: "round",
+                                    d: "M12 6.75a.75.75 0 1 1 0-1.5.75.75 0 0 1 0 1.5ZM12 12.75a.75.75 0 1 1 0-1.5.75.75 0 0 1 0 1.5ZM12 18.75a.75.75 0 1 1 0-1.5.75.75 0 0 1 0 1.5Z"
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+
+            // Action Menu Bottom Sheet
+            if show_action_menu() {
+                {
+                    let exercise_id_for_menu = history_exercise_id.clone();
+                    rsx! {
+                        BottomSheet {
+                            items: vec![
+                                BottomSheetItem {
+                                    label: "View History".to_string(),
+                                    icon: None,
+                                    variant: BottomSheetVariant::Default,
+                                },
+                                BottomSheetItem {
+                                    label: "Cancel".to_string(),
+                                    icon: None,
+                                    variant: BottomSheetVariant::Default,
+                                },
+                            ],
+                            on_select: move |idx: usize| {
+                                show_action_menu.set(false);
+                                if idx == 0 {
+                                    navigator.push(Route::WorkoutHistoryExercise {
+                                        exercise_id: exercise_id_for_menu.clone(),
+                                    });
+                                }
+                            },
+                            on_dismiss: move |_| show_action_menu.set(false),
                         }
                     }
                 }
