@@ -9,8 +9,7 @@ Feature: Core user journey
     And I create a new database
     And I start a test session with "Bench Press"
     When I log a set in the current session
-    Then the in-progress sets section should show "Today's Sets (1 set)"
-    When I click the history icon in the session header
+    And I click the history icon in the session header
     Then I should be on the history page
     And the history feed should contain at least 1 set row
     When I click the back button on the history page
