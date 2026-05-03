@@ -20,34 +20,27 @@ When("I tap the action menu trigger", async ({ page }) => {
 // ── Bottom sheet ────────────────────────────────────────────────────────────
 
 Then("the bottom sheet should be visible", async ({ page }) => {
-  await expect(
-    page.locator('[data-testid="bottom-sheet"]'),
-  ).toBeVisible();
+  await expect(page.locator('[data-testid="bottom-sheet"]')).toBeVisible();
 });
 
 Then("the bottom sheet should not be visible", async ({ page }) => {
-  await expect(
-    page.locator('[data-testid="bottom-sheet"]'),
-  ).not.toBeVisible();
+  await expect(page.locator('[data-testid="bottom-sheet"]')).not.toBeVisible();
 });
 
 Then(
   "the bottom sheet should contain {string}",
   async ({ page }, text: string) => {
-    await expect(
-      page.locator('[data-testid="bottom-sheet"]'),
-    ).toContainText(text);
+    await expect(page.locator('[data-testid="bottom-sheet"]')).toContainText(
+      text,
+    );
   },
 );
 
-When(
-  "I tap {string} in the bottom sheet",
-  async ({ page }, label: string) => {
-    const sheet = page.locator('[data-testid="bottom-sheet"]');
-    await sheet.locator(`button:has-text("${label}")`).click();
-    await page.waitForTimeout(500);
-  },
-);
+When("I tap {string} in the bottom sheet", async ({ page }, label: string) => {
+  const sheet = page.locator('[data-testid="bottom-sheet"]');
+  await sheet.locator(`button:has-text("${label}")`).click();
+  await page.waitForTimeout(500);
+});
 
 When("I tap the bottom sheet backdrop", async ({ page }) => {
   // Click the backdrop overlay (outside the sheet container).
