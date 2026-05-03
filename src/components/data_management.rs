@@ -20,6 +20,7 @@ pub(crate) fn is_valid_sqlite(data: &[u8]) -> bool {
 #[component]
 pub fn DataManagementPanel(state: WorkoutState) -> Element {
     let mut import_error = use_signal(|| Option::<String>::None);
+    let mut export_error = use_signal(|| Option::<String>::None);
     let mut is_exporting = use_signal(|| false);
     let mut is_importing = use_signal(|| false);
 
@@ -39,6 +40,7 @@ pub fn DataManagementPanel(state: WorkoutState) -> Element {
                 onclick: move |_| {
                     spawn(async move {
                         is_exporting.set(true);
+                        export_error.set(None);
                         match state.database() {
                             Some(db) => match db.download(EXPORT_FILENAME).await {
                                 Ok(_) => {
@@ -46,10 +48,12 @@ pub fn DataManagementPanel(state: WorkoutState) -> Element {
                                 }
                                 Err(e) => {
                                     log::error!("[DataManagement] Export failed: {}", e);
+                                    export_error.set(Some(format!("Export failed: {}", e)));
                                 }
                             },
                             None => {
                                 log::error!("[DataManagement] Export failed: database not initialized");
+                                export_error.set(Some("Export failed: database not initialized".to_string()));
                             }
                         }
                         is_exporting.set(false);
@@ -174,6 +178,27 @@ pub fn DataManagementPanel(state: WorkoutState) -> Element {
                             });
                         }
                     }
+                }
+            }
+
+            // ── Export error alert ─────────────────────────────────────────────
+            if let Some(err) = export_error() {
+                div {
+                    class: "alert alert-error mt-2 text-sm py-2",
+                    "data-testid": "export-error",
+                    svg {
+                        xmlns: "http://www.w3.org/2000/svg",
+                        class: "stroke-current shrink-0 h-5 w-5",
+                        fill: "none",
+                        view_box: "0 0 24 24",
+                        path {
+                            stroke_linecap: "round",
+                            stroke_linejoin: "round",
+                            stroke_width: "2",
+                            d: "M10 14l2-2m0 0l2-2m-2 2l-2-2m2 2l2 2m7-2a9 9 0 11-18 0 9 9 0 0118 0z"
+                        }
+                    }
+                    span { {err} }
                 }
             }
 

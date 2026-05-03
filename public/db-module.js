@@ -269,24 +269,76 @@ export async function executeQuery(sql, params) {
 }
 
 /**
- * Triggers a browser download of the given bytes as a .sqlite file.
- * Works on iOS Safari, Chrome Android, and any browser supporting Blob URLs.
+ * Download bytes to the user's device using the best available mechanism.
  *
- * @param {Uint8Array} data - The raw bytes of the SQLite database.
- * @param {string} filename - The suggested download filename (e.g. "workout-data.sqlite").
+ * Strategy order (feature-detected, no UA sniffing):
+ *   1. Web Share API with files — opens the native share sheet on Android,
+ *      letting the user save to Files / Drive / etc.
+ *   2. Anchor element with `download` attribute — classic desktop path
+ *      (triggers proper download events in all desktop browsers and tests).
+ *
+ * Returns a result object: { ok: true, method } on success,
+ * or { ok: false, error } on failure. Never throws.
+ *
+ * @param {Uint8Array} data     The raw bytes to download.
+ * @param {string}     filename The suggested filename.
+ * @returns {Promise<{ok: boolean, method?: string, error?: string, byteSize?: number}>}
+ */
+export async function downloadBytes(data, filename) {
+  const byteSize = data.length;
+  console.log(`[Export] Attempting download: filename=${filename}, bytes=${byteSize}`);
+
+  try {
+    const blob = new Blob([data], { type: "application/x-sqlite3" });
+
+    // ── Strategy 1: Web Share API with files ────────────────────────────────
+    if (typeof navigator !== "undefined" && navigator.share && navigator.canShare) {
+      const file = new File([blob], filename, { type: "application/x-sqlite3" });
+      const shareData = { files: [file] };
+      try {
+        if (navigator.canShare(shareData)) {
+          await navigator.share(shareData);
+          console.log(`[Export] Shared via Web Share API: ${filename} (${byteSize} bytes)`);
+          return { ok: true, method: "share", byteSize };
+        }
+      } catch (shareErr) {
+        // AbortError means the user dismissed the share sheet — not a real failure.
+        if (shareErr.name === "AbortError") {
+          console.log("[Export] User cancelled share sheet");
+          return { ok: true, method: "share-cancelled", byteSize };
+        }
+        console.warn("[Export] Web Share API failed, trying fallback:", shareErr);
+        // Fall through to next strategy.
+      }
+    }
+
+    const url = URL.createObjectURL(blob);
+
+    // ── Strategy 2: Anchor element click (desktop / most browsers) ──────────
+    // Tried before window.open because it triggers proper download events and
+    // is the most reliable path on desktop browsers and in automated tests.
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = filename;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    setTimeout(() => URL.revokeObjectURL(url), 1000);
+    console.log(`[Export] Triggered via anchor click: ${filename} (${byteSize} bytes)`);
+    return { ok: true, method: "anchor", byteSize };
+
+  } catch (err) {
+    const message = err instanceof Error ? err.message : String(err);
+    console.error(`[Export] All download strategies failed: ${message}`);
+    return { ok: false, error: message, byteSize };
+  }
+}
+
+/**
+ * @deprecated Use downloadBytes instead. Kept for backwards compatibility.
  */
 export function triggerSqliteDownload(data, filename) {
-  const blob = new Blob([data], { type: "application/x-sqlite3" });
-  const url = URL.createObjectURL(blob);
-  const a = document.createElement("a");
-  a.href = url;
-  a.download = filename;
-  document.body.appendChild(a);
-  a.click();
-  document.body.removeChild(a);
-  // Revoke the object URL after a short delay to free memory.
-  // 1 s is sufficient for all major browsers to initiate the download.
-  setTimeout(() => URL.revokeObjectURL(url), 1000);
+  downloadBytes(data, filename);
 }
 
 /**

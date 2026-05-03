@@ -43,8 +43,8 @@ extern "C" {
     #[wasm_bindgen(js_name = exportDatabase)]
     async fn export_database() -> JsValue;
 
-    #[wasm_bindgen(js_name = triggerSqliteDownload)]
-    fn trigger_sqlite_download(data: &[u8], filename: &str);
+    #[wasm_bindgen(js_name = downloadBytes)]
+    async fn download_bytes(data: &[u8], filename: &str) -> JsValue;
 
     #[wasm_bindgen(js_name = importDatabase)]
     async fn import_database(file_data: Vec<u8>) -> JsValue;
@@ -144,11 +144,29 @@ impl Database {
     }
 
     /// Exports the database and triggers a browser download of the `.sqlite` file.
-    /// Works on iOS Safari, Chrome Android, and any browser supporting Blob URLs.
+    ///
+    /// Uses platform feature-detection to pick the best download strategy:
+    /// Web Share API (Android), window.open fallback, or anchor click (desktop).
+    /// Returns an error if all strategies fail.
     pub async fn download(&self, filename: &str) -> Result<(), DatabaseError> {
         let data = self.export().await?;
-        trigger_sqlite_download(&data, filename);
-        Ok(())
+        let result = download_bytes(&data, filename).await;
+
+        // downloadBytes returns { ok: bool, method?: string, error?: string }
+        let ok = js_sys::Reflect::get(&result, &JsValue::from_str("ok"))
+            .unwrap_or(JsValue::FALSE)
+            .as_bool()
+            .unwrap_or(false);
+
+        if ok {
+            Ok(())
+        } else {
+            let error_msg = js_sys::Reflect::get(&result, &JsValue::from_str("error"))
+                .unwrap_or(JsValue::from_str("Unknown export error"))
+                .as_string()
+                .unwrap_or_else(|| "Unknown export error".to_string());
+            Err(DatabaseError::JsError(error_msg))
+        }
     }
 
     async fn migrate_and_create_tables(&self) -> Result<(), DatabaseError> {
