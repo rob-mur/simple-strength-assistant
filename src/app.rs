@@ -6,7 +6,6 @@ use crate::components::history_view::HistoryView;
 use crate::components::library_view::LibraryView;
 use crate::components::rpe_slider::RPESlider;
 use crate::components::settings_view::SettingsView;
-use crate::components::step_controls::StepControls;
 use crate::components::sync_status_indicator::SyncStatusIndicator;
 use crate::components::tab_bar::{Tab, TabBar};
 use crate::components::tape_measure::TapeMeasure;
@@ -1056,17 +1055,56 @@ pub fn ActiveSession(state: WorkoutState, session: crate::state::WorkoutSession)
                     div {
                         class: "flex flex-col gap-4 items-stretch w-full",
 
-                        // Weight Input
+                        // Weight Input (compact: inline header + tape measure)
                         if let SetTypeConfig::Weighted { min_weight, increment } = session_for_display.exercise.set_type_config {
                             div {
                                 class: "form-control w-full",
-                                label {
-                                    class: "label justify-center mb-0",
-                                    span {
-                                        class: "label-text font-black text-xl text-base-content/70 uppercase tracking-widest",
-                                        "Weight"
+                                // Row 1: [−10] Weight 80kg [+10]
+                                div {
+                                    class: "flex items-center justify-between w-full px-1",
+                                    button {
+                                        "data-testid": "weight-step-down",
+                                        class: "btn btn-circle btn-sm glass border border-error/30 hover:border-error text-error transition-all",
+                                        onclick: {
+                                            let min = min_weight as f64;
+                                            move |_| {
+                                                let new_val = (weight_input() - 10.0).clamp(min, 500.0);
+                                                if (new_val - weight_input()).abs() > 0.001 {
+                                                    weight_input.set(new_val);
+                                                }
+                                            }
+                                        },
+                                        "−10"
+                                    }
+                                    div {
+                                        class: "flex items-baseline gap-2",
+                                        span {
+                                            class: "text-sm font-semibold text-base-content/60 uppercase",
+                                            "data-testid": "weight-label",
+                                            "Weight"
+                                        }
+                                        span {
+                                            class: "text-2xl font-black text-primary",
+                                            "data-testid": "weight-readout",
+                                            "{crate::format::fmt_weight(weight_input())} kg"
+                                        }
+                                    }
+                                    button {
+                                        "data-testid": "weight-step-up",
+                                        class: "btn btn-circle btn-sm glass border border-success/30 hover:border-success text-success transition-all",
+                                        onclick: {
+                                            let min = min_weight as f64;
+                                            move |_| {
+                                                let new_val = (weight_input() + 10.0).clamp(min, 500.0);
+                                                if (new_val - weight_input()).abs() > 0.001 {
+                                                    weight_input.set(new_val);
+                                                }
+                                            }
+                                        },
+                                        "+10"
                                     }
                                 }
+                                // Row 2: TapeMeasure
                                 TapeMeasure {
                                     value: weight_input(),
                                     min: min_weight as f64,
@@ -1074,30 +1112,52 @@ pub fn ActiveSession(state: WorkoutState, session: crate::state::WorkoutSession)
                                     step: increment as f64,
                                     on_change: move |val| weight_input.set(val)
                                 }
-                                div {
-                                    class: "text-center text-3xl font-black text-primary my-1",
-                                    "{crate::format::fmt_weight(weight_input())} kg"
-                                }
-                                StepControls {
-                                    value: weight_input(),
-                                    steps: vec![-10.0, 10.0],
-                                    min: min_weight as f64,
-                                    max: 500.0,
-                                    on_change: move |val| weight_input.set(val)
-                                }
                             }
                         }
 
-                        // Reps Input
+                        // Reps Input (compact: inline header + tape measure)
                         div {
                             class: "form-control w-full",
-                            label {
-                                class: "label justify-center mb-0",
-                                span {
-                                    class: "label-text font-black text-xl text-base-content/70 uppercase tracking-widest",
-                                    "Reps"
+                            // Row 1: [−1] Reps 5 [+5]
+                            div {
+                                class: "flex items-center justify-between w-full px-1",
+                                button {
+                                    "data-testid": "reps-step-down",
+                                    class: "btn btn-circle btn-sm glass border border-error/30 hover:border-error text-error transition-all",
+                                    onclick: move |_| {
+                                        let new_val = (reps_input() - 1.0).clamp(1.0, 100.0);
+                                        if (new_val - reps_input()).abs() > 0.001 {
+                                            reps_input.set(new_val);
+                                        }
+                                    },
+                                    "−1"
+                                }
+                                div {
+                                    class: "flex items-baseline gap-2",
+                                    span {
+                                        class: "text-sm font-semibold text-base-content/60 uppercase",
+                                        "data-testid": "reps-label",
+                                        "Reps"
+                                    }
+                                    span {
+                                        class: "text-2xl font-black text-primary",
+                                        "data-testid": "reps-readout",
+                                        "{reps_input} reps"
+                                    }
+                                }
+                                button {
+                                    "data-testid": "reps-step-up",
+                                    class: "btn btn-circle btn-sm glass border border-success/30 hover:border-success text-success transition-all",
+                                    onclick: move |_| {
+                                        let new_val = (reps_input() + 5.0).clamp(1.0, 100.0);
+                                        if (new_val - reps_input()).abs() > 0.001 {
+                                            reps_input.set(new_val);
+                                        }
+                                    },
+                                    "+5"
                                 }
                             }
+                            // Row 2: TapeMeasure
                             TapeMeasure {
                                 value: reps_input(),
                                 min: 1.0,
@@ -1105,29 +1165,31 @@ pub fn ActiveSession(state: WorkoutState, session: crate::state::WorkoutSession)
                                 step: 1.0,
                                 on_change: move |val| reps_input.set(val)
                             }
-                            div {
-                                class: "text-center text-3xl font-black text-primary my-1",
-                                "{reps_input} reps"
-                            }
-                            StepControls {
-                                value: reps_input(),
-                                steps: vec![-1.0, 5.0],
-                                min: 1.0,
-                                max: 100.0,
-                                on_change: move |val| reps_input.set(val)
-                            }
                         }
 
-                        // RPE Input
+                        // RPE Input (compact: header with description + slider)
                         div {
                             class: "form-control w-full",
-                            label {
-                                class: "label justify-center mb-0",
+                            // Row 1: RPE value description
+                            div {
+                                class: "flex items-baseline justify-center gap-2 px-1",
                                 span {
-                                    class: "label-text font-black text-xl text-base-content/70 uppercase tracking-widest",
-                                    "Intensity (RPE)"
+                                    class: "text-sm font-semibold text-base-content/60 uppercase",
+                                    "data-testid": "rpe-label",
+                                    "RPE"
+                                }
+                                span {
+                                    class: "text-2xl font-black text-primary",
+                                    "data-testid": "rpe-readout",
+                                    "{rpe_input:.1}"
+                                }
+                                span {
+                                    class: "text-sm font-medium text-base-content/50",
+                                    "data-testid": "rpe-description",
+                                    {crate::domain::rpe::rpe_description(rpe_input())}
                                 }
                             }
+                            // Row 2: RPESlider
                             RPESlider {
                                 value: rpe_input(),
                                 on_change: move |val| rpe_input.set(val)

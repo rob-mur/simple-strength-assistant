@@ -3241,13 +3241,6 @@ details.collapse summary::-webkit-details-marker {
   margin-left: auto;
   margin-right: auto;
 }
-.my-1 {
-  margin-top: 0.25rem;
-  margin-bottom: 0.25rem;
-}
-.mb-0 {
-  margin-bottom: 0px;
-}
 .mb-1 {
   margin-bottom: 0.25rem;
 }
@@ -3464,6 +3457,9 @@ details.collapse summary::-webkit-details-marker {
 }
 .items-center {
   align-items: center;
+}
+.items-baseline {
+  align-items: baseline;
 }
 .items-stretch {
   align-items: stretch;
