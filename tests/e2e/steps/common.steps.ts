@@ -64,11 +64,19 @@ Given(
     await setDioxusInput(page, "#exercise-name-input", exerciseName);
     await page.click('button:has-text("Save Exercise")');
 
-    // Now start session from the list
-    await page
-      .locator("div.card", { hasText: exerciseName })
-      .getByRole("button", { name: "START" })
-      .click();
+    // Now start session from the list.
+    // When no plan is active the button reads "START"; when a plan already
+    // exists (adhoc or otherwise) the button reads "Add to workout".
+    const card = page.locator("div.card", { hasText: exerciseName });
+    const startBtn = card.getByRole("button", { name: "START" });
+    const addToWorkoutBtn = card.getByRole("button", {
+      name: "Add to workout",
+    });
+    if (await startBtn.isVisible({ timeout: 2000 }).catch(() => false)) {
+      await startBtn.click();
+    } else {
+      await addToWorkoutBtn.click();
+    }
 
     await page.waitForSelector('body[data-hydrated="true"]', {
       timeout: 10000,
@@ -160,10 +168,14 @@ Given(
       'button[role="tab"]:has-text("Library"), button:has-text("Library")',
     );
     await page.waitForTimeout(200);
-    await page
-      .locator("div.card", { hasText: exerciseName })
-      .getByRole("button", { name: "START" })
-      .click();
+    const reCard = page.locator("div.card", { hasText: exerciseName });
+    const reStartBtn = reCard.getByRole("button", { name: "START" });
+    const reAddBtn = reCard.getByRole("button", { name: "Add to workout" });
+    if (await reStartBtn.isVisible({ timeout: 2000 }).catch(() => false)) {
+      await reStartBtn.click();
+    } else {
+      await reAddBtn.click();
+    }
     await page.waitForSelector('body[data-hydrated="true"]', {
       timeout: 10000,
     });
