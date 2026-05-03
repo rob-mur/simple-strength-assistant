@@ -1,3 +1,4 @@
+use crate::log_buffer::{self, LogEntry};
 use crate::models::{CompletedSet, ExerciseMetadata, SetType, Settings, WorkoutPlan};
 use crate::state::{Database, Storage, error::WorkoutError};
 #[cfg(not(test))]
@@ -96,6 +97,8 @@ pub struct WorkoutState {
     settings: Signal<Settings>,
     /// Active workout plan (being built or in progress).
     current_plan: Signal<Option<WorkoutPlan>>,
+    /// Cached snapshot of the debug log buffer for reactive UI rendering.
+    log_entries: Signal<Vec<LogEntry>>,
 }
 
 impl Default for WorkoutState {
@@ -118,6 +121,7 @@ impl WorkoutState {
             settings: Signal::new(Settings::default()),
             sync_status: Signal::new(SyncStatus::Idle),
             current_plan: Signal::new(None),
+            log_entries: Signal::new(Vec::new()),
         }
     }
 
@@ -218,6 +222,24 @@ impl WorkoutState {
     pub fn set_current_plan(&self, plan: Option<WorkoutPlan>) {
         let mut sig = self.current_plan;
         sig.set(plan);
+    }
+
+    /// Return the cached debug log entries (newest-first).
+    pub fn log_entries(&self) -> Vec<LogEntry> {
+        (self.log_entries)()
+    }
+
+    /// Refresh the log entries signal from the global ring buffer.
+    pub fn refresh_log_entries(&self) {
+        let mut sig = self.log_entries;
+        sig.set(log_buffer::snapshot_global());
+    }
+
+    /// Clear the global log buffer and update the signal.
+    pub fn clear_log_entries(&self) {
+        log_buffer::clear_global();
+        let mut sig = self.log_entries;
+        sig.set(Vec::new());
     }
 }
 
