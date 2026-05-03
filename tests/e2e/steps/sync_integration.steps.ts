@@ -288,6 +288,10 @@ When("I set up sync and copy the sync code", async ({ page }) => {
 
   // Dismiss sync code display
   await page.locator('[data-testid="done-setup-button"]').click();
+
+  // Navigate back from settings so the tab bar is visible for subsequent steps
+  await page.click('[data-testid="settings-back-button"]');
+  await page.waitForTimeout(300);
 });
 
 When("I wait for sync to complete", async ({ page }) => {
@@ -414,6 +418,10 @@ When("I join sync with the copied sync code", async ({ page }) => {
   // Wait for pairing to complete
   const doneBanner = page.locator('[data-testid="pairing-done"]');
   await expect(doneBanner).toBeVisible({ timeout: 15000 });
+
+  // Navigate back from settings so the tab bar is visible for subsequent steps
+  await page.click('[data-testid="settings-back-button"]');
+  await page.waitForTimeout(300);
 });
 
 Then(

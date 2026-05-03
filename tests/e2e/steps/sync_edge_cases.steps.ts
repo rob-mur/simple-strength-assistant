@@ -56,6 +56,10 @@ When(
     console.log(`Copied second-room sync code: ${syncId}`);
 
     await page.locator('[data-testid="done-setup-button"]').click();
+
+    // Navigate back from settings so the tab bar is visible for subsequent steps
+    await page.click('[data-testid="settings-back-button"]');
+    await page.waitForTimeout(300);
   },
 );
 
