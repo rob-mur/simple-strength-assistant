@@ -2286,6 +2286,9 @@ input.tab:checked + .tab-content,
     transform: translateY(0);
   }
 }
+.select-bordered {
+  border-color: var(--fallback-bc,oklch(var(--bc)/0.2));
+}
 .select:focus {
   box-shadow: none;
   border-color: var(--fallback-bc,oklch(var(--bc)/0.2));
@@ -2691,6 +2694,13 @@ input.tab:checked + .tab-content,
     text-shadow: 0 1px rgb(0 0 0 / var(--glass-text-shadow-opacity, 5%));
   }
 }
+.badge-xs {
+  height: 0.75rem;
+  font-size: 0.75rem;
+  line-height: .75rem;
+  padding-left: 0.313rem;
+  padding-right: 0.313rem;
+}
 .badge-sm {
   height: 1rem;
   font-size: 0.75rem;
@@ -2898,6 +2908,19 @@ input.tab:checked + .tab-content,
   height: 2rem;
   width: 2rem;
   --filler-offset: 1rem;
+}
+.select-xs {
+  height: 1.5rem;
+  min-height: 1.5rem;
+  padding-left: 0.5rem;
+  padding-right: 2rem;
+  font-size: 0.75rem;
+  line-height: 1rem;
+  line-height: 1.625;
+}
+[dir="rtl"] .select-xs {
+  padding-left: 2rem;
+  padding-right: 0.5rem;
 }
 .steps-horizontal .step {
   display: grid;
@@ -3197,6 +3220,9 @@ input.tab:checked + .tab-content,
 }
 .h-auto {
   height: auto;
+}
+.max-h-80 {
+  max-height: 20rem;
 }
 .max-h-\[90dvh\] {
   max-height: 90dvh;
@@ -3716,6 +3742,11 @@ input.tab:checked + .tab-content,
   outline: 2px solid transparent;
   outline-offset: 2px;
 }
+.ring {
+  --tw-ring-offset-shadow: var(--tw-ring-inset) 0 0 0 var(--tw-ring-offset-width) var(--tw-ring-offset-color);
+  --tw-ring-shadow: var(--tw-ring-inset) 0 0 0 calc(3px + var(--tw-ring-offset-width)) var(--tw-ring-color);
+  box-shadow: var(--tw-ring-offset-shadow), var(--tw-ring-shadow), var(--tw-shadow, 0 0 #0000);
+}
 .filter {
   filter: var(--tw-blur) var(--tw-brightness) var(--tw-contrast) var(--tw-grayscale) var(--tw-hue-rotate) var(--tw-invert) var(--tw-saturate) var(--tw-sepia) var(--tw-drop-shadow);
 }
@@ -3752,6 +3783,9 @@ input.tab:checked + .tab-content,
 .pb-safe-tabbar {
     padding-bottom: calc(0.5rem + env(safe-area-inset-bottom));
   }
+.last\:border-b-0:last-child {
+  border-bottom-width: 0px;
+}
 .hover\:scale-110:hover {
   --tw-scale-x: 1.1;
   --tw-scale-y: 1.1;
