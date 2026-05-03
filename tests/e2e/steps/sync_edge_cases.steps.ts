@@ -34,7 +34,7 @@ When(
 When(
   "I set up sync and copy the sync code as second room",
   async ({ page }) => {
-    await page.click('[data-testid="tab-settings"]');
+    await page.click('[data-testid="gear-icon-button"]');
     const setupBtn = page.locator('[data-testid="setup-sync-button"]');
     await expect(setupBtn).toBeVisible({ timeout: 10000 });
     await setupBtn.click();
@@ -56,6 +56,10 @@ When(
     console.log(`Copied second-room sync code: ${syncId}`);
 
     await page.locator('[data-testid="done-setup-button"]').click();
+
+    // Navigate back from settings so the tab bar is visible for subsequent steps
+    await page.click('[data-testid="settings-back-button"]');
+    await page.waitForTimeout(300);
   },
 );
 

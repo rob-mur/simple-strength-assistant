@@ -7,7 +7,7 @@ import { setDioxusInput } from "./dioxus_helpers";
 // ── Navigation step ────────────────────────────────────────────────────────────
 
 Given("I navigate to the Settings tab", async ({ page }) => {
-  await page.click('[data-testid="tab-settings"]');
+  await page.click('[data-testid="gear-icon-button"]');
   await page.waitForTimeout(300);
 });
 
@@ -41,8 +41,10 @@ Then("a SQLite file download is triggered", async ({ page }) => {
 Given(
   "I have exported a database with an exercise {string}",
   async ({ page }, exerciseName: string) => {
-    // Add the exercise first
-    await page.click('button[role="tab"]:has-text("Library")');
+    // Navigate back from Settings (tab bar is hidden on /settings), then go to Library
+    await page.click('[data-testid="settings-back-button"]');
+    await page.waitForTimeout(300);
+    await page.click('[data-testid="tab-library"]');
     const addBtn = page
       .locator(
         'button:has-text("Add First Exercise"), button:has-text("Add New Exercise")',
@@ -58,7 +60,7 @@ Given(
     await expect(page.locator("#exercise-name-input")).not.toBeVisible();
 
     // Go to Settings tab to use the export button
-    await page.click('[data-testid="tab-settings"]');
+    await page.click('[data-testid="gear-icon-button"]');
 
     // Export the database to a temporary file
     const downloadPromise = page.waitForEvent("download");
@@ -105,7 +107,9 @@ When("I import an invalid file", async ({ page }) => {
 Then(
   "I should see {string} in the exercise library",
   async ({ page }, exerciseName: string) => {
-    await page.click('button[role="tab"]:has-text("Library")');
+    await page.click('[data-testid="settings-back-button"]');
+    await page.waitForTimeout(300);
+    await page.click('[data-testid="tab-library"]');
     await expect(page.locator(`[data-testid="library-view"]`)).toBeVisible();
     await expect(page.locator(`h3:has-text("${exerciseName}")`)).toBeVisible();
   },
