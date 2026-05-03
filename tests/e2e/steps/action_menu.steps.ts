@@ -62,3 +62,42 @@ Then("the old history icon should not be present", async ({ page }) => {
     page.locator('[data-testid="history-icon-btn"]'),
   ).not.toBeVisible();
 });
+
+// ── Confirmation dialog ────────────────────────────────────────────────────
+
+Then("the confirmation dialog should be visible", async ({ page }) => {
+  await expect(
+    page.locator('[data-testid="confirmation-dialog"]'),
+  ).toBeVisible();
+});
+
+Then("the confirmation dialog should not be visible", async ({ page }) => {
+  await expect(
+    page.locator('[data-testid="confirmation-dialog"]'),
+  ).not.toBeVisible();
+});
+
+Then(
+  "the confirmation dialog title should be {string}",
+  async ({ page }, title: string) => {
+    await expect(
+      page.locator('[data-testid="confirmation-dialog-title"]'),
+    ).toHaveText(title);
+  },
+);
+
+When("I tap cancel on the confirmation dialog", async ({ page }) => {
+  await page.locator('[data-testid="confirmation-dialog-cancel"]').click();
+  await page.waitForTimeout(300);
+});
+
+When("I confirm the discard dialog", async ({ page }) => {
+  await page.locator('[data-testid="confirmation-dialog-confirm"]').click();
+  await page.waitForTimeout(500);
+});
+
+// ── Plan builder ───────────────────────────────────────────────────────────
+
+Then("I should see the plan builder", async ({ page }) => {
+  await expect(page.locator('[data-testid="plan-builder"]')).toBeVisible();
+});

@@ -6,6 +6,8 @@ pub enum BottomSheetVariant {
     #[default]
     Default,
     Danger,
+    /// A visual separator rendered as a horizontal rule (not tappable).
+    Divider,
 }
 
 /// A single item in the bottom sheet.
@@ -54,23 +56,34 @@ pub fn BottomSheet(
                     for (idx, item) in items.iter().enumerate() {
                         {
                             let label = item.label.clone();
+                            let is_divider = item.variant == BottomSheetVariant::Divider;
                             let is_danger = item.variant == BottomSheetVariant::Danger;
                             let testid = item.testid.clone().unwrap_or_else(|| format!("bottom-sheet-item-{idx}"));
 
-                            rsx! {
-                                button {
-                                    key: "{idx}",
-                                    class: {
-                                        let base = "flex items-center gap-3 w-full min-h-[56px] px-6 text-lg font-medium active:bg-base-200 transition-colors";
-                                        if is_danger {
-                                            format!("{base} text-error")
-                                        } else {
-                                            base.to_string()
-                                        }
-                                    },
-                                    "data-testid": "{testid}",
-                                    onclick: move |_| on_select.call(idx),
-                                    span { "{label}" }
+                            if is_divider {
+                                rsx! {
+                                    div {
+                                        key: "{idx}",
+                                        class: "divider my-0 px-6",
+                                        "data-testid": "bottom-sheet-divider",
+                                    }
+                                }
+                            } else {
+                                rsx! {
+                                    button {
+                                        key: "{idx}",
+                                        class: {
+                                            let base = "flex items-center gap-3 w-full min-h-[56px] px-6 text-lg font-medium active:bg-base-200 transition-colors";
+                                            if is_danger {
+                                                format!("{base} text-error")
+                                            } else {
+                                                base.to_string()
+                                            }
+                                        },
+                                        "data-testid": "{testid}",
+                                        onclick: move |_| on_select.call(idx),
+                                        span { "{label}" }
+                                    }
                                 }
                             }
                         }

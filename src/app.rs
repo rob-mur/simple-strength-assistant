@@ -1,5 +1,5 @@
 use crate::components::bottom_sheet::{BottomSheet, BottomSheetItem, BottomSheetVariant};
-use crate::components::confirmation_dialog::ConfirmationDialog;
+use crate::components::confirmation_dialog::{ConfirmVariant, ConfirmationDialog};
 #[cfg(debug_assertions)]
 use crate::components::debug_panel::DebugPanel;
 use crate::components::exercise_form::ExerciseForm;
@@ -1044,6 +1044,7 @@ pub fn ActiveSession(state: WorkoutState, session: crate::state::WorkoutSession)
     let history_exercise_id = session_for_display.exercise.id.clone().unwrap_or_default();
     let mut show_action_menu = use_signal(|| false);
     let mut show_complete_confirm = use_signal(|| false);
+    let mut show_discard_confirm = use_signal(|| false);
 
     rsx! {
         div {
@@ -1245,10 +1246,22 @@ pub fn ActiveSession(state: WorkoutState, session: crate::state::WorkoutSession)
                                     testid: None,
                                 },
                                 BottomSheetItem {
+                                    label: String::new(),
+                                    icon: None,
+                                    variant: BottomSheetVariant::Divider,
+                                    testid: None,
+                                },
+                                BottomSheetItem {
                                     label: "Complete Workout".to_string(),
                                     icon: None,
-                                    variant: BottomSheetVariant::Danger,
+                                    variant: BottomSheetVariant::Default,
                                     testid: Some("complete-workout-menu-item".to_string()),
+                                },
+                                BottomSheetItem {
+                                    label: "Discard Workout".to_string(),
+                                    icon: None,
+                                    variant: BottomSheetVariant::Danger,
+                                    testid: Some("discard-workout-menu-item".to_string()),
                                 },
                                 BottomSheetItem {
                                     label: "Cancel".to_string(),
@@ -1260,16 +1273,22 @@ pub fn ActiveSession(state: WorkoutState, session: crate::state::WorkoutSession)
                             on_select: move |idx: usize| {
                                 show_action_menu.set(false);
                                 match idx {
+                                    // View History
                                     0 => {
                                         navigator.push(Route::WorkoutHistoryExercise {
                                             exercise_id: exercise_id_for_menu.clone(),
                                         });
                                     }
-                                    1 => {
-                                        // Open the Complete Workout confirmation dialog
+                                    // Complete Workout
+                                    2 => {
                                         show_complete_confirm.set(true);
                                     }
-                                    _ => {} // Cancel or backdrop — just close
+                                    // Discard Workout
+                                    3 => {
+                                        show_discard_confirm.set(true);
+                                    }
+                                    // Cancel (4) or Divider (1) — no-op
+                                    _ => {}
                                 }
                             },
                             on_dismiss: move |_| show_action_menu.set(false),
@@ -1294,6 +1313,28 @@ pub fn ActiveSession(state: WorkoutState, session: crate::state::WorkoutSession)
                         });
                     },
                     on_cancel: move |_| show_complete_confirm.set(false),
+                }
+            }
+
+            // Discard Workout Confirmation Dialog
+            if show_discard_confirm() {
+                ConfirmationDialog {
+                    title: "Discard this workout?".to_string(),
+                    body: "Discard this workout? All sets recorded in this session will be permanently deleted.".to_string(),
+                    confirm_label: "Discard".to_string(),
+                    cancel_label: "Cancel".to_string(),
+                    variant: ConfirmVariant::Danger,
+                    on_confirm: move |_| {
+                        show_discard_confirm.set(false);
+                        spawn(async move {
+                            if let Err(e) = WorkoutStateManager::discard_plan(&state).await {
+                                log::warn!("Failed to discard plan: {}", e);
+                            }
+                        });
+                    },
+                    on_cancel: move |_| {
+                        show_discard_confirm.set(false);
+                    },
                 }
             }
 

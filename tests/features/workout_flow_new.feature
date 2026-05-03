@@ -103,3 +103,17 @@ Feature: Streamlined Workout Flow
     When the user selects Complete Workout from the menu and cancels
     Then a workout session should still be active
     And a workout plan should still be active
+
+  # Issue 168: Discard Workout with logged sets
+  Scenario: Discard Workout soft-deletes session sets and returns to PlanBuilder
+    Given a started plan with exercise "Bench Press" and 2 logged sets
+    When the workout is discarded
+    Then no workout session should be active
+    And the plan should be unstarted with exercises preserved
+
+  # Issue 168: Discard Workout with no logged sets
+  Scenario: Discard Workout with no sets un-starts the plan
+    Given a started plan with exercise "Squat" and 0 logged sets
+    When the workout is discarded
+    Then no workout session should be active
+    And the plan should be unstarted with exercises preserved

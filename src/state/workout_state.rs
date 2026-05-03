@@ -628,6 +628,26 @@ impl WorkoutStateManager {
         Ok(())
     }
 
+    /// Discard an in-progress workout: soft-delete sets recorded since
+    /// `started_at` for the plan's exercises, then un-start the plan so the
+    /// user lands back on PlanBuilder with the original exercise list.
+    pub async fn discard_plan(state: &WorkoutState) -> Result<(), WorkoutError> {
+        let plan = state.current_plan().ok_or(WorkoutError::NoActiveSession)?;
+        let db = state.database().ok_or(WorkoutError::NotInitialized)?;
+        db.discard_plan(&plan.id)
+            .await
+            .map_err(WorkoutError::Database)?;
+        // Refresh the plan from the database so the UI sees the unstarted state
+        // with the original exercise list preserved.
+        let refreshed = db
+            .get_plan(&plan.id)
+            .await
+            .map_err(WorkoutError::Database)?;
+        state.set_current_plan(refreshed);
+        state.set_current_session(None);
+        Ok(())
+    }
+
     /// Resume an active plan on app load. Called during initialization.
     /// Auto-closes plans that have been inactive for > 4 hours.
     pub async fn resume_active_plan(state: &WorkoutState) -> Result<(), WorkoutError> {
