@@ -38,7 +38,11 @@ When('I click the "View workout history" button', async ({ page }) => {
 });
 
 When("I click the history icon in the session header", async ({ page }) => {
-  await page.locator('[data-testid="history-icon-btn"]').click();
+  // The history icon was replaced by the three-dot action menu (issue #163).
+  // Open the menu and tap "View History" to reach the exercise history view.
+  await page.locator('[data-testid="action-menu-trigger"]').click();
+  await page.waitForTimeout(300);
+  await page.locator('[data-testid="bottom-sheet-item-0"]').click();
   await page.waitForTimeout(500);
 });
 
@@ -75,8 +79,9 @@ Then("the exercise toggle should be active", async ({ page }) => {
 Then(
   "the history icon should be visible in the session header",
   async ({ page }) => {
+    // The history icon was replaced by the three-dot action menu (issue #163).
     await expect(
-      page.locator('[data-testid="history-icon-btn"]'),
+      page.locator('[data-testid="action-menu-trigger"]'),
     ).toBeVisible();
   },
 );
