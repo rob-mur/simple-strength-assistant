@@ -62,3 +62,9 @@ Feature: Streamlined Workout Flow
     When the workout plan is ended
     Then no workout session should be active
     And no workout plan should be active
+
+  # Issue 162: Starting a plan auto-starts a session on the first exercise
+  Scenario: Starting a plan auto-starts a session on the first exercise
+    Given a plan with exercises "Squat", "Bench Press", "Deadlift"
+    When the plan is started
+    Then the active session should be for "Squat"

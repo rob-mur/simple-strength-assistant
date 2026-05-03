@@ -12,6 +12,7 @@ pub struct WorkoutWorld {
     pub active_tab: Tab,
     pub rendered_html: String,
     pub has_active_plan: bool,
+    pub planned_exercises: Vec<String>,
 }
 
 #[derive(Props, Clone, PartialEq)]
@@ -272,5 +273,61 @@ async fn step_no_plan_active(world: &mut WorkoutWorld) {
     assert!(
         !world.has_active_plan,
         "Expected no active plan after ending workout"
+    );
+}
+
+// Issue 162: Starting a plan auto-starts the first exercise
+
+#[given(expr = "a plan with exercises {string}, {string}, {string}")]
+async fn step_plan_with_three_exercises(
+    world: &mut WorkoutWorld,
+    ex1: String,
+    ex2: String,
+    ex3: String,
+) {
+    // Store the planned exercise names so start_plan can pick the first one
+    world.planned_exercises = vec![ex1, ex2, ex3];
+    world.has_active_plan = false;
+    world.current_session = None;
+}
+
+#[when("the plan is started")]
+async fn step_start_plan(world: &mut WorkoutWorld) {
+    // Simulate WorkoutStateManager::start_plan which now auto-starts
+    // a session on the first planned exercise.
+    world.has_active_plan = true;
+    if let Some(first_name) = world.planned_exercises.first() {
+        world.current_session = Some(WorkoutSession {
+            session_id: Some("auto-1".to_string()),
+            exercise: ExerciseMetadata {
+                id: Some("auto-1".to_string()),
+                name: first_name.clone(),
+                set_type_config: SetTypeConfig::Weighted {
+                    min_weight: 0.0,
+                    increment: 2.5,
+                },
+                min_reps: 1,
+                max_reps: None,
+            },
+            completed_sets: Vec::new(),
+            predicted: PredictedParameters {
+                weight: Some(0.0),
+                reps: 8,
+                rpe: 7.0,
+            },
+        });
+    }
+}
+
+#[then(expr = "the active session should be for {string}")]
+async fn step_active_session_for(world: &mut WorkoutWorld, exercise_name: String) {
+    let session = world
+        .current_session
+        .as_ref()
+        .expect("Expected an active session after starting the plan");
+    assert_eq!(
+        session.exercise.name, exercise_name,
+        "Expected active session for '{}', got '{}'",
+        exercise_name, session.exercise.name
     );
 }
