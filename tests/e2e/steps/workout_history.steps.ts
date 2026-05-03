@@ -210,9 +210,7 @@ Then("I should be on the Workout tab", async ({ page }) => {
     page.locator('[data-testid="tab-workout"][aria-selected="true"]'),
   ).toBeVisible();
   // Also verify we're NOT on the history page any more.
-  await expect(
-    page.locator('[data-testid="history-view"]'),
-  ).not.toBeVisible();
+  await expect(page.locator('[data-testid="history-view"]')).not.toBeVisible();
 });
 
 When("I scroll to the bottom of the history feed", async ({ page }) => {
