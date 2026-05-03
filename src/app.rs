@@ -4,7 +4,6 @@ use crate::components::debug_panel::DebugPanel;
 use crate::components::exercise_form::ExerciseForm;
 use crate::components::history_view::HistoryView;
 use crate::components::library_view::LibraryView;
-use crate::components::previous_sessions::PreviousSessions;
 use crate::components::rpe_slider::RPESlider;
 use crate::components::settings_view::SettingsView;
 use crate::components::step_controls::StepControls;
@@ -1197,64 +1196,6 @@ pub fn ActiveSession(state: WorkoutState, session: crate::state::WorkoutSession)
                             on_dismiss: move |_| show_action_menu.set(false),
                         }
                     }
-                }
-            }
-
-            // Today's Sets Section
-            if !session_for_display.completed_sets.is_empty() {
-                div {
-                    class: "collapse collapse-arrow bg-base-100 shadow-lg border border-base-300",
-                    "data-testid": "todays-sets-section",
-                    input { r#type: "checkbox", checked: true },
-                    div {
-                        class: "collapse-title text-xl font-bold",
-                        {
-                            let n = session_for_display.completed_sets.len();
-                            let unit = if n == 1 { "set" } else { "sets" };
-                            format!("Today's Sets ({n} {unit})")
-                        }
-                    }
-                    div {
-                        class: "collapse-content p-0",
-                        div {
-                            class: "overflow-x-auto",
-                            table {
-                                class: "table table-zebra w-full",
-                                thead {
-                                    tr {
-                                        th { "Set" }
-                                        if session_for_display.predicted.weight.is_some() {
-                                            th { "Weight" }
-                                        }
-                                        th { "Reps" }
-                                        th { "RPE" }
-                                    }
-                                }
-                                tbody {
-                                    for set in session_for_display.completed_sets.iter() {
-                                        tr {
-                                            td { class: "font-bold", "{set.set_number}" }
-                                            if let SetType::Weighted { weight } = set.set_type {
-                                                td { "{crate::format::fmt_weight(weight)} kg" }
-                                            }
-                                            td { "{set.reps}" }
-                                            td { "{set.rpe}" }
-                                        }
-                                    }
-                                }
-                            }
-                        }
-                    }
-                }
-            }
-
-            // Previous Sessions — collapsible history for this exercise (AC #1–#6)
-            if let Some(ref eid) = session_for_display.exercise.id {
-                PreviousSessions {
-                    key: "{eid}",
-                    state: state,
-                    exercise_id: eid.clone(),
-                    completed_sets_count: session_for_display.completed_sets.len(),
                 }
             }
 

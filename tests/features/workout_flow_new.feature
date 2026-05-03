@@ -68,3 +68,18 @@ Feature: Streamlined Workout Flow
     Given a plan with exercises "Squat", "Bench Press", "Deadlift"
     When the plan is started
     Then the active session should be for "Squat"
+
+  # Issue 164: Over-plan banner is removed
+  Scenario: Over-plan warning banner is absent during active session
+    Given an active session for "Bench Press" with completed sets
+    Then the over-plan warning banner should not be present
+
+  # Issue 164: Set-count badge renders in warning colour when completed > planned
+  Scenario: Set-count badge uses warning colour when completed sets exceed planned
+    Given an exercise tab with 3 completed sets and 2 planned sets
+    Then the set-count badge should render in warning colour
+
+  # Issue 164: Set-count badge uses default colour when completed <= planned
+  Scenario: Set-count badge uses default colour when completed sets are within plan
+    Given an exercise tab with 2 completed sets and 3 planned sets
+    Then the set-count badge should render in default colour

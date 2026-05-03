@@ -411,7 +411,6 @@ async fn test_get_sets_for_exercise_isolation() {
 }
 
 /// RED: get_sets_for_exercise_before excludes sets recorded on or after the cutoff.
-/// The "Previous Sessions" panel must not show sets logged during the current (today's) session.
 #[wasm_bindgen_test]
 async fn test_get_sets_for_exercise_before_excludes_today() {
     let mut db = Database::new();

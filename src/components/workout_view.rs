@@ -10,7 +10,6 @@ pub fn WorkoutView(state: WorkoutState) -> Element {
     let current_plan = state.current_plan();
     let mut active_tab_index = use_signal(|| 0usize);
     let mut set_counts = use_signal(Vec::<u32>::new);
-    let mut prompt_dismissed = use_signal(|| false);
     let mut show_add_exercise = use_signal(|| false);
     let mut add_search_query = use_signal(String::new);
 
@@ -81,17 +80,6 @@ pub fn WorkoutView(state: WorkoutState) -> Element {
                 }
             }
 
-            // Check if current exercise exceeds planned sets
-            let over_plan = if let Some(ref session) = current_session {
-                let current_sets = session.completed_sets.len() as u32;
-                exercises
-                    .get(active_idx)
-                    .map(|pe| current_sets > pe.planned_sets)
-                    .unwrap_or(false)
-            } else {
-                false
-            };
-
             rsx! {
                 div {
                     class: "max-w-2xl mx-auto",
@@ -123,7 +111,6 @@ pub fn WorkoutView(state: WorkoutState) -> Element {
                         },
                         on_select: move |idx: usize| {
                             active_tab_index.set(idx);
-                            prompt_dismissed.set(false);
                             if let Some(pe) = exercises.get(idx) {
                                 let exercise = pe.exercise.clone();
                                 spawn(async move {
@@ -133,24 +120,6 @@ pub fn WorkoutView(state: WorkoutState) -> Element {
                                 });
                             }
                         },
-                    }
-
-                    // Over-plan soft prompt
-                    if over_plan && !prompt_dismissed() {
-                        div {
-                            class: "alert alert-warning mx-4 mb-4 flex justify-between items-center",
-                            "data-testid": "over-plan-prompt",
-                            span {
-                                class: "text-sm",
-                                "You've completed all planned sets for this exercise. Consider moving to the next one."
-                            }
-                            button {
-                                class: "btn btn-ghost btn-xs",
-                                "data-testid": "dismiss-prompt",
-                                onclick: move |_| prompt_dismissed.set(true),
-                                "✕"
-                            }
-                        }
                     }
 
                     if let Some(session) = current_session {

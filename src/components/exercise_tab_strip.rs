@@ -51,6 +51,7 @@ pub fn ExerciseTabStrip(
                             let planned = pe.planned_sets;
                             let completed = completed_counts.get(idx).copied().unwrap_or(0);
                             let all_done = completed >= planned;
+                            let over_plan = completed > planned;
 
                             rsx! {
                                 button {
@@ -75,6 +76,15 @@ pub fn ExerciseTabStrip(
                                                 "✓"
                                             }
                                         }
+                                    }
+                                    span {
+                                        class: if over_plan {
+                                            "text-xs font-semibold mt-1 text-warning"
+                                        } else {
+                                            "text-xs font-semibold mt-1"
+                                        },
+                                        "data-testid": "set-count-badge",
+                                        "{completed}/{planned}"
                                     }
                                     div {
                                         class: "flex gap-1 mt-1",

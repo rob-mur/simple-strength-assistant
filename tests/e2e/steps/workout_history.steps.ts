@@ -230,4 +230,4 @@ When("I scroll to the bottom of the history feed", async ({ page }) => {
 
 // ── Session helpers ─────────────────────────────────────────────────────────
 // Note: "I finish any active session" and "I start a test session with {string}"
-// are defined in common.steps.ts and previous_sessions.steps.ts respectively.
+// are defined in common.steps.ts.
