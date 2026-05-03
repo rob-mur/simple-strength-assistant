@@ -582,7 +582,16 @@ impl WorkoutStateManager {
             .get_plan(&plan.id)
             .await
             .map_err(WorkoutError::Database)?;
+        // Auto-start a session on the first planned exercise so the user
+        // lands directly on the recording UI instead of an empty state.
+        let first_exercise = refreshed
+            .as_ref()
+            .and_then(|p| p.exercises.first())
+            .map(|pe| pe.exercise.clone());
         state.set_current_plan(refreshed);
+        if let Some(exercise) = first_exercise {
+            Self::start_session(state, exercise).await?;
+        }
         Ok(())
     }
 

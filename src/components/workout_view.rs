@@ -155,12 +155,6 @@ pub fn WorkoutView(state: WorkoutState) -> Element {
 
                     if let Some(session) = current_session {
                         ActiveSession { state, session }
-                    } else {
-                        div {
-                            class: "text-center py-8 text-base-content/50",
-                            "data-testid": "plan-active-state",
-                            p { "Tap an exercise tab above to start recording." }
-                        }
                     }
 
                     // Exercise picker modal for adding mid-workout
