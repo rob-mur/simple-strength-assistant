@@ -252,7 +252,7 @@ pub fn LibraryView() -> Element {
                                                             evt.stop_propagation();
                                                             let e_clone = e.clone();
                                                             spawn(async move {
-                                                                if let Err(err) = WorkoutStateManager::start_session(&workout_state, e_clone).await {
+                                                                if let Err(err) = WorkoutStateManager::start_adhoc_plan(&workout_state, &e_clone).await {
                                                                     WorkoutStateManager::handle_error(&workout_state, err);
                                                                 } else {
                                                                     navigator.push(Route::WorkoutTab);

@@ -423,7 +423,7 @@ fn LibraryExercise(exercise_id: String) -> Element {
                             let state = workout_state;
                             let ex = exercise.clone();
                             spawn(async move {
-                                if let Err(e) = WorkoutStateManager::start_session(&state, ex).await {
+                                if let Err(e) = WorkoutStateManager::start_adhoc_plan(&state, &ex).await {
                                     WorkoutStateManager::handle_error(&state, e);
                                 } else {
                                     navigator.push(Route::WorkoutTab);

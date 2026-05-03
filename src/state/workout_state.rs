@@ -622,6 +622,37 @@ impl WorkoutStateManager {
         Ok(())
     }
 
+    /// Create a transient one-exercise plan, add the given exercise with the
+    /// configured `default_planned_sets`, then start the plan (which auto-starts
+    /// a session on the first — and only — exercise).
+    ///
+    /// This replaces the legacy `start_session`-only path from the Library so
+    /// that every workout always has a plan backing it.
+    pub async fn start_adhoc_plan(
+        state: &WorkoutState,
+        exercise: &ExerciseMetadata,
+    ) -> Result<(), WorkoutError> {
+        let exercise_id = exercise
+            .id
+            .as_deref()
+            .ok_or(WorkoutError::SessionNotPersisted)?;
+        let planned_sets = state.settings().default_planned_sets;
+
+        // Create a fresh plan, add the single exercise, then start it.
+        let plan_id = Self::create_plan(state).await?;
+        // `create_plan` sets current_plan on state, so `add_exercise_to_plan`
+        // will find it.
+        Self::add_exercise_to_plan(state, exercise_id, planned_sets).await?;
+        // `start_plan` marks the plan as started and auto-starts a session on
+        // the first (only) exercise.
+        Self::start_plan(state).await?;
+        js_log(&format!(
+            "[Workout] Ad-hoc plan {} started for exercise {}",
+            plan_id, exercise_id
+        ));
+        Ok(())
+    }
+
     pub async fn end_plan(state: &WorkoutState) -> Result<(), WorkoutError> {
         let plan = state.current_plan().ok_or(WorkoutError::NoActiveSession)?;
         let db = state.database().ok_or(WorkoutError::NotInitialized)?;

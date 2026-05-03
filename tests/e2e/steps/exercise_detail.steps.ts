@@ -103,6 +103,13 @@ Then(
   },
 );
 
+Then("an active plan should exist with the exercise", async ({ page }) => {
+  // An active plan means the End Workout button is visible (only rendered
+  // when a started plan exists) and the exercise tab strip is present.
+  await expect(page.getByTestId("end-workout-button")).toBeVisible();
+  await expect(page.locator('[data-testid="exercise-tab"]')).toHaveCount(1);
+});
+
 When("the user taps the Edit button in the detail view", async ({ page }) => {
   await page.getByTestId("edit-button").click();
 });

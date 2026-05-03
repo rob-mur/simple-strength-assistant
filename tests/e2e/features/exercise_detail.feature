@@ -31,6 +31,18 @@ Feature: Exercise Detail View
     Then the user should see "HEAVY SQUAT" in the header
 
   @fast
+  Scenario: START creates ad-hoc plan with active session
+    Given I have a fresh context and clear storage
+    And I create a new database
+    And the database contains "Bench Press" as a weighted exercise
+    And the user is on the Library tab
+    When the user taps on the "Bench Press" card
+    And the user taps the Start button in the detail view
+    Then the user should be on the Workout tab
+    And a session for "Bench Press" should be active
+    And an active plan should exist with the exercise
+
+  @fast
   Scenario: Back button returns to library
     Given I have a fresh context and clear storage
     And I create a new database
