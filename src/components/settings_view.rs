@@ -1,4 +1,5 @@
 use crate::components::pairing::PairingStep;
+use crate::log_buffer::LogEntry;
 use crate::models::Settings;
 use crate::state::{SyncStatus, WorkoutState, WorkoutStateManager};
 use crate::sync::SyncCredentials;
@@ -516,7 +517,7 @@ pub fn SettingsView(state: WorkoutState) -> Element {
 
             // ── Data management card (existing) ─────────────────────────────
             div {
-                class: "card bg-base-100 shadow-xl",
+                class: "card bg-base-100 shadow-xl mb-6",
                 div {
                     class: "card-body",
                     h3 { class: "card-title text-base font-bold mb-2", "Data Management" }
@@ -525,6 +526,186 @@ pub fn SettingsView(state: WorkoutState) -> Element {
                         "Export your workout database for backup or transfer to another device. Import a previously exported database to restore your data."
                     }
                     crate::components::data_management::DataManagementPanel { state }
+                }
+            }
+
+            // ── Debug Logs card ───────────────────────────────────────────────
+            DebugLogsCard { state }
+        }
+    }
+}
+
+/// Level filter for the debug logs viewer.
+#[derive(Clone, Copy, PartialEq, Debug, Default)]
+enum LogLevelFilter {
+    #[default]
+    All,
+    WarnPlus,
+    ErrorOnly,
+}
+
+/// Format all entries as plain text for clipboard export.
+fn format_entries_for_clipboard(entries: &[LogEntry]) -> String {
+    entries
+        .iter()
+        .map(|e| e.format_line())
+        .collect::<Vec<_>>()
+        .join("\n")
+}
+
+/// Badge colour for a given log level.
+fn level_badge_class(level: log::Level) -> &'static str {
+    match level {
+        log::Level::Error => "badge badge-error badge-xs",
+        log::Level::Warn => "badge badge-warning badge-xs",
+        log::Level::Info => "badge badge-info badge-xs",
+        _ => "badge badge-ghost badge-xs",
+    }
+}
+
+#[component]
+fn DebugLogsCard(state: WorkoutState) -> Element {
+    let mut collapsed = use_signal(|| true);
+    let mut level_filter = use_signal(LogLevelFilter::default);
+
+    // Refresh the log snapshot from the global buffer on every render of this
+    // component so it stays up-to-date while the Settings page is open.
+    state.refresh_log_entries();
+    let all_entries = state.log_entries();
+
+    let filtered: Vec<LogEntry> = match level_filter() {
+        LogLevelFilter::All => all_entries.clone(),
+        LogLevelFilter::WarnPlus => all_entries
+            .iter()
+            .filter(|e| e.level <= log::Level::Warn)
+            .cloned()
+            .collect(),
+        LogLevelFilter::ErrorOnly => all_entries
+            .iter()
+            .filter(|e| e.level == log::Level::Error)
+            .cloned()
+            .collect(),
+    };
+
+    rsx! {
+        div {
+            class: "card bg-base-100 shadow-xl",
+            "data-testid": "debug-logs-section",
+            div {
+                class: "card-body",
+                // Header row: title + collapse toggle
+                div {
+                    class: "flex items-center justify-between cursor-pointer",
+                    "data-testid": "debug-logs-header",
+                    onclick: move |_| collapsed.set(!collapsed()),
+                    h3 {
+                        class: "card-title text-base font-bold",
+                        "Debug Logs"
+                        span {
+                            class: "badge badge-sm badge-ghost ml-2",
+                            "{all_entries.len()}"
+                        }
+                    }
+                    span {
+                        class: "text-base-content/60 text-lg",
+                        if collapsed() { "\u{25B6}" } else { "\u{25BC}" }
+                    }
+                }
+
+                if !collapsed() {
+                    // Toolbar: filter + actions
+                    div {
+                        class: "flex flex-wrap items-center gap-2 mt-3 mb-2",
+
+                        // Level filter
+                        select {
+                            class: "select select-bordered select-xs",
+                            "data-testid": "debug-logs-filter",
+                            value: match level_filter() {
+                                LogLevelFilter::All => "all",
+                                LogLevelFilter::WarnPlus => "warn",
+                                LogLevelFilter::ErrorOnly => "error",
+                            },
+                            onchange: move |evt| {
+                                level_filter.set(match evt.value().as_str() {
+                                    "warn" => LogLevelFilter::WarnPlus,
+                                    "error" => LogLevelFilter::ErrorOnly,
+                                    _ => LogLevelFilter::All,
+                                });
+                            },
+                            option { value: "all", "All" }
+                            option { value: "warn", "Warn+" }
+                            option { value: "error", "Error" }
+                        }
+
+                        // Copy all
+                        button {
+                            class: "btn btn-outline btn-xs",
+                            "data-testid": "debug-logs-copy",
+                            onclick: {
+                                let entries = filtered.clone();
+                                move |_| {
+                                    let text = format_entries_for_clipboard(&entries);
+                                    #[cfg(not(test))]
+                                    copy_to_clipboard(&text);
+                                    let _ = text;
+                                }
+                            },
+                            "Copy all"
+                        }
+
+                        // Clear
+                        button {
+                            class: "btn btn-outline btn-error btn-xs",
+                            "data-testid": "debug-logs-clear",
+                            onclick: move |_| {
+                                state.clear_log_entries();
+                            },
+                            "Clear"
+                        }
+                    }
+
+                    // Entries list
+                    if filtered.is_empty() {
+                        p {
+                            class: "text-sm text-base-content/40 italic py-4 text-center",
+                            "data-testid": "debug-logs-empty",
+                            "No log entries."
+                        }
+                    } else {
+                        div {
+                            class: "overflow-y-auto max-h-80 border border-base-300 rounded-lg",
+                            "data-testid": "debug-logs-list",
+                            for (idx, entry) in filtered.iter().enumerate() {
+                                div {
+                                    key: "{idx}",
+                                    class: "flex gap-2 items-start px-2 py-1 text-xs font-mono border-b border-base-200 last:border-b-0",
+                                    // Timestamp
+                                    span {
+                                        class: "text-base-content/50 shrink-0",
+                                        {
+                                            let secs = (entry.timestamp_ms / 1000.0) as u64;
+                                            let ms = (entry.timestamp_ms % 1000.0) as u32;
+                                            let h = (secs / 3600) % 24;
+                                            let m = (secs / 60) % 60;
+                                            let s = secs % 60;
+                                            format!("{:02}:{:02}:{:02}.{:03}", h, m, s, ms)
+                                        }
+                                    }
+                                    // Level badge
+                                    span {
+                                        class: level_badge_class(entry.level),
+                                        "{entry.level}"
+                                    }
+                                    // Message
+                                    span {
+                                        class: "break-all",
+                                        "{entry.message}"
+                                    }
+                                }
+                            }
+                        }
+                    }
                 }
             }
         }
