@@ -12,12 +12,9 @@ pub struct WorkoutWorld {
     pub active_tab: Tab,
     pub rendered_html: String,
     pub has_active_plan: bool,
-<<<<<<< HEAD
     pub planned_exercises: Vec<String>,
-=======
     pub tab_completed: u32,
     pub tab_planned: u32,
->>>>>>> 42af368 (feat(ui): remove Today's Sets, Previous Sessions, over-plan banner; add warning badge (#164))
 }
 
 #[derive(Props, Clone, PartialEq)]
