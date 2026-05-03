@@ -916,8 +916,7 @@ impl Database {
     /// Returns sets for one exercise recorded **before** `before_ms` (Unix ms),
     /// in reverse-chronological order with pagination.
     ///
-    /// Used by the "Previous Sessions" panel so that sets logged during the
-    /// current (today's) session are not shown alongside historical data.
+    /// Useful for excluding recent sets so that only historical data is shown.
     pub async fn get_sets_for_exercise_before(
         &self,
         exercise_id: &str,

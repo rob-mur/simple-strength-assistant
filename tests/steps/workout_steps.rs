@@ -3,7 +3,7 @@ use dioxus::prelude::*;
 use dioxus_history::MemoryHistory;
 use simple_strength_assistant::app::{Route, TabNavigationState};
 use simple_strength_assistant::components::tab_bar::Tab;
-use simple_strength_assistant::models::{ExerciseMetadata, SetTypeConfig};
+use simple_strength_assistant::models::{ExerciseMetadata, PlanExercise, SetTypeConfig};
 use simple_strength_assistant::state::{PredictedParameters, WorkoutSession, WorkoutState};
 
 #[derive(Debug, Default, World)]
@@ -12,7 +12,12 @@ pub struct WorkoutWorld {
     pub active_tab: Tab,
     pub rendered_html: String,
     pub has_active_plan: bool,
+<<<<<<< HEAD
     pub planned_exercises: Vec<String>,
+=======
+    pub tab_completed: u32,
+    pub tab_planned: u32,
+>>>>>>> 42af368 (feat(ui): remove Today's Sets, Previous Sessions, over-plan banner; add warning badge (#164))
 }
 
 #[derive(Props, Clone, PartialEq)]
@@ -329,5 +334,90 @@ async fn step_active_session_for(world: &mut WorkoutWorld, exercise_name: String
         session.exercise.name, exercise_name,
         "Expected active session for '{}', got '{}'",
         exercise_name, session.exercise.name
+    );
+}
+
+// Issue 164: Over-plan warning banner is removed
+#[then("the over-plan warning banner should not be present")]
+async fn step_no_over_plan_banner(world: &mut WorkoutWorld) {
+    world.render_component();
+    assert!(
+        !world.rendered_html.contains("over-plan-prompt"),
+        "Expected no over-plan-prompt element in the rendered HTML"
+    );
+}
+
+// Issue 164: ExerciseTabStrip set-count badge warning colour
+
+#[derive(Props, Clone, PartialEq)]
+struct TabStripTestProps {
+    exercises: Vec<PlanExercise>,
+    completed_counts: Vec<u32>,
+}
+
+#[component]
+fn TabStripTestWrapper(props: TabStripTestProps) -> Element {
+    use simple_strength_assistant::components::exercise_tab_strip::ExerciseTabStrip;
+    rsx! {
+        ExerciseTabStrip {
+            exercises: props.exercises.clone(),
+            active_index: 0usize,
+            completed_counts: props.completed_counts.clone(),
+            on_select: move |_: usize| {},
+        }
+    }
+}
+
+#[given(expr = "an exercise tab with {int} completed sets and {int} planned sets")]
+async fn step_exercise_tab_with_counts(world: &mut WorkoutWorld, completed: u32, planned: u32) {
+    world.tab_completed = completed;
+    world.tab_planned = planned;
+
+    let exercises = vec![PlanExercise {
+        id: "pe-1".to_string(),
+        exercise: ExerciseMetadata {
+            id: Some("1".to_string()),
+            name: "Bench Press".to_string(),
+            set_type_config: SetTypeConfig::Weighted {
+                min_weight: 0.0,
+                increment: 5.0,
+            },
+            min_reps: 1,
+            max_reps: None,
+        },
+        planned_sets: planned,
+        position: 0,
+    }];
+
+    let completed_counts = vec![completed];
+
+    let mut vdom = VirtualDom::new_with_props(
+        TabStripTestWrapper,
+        TabStripTestProps {
+            exercises,
+            completed_counts,
+        },
+    );
+    vdom.rebuild_in_place();
+    world.rendered_html = dioxus_ssr::render(&vdom);
+}
+
+#[then("the set-count badge should render in warning colour")]
+async fn step_badge_warning(world: &mut WorkoutWorld) {
+    // The badge element should have text-warning class when completed > planned
+    assert!(
+        world.rendered_html.contains("text-warning"),
+        "Expected set-count badge to have 'text-warning' class. HTML: {}",
+        world.rendered_html
+    );
+}
+
+#[then("the set-count badge should render in default colour")]
+async fn step_badge_default(world: &mut WorkoutWorld) {
+    // The badge element should NOT have text-warning class when completed <= planned
+    assert!(
+        !world.rendered_html.contains("text-warning"),
+        "Expected set-count badge to NOT have 'text-warning' class. HTML: {}",
+        world.rendered_html
     );
 }

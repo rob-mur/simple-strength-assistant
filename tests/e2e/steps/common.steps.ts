@@ -1,4 +1,4 @@
-import { Given } from "./fixtures";
+import { Given, When } from "./fixtures";
 import { setDioxusInput } from "./dioxus_helpers";
 
 Given("I have a fresh context and clear storage", async ({ page, context }) => {
@@ -72,6 +72,55 @@ Given(
 
     await page.waitForSelector('body[data-hydrated="true"]', {
       timeout: 10000,
+    });
+  },
+);
+
+When("I log a set in the current session", async ({ page }) => {
+  await page.locator('button:has-text("LOG SET")').click();
+  // Wait for the set to be persisted and state to refresh
+  await page.waitForTimeout(500);
+});
+
+Given(
+  "I have logged {int} sets for {string} in a previous session",
+  async ({ page }, count: number, exerciseName: string) => {
+    // The exercise session is already active (started by "I start a test session with").
+    // Log `count` sets then finish the session so they appear as "previous" history.
+    for (let i = 0; i < count; i++) {
+      await page.locator('button:has-text("LOG SET")').click();
+      await page.waitForTimeout(100);
+    }
+
+    // Navigate to Library and re-start the same exercise.
+    await page.click(
+      'button[role="tab"]:has-text("Library"), button:has-text("Library")',
+    );
+    await page.waitForTimeout(200);
+    await page
+      .locator("div.card", { hasText: exerciseName })
+      .getByRole("button", { name: "START" })
+      .click();
+    await page.waitForSelector('body[data-hydrated="true"]', {
+      timeout: 10000,
+    });
+
+    // Backdate the persisted sets to yesterday so they appear before today's cutoff.
+    await page.evaluate(async () => {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const exec = (window as any).__dbExecuteQuery as
+        | ((sql: string, params: unknown[]) => Promise<unknown>)
+        | undefined;
+      if (!exec) throw new Error("__dbExecuteQuery not available on window");
+      const oneDayMs = 86_400_000;
+      const now = Date.now();
+      const offsetMs = -new Date().getTimezoneOffset() * 60_000;
+      const startOfTodayUtc =
+        Math.floor((now + offsetMs) / oneDayMs) * oneDayMs - offsetMs;
+      await exec(
+        "UPDATE completed_sets SET recorded_at = recorded_at - ? WHERE recorded_at >= ?",
+        [oneDayMs, startOfTodayUtc],
+      );
     });
   },
 );
