@@ -274,8 +274,8 @@ export async function executeQuery(sql, params) {
  * Strategy order (feature-detected, no UA sniffing):
  *   1. Web Share API with files — opens the native share sheet on Android,
  *      letting the user save to Files / Drive / etc.
- *   2. window.open(blobUrl) — delegates to the system download manager.
- *   3. Anchor element with `download` attribute — classic desktop path.
+ *   2. Anchor element with `download` attribute — classic desktop path
+ *      (triggers proper download events in all desktop browsers and tests).
  *
  * Returns a result object: { ok: true, method } on success,
  * or { ok: false, error } on failure. Never throws.
@@ -314,21 +314,9 @@ export async function downloadBytes(data, filename) {
 
     const url = URL.createObjectURL(blob);
 
-    // ── Strategy 2: window.open ─────────────────────────────────────────────
-    try {
-      const win = window.open(url, "_blank");
-      if (win) {
-        setTimeout(() => URL.revokeObjectURL(url), 5000);
-        console.log(`[Export] Opened via window.open: ${filename} (${byteSize} bytes)`);
-        return { ok: true, method: "window-open", byteSize };
-      }
-      // win is null — popup was blocked; fall through to anchor.
-      console.warn("[Export] window.open returned null (popup blocked?), trying anchor fallback");
-    } catch (openErr) {
-      console.warn("[Export] window.open threw, trying anchor fallback:", openErr);
-    }
-
-    // ── Strategy 3: Anchor element click (desktop) ──────────────────────────
+    // ── Strategy 2: Anchor element click (desktop / most browsers) ──────────
+    // Tried before window.open because it triggers proper download events and
+    // is the most reliable path on desktop browsers and in automated tests.
     const a = document.createElement("a");
     a.href = url;
     a.download = filename;
