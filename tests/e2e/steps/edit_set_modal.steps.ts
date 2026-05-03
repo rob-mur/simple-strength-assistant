@@ -40,8 +40,8 @@ Then(
   "the RPE display in the modal should show {string}",
   async ({ page }, rpe) => {
     const modal = page.locator('[data-testid="edit-set-modal"]');
-    // The RPE is in a div with text-6xl class (from RPESlider)
-    await expect(modal.locator(".text-6xl")).toContainText(rpe);
+    // The RPE is in a div with text-3xl class (from RPESlider)
+    await expect(modal.locator(".text-3xl")).toContainText(rpe);
   },
 );
 
