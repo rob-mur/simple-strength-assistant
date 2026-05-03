@@ -14,7 +14,7 @@ pub fn WorkoutView(state: WorkoutState) -> Element {
     let mut add_search_query = use_signal(String::new);
 
     match (&current_plan, &current_session) {
-        // Plan started — show tab strip + recorder + end workout
+        // Plan started — show tab strip + recorder
         (Some(plan), _) if plan.started_at.is_some() && plan.ended_at.is_none() => {
             let exercises = plan.exercises.clone();
             let plan_started_at = plan.started_at.unwrap_or(0.0);
@@ -83,23 +83,6 @@ pub fn WorkoutView(state: WorkoutState) -> Element {
             rsx! {
                 div {
                     class: "max-w-2xl mx-auto",
-
-                    // End Workout button
-                    div {
-                        class: "flex justify-end px-4 py-2",
-                        button {
-                            class: "btn btn-ghost btn-sm text-error",
-                            "data-testid": "end-workout-button",
-                            onclick: move |_| {
-                                spawn(async move {
-                                    if let Err(e) = WorkoutStateManager::end_plan(&state).await {
-                                        log::warn!("Failed to end plan: {}", e);
-                                    }
-                                });
-                            },
-                            "End Workout"
-                        }
-                    }
 
                     ExerciseTabStrip {
                         exercises: exercises.clone(),

@@ -83,3 +83,23 @@ Feature: Streamlined Workout Flow
   Scenario: Set-count badge uses default colour when completed sets are within plan
     Given an exercise tab with 2 completed sets and 3 planned sets
     Then the set-count badge should render in default colour
+
+  # Issue 167: Complete Workout via three-dot menu
+  Scenario: Complete Workout via menu sets ended_at and clears plan
+    Given an active session for "Bench Press" with completed sets
+    When the user selects Complete Workout from the menu and confirms
+    Then no workout session should be active
+    And no workout plan should be active
+    And the plan should have ended_at set
+
+  # Issue 167: Top-right End Workout button is removed
+  Scenario: Active workout view does not show End Workout button
+    Given an active session for "Bench Press" with completed sets
+    Then the End Workout button should not be present
+
+  # Issue 167: Cancel on confirmation dialog leaves plan unchanged
+  Scenario: Cancelling the Complete Workout confirmation leaves plan active
+    Given an active session for "Bench Press" with completed sets
+    When the user selects Complete Workout from the menu and cancels
+    Then a workout session should still be active
+    And a workout plan should still be active

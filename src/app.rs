@@ -1,4 +1,5 @@
 use crate::components::bottom_sheet::{BottomSheet, BottomSheetItem, BottomSheetVariant};
+use crate::components::confirmation_dialog::ConfirmationDialog;
 #[cfg(debug_assertions)]
 use crate::components::debug_panel::DebugPanel;
 use crate::components::exercise_form::ExerciseForm;
@@ -1042,6 +1043,7 @@ pub fn ActiveSession(state: WorkoutState, session: crate::state::WorkoutSession)
     let navigator = use_navigator();
     let history_exercise_id = session_for_display.exercise.id.clone().unwrap_or_default();
     let mut show_action_menu = use_signal(|| false);
+    let mut show_complete_confirm = use_signal(|| false);
 
     rsx! {
         div {
@@ -1240,24 +1242,58 @@ pub fn ActiveSession(state: WorkoutState, session: crate::state::WorkoutSession)
                                     label: "View History".to_string(),
                                     icon: None,
                                     variant: BottomSheetVariant::Default,
+                                    testid: None,
+                                },
+                                BottomSheetItem {
+                                    label: "Complete Workout".to_string(),
+                                    icon: None,
+                                    variant: BottomSheetVariant::Danger,
+                                    testid: Some("complete-workout-menu-item".to_string()),
                                 },
                                 BottomSheetItem {
                                     label: "Cancel".to_string(),
                                     icon: None,
                                     variant: BottomSheetVariant::Default,
+                                    testid: None,
                                 },
                             ],
                             on_select: move |idx: usize| {
                                 show_action_menu.set(false);
-                                if idx == 0 {
-                                    navigator.push(Route::WorkoutHistoryExercise {
-                                        exercise_id: exercise_id_for_menu.clone(),
-                                    });
+                                match idx {
+                                    0 => {
+                                        navigator.push(Route::WorkoutHistoryExercise {
+                                            exercise_id: exercise_id_for_menu.clone(),
+                                        });
+                                    }
+                                    1 => {
+                                        // Open the Complete Workout confirmation dialog
+                                        show_complete_confirm.set(true);
+                                    }
+                                    _ => {} // Cancel or backdrop — just close
                                 }
                             },
                             on_dismiss: move |_| show_action_menu.set(false),
                         }
                     }
+                }
+            }
+
+            // Complete Workout Confirmation Dialog
+            if show_complete_confirm() {
+                ConfirmationDialog {
+                    title: "Complete this workout?".to_string(),
+                    body: "End this workout? Your recorded sets will be saved.".to_string(),
+                    confirm_label: "Complete".to_string(),
+                    cancel_label: "Cancel".to_string(),
+                    on_confirm: move |_| {
+                        show_complete_confirm.set(false);
+                        spawn(async move {
+                            if let Err(e) = WorkoutStateManager::end_plan(&state).await {
+                                log::warn!("Failed to complete workout: {}", e);
+                            }
+                        });
+                    },
+                    on_cancel: move |_| show_complete_confirm.set(false),
                 }
             }
 

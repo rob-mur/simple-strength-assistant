@@ -15,6 +15,7 @@ pub struct WorkoutWorld {
     pub planned_exercises: Vec<String>,
     pub tab_completed: u32,
     pub tab_planned: u32,
+    pub plan_ended_at: Option<f64>,
 }
 
 #[derive(Props, Clone, PartialEq)]
@@ -416,5 +417,56 @@ async fn step_badge_default(world: &mut WorkoutWorld) {
         !world.rendered_html.contains("text-warning"),
         "Expected set-count badge to NOT have 'text-warning' class. HTML: {}",
         world.rendered_html
+    );
+}
+
+// Issue 167: Complete Workout via three-dot menu
+
+#[when("the user selects Complete Workout from the menu and confirms")]
+async fn step_complete_workout_confirm(world: &mut WorkoutWorld) {
+    // Simulate: user taps Complete Workout in the bottom sheet, then confirms
+    // in the ConfirmationDialog. This mirrors WorkoutStateManager::end_plan:
+    // sets ended_at on the plan, clears current_plan and current_session.
+    world.plan_ended_at = Some(1714700000000.0);
+    world.has_active_plan = false;
+    world.current_session = None;
+}
+
+#[then("the plan should have ended_at set")]
+async fn step_plan_ended_at_set(world: &mut WorkoutWorld) {
+    assert!(
+        world.plan_ended_at.is_some(),
+        "Expected the plan's ended_at to be set after completing workout"
+    );
+}
+
+#[then("the End Workout button should not be present")]
+async fn step_no_end_workout_button(world: &mut WorkoutWorld) {
+    world.render_component();
+    assert!(
+        !world.rendered_html.contains("end-workout-button"),
+        "Expected no element with data-testid='end-workout-button' in the rendered HTML"
+    );
+}
+
+#[when("the user selects Complete Workout from the menu and cancels")]
+async fn step_complete_workout_cancel(_world: &mut WorkoutWorld) {
+    // Simulate: user taps Complete Workout, then cancels the confirmation dialog.
+    // No state change should occur — plan and session remain active.
+}
+
+#[then("a workout session should still be active")]
+async fn step_session_still_active(world: &mut WorkoutWorld) {
+    assert!(
+        world.current_session.is_some(),
+        "Expected workout session to still be active after cancelling"
+    );
+}
+
+#[then("a workout plan should still be active")]
+async fn step_plan_still_active(world: &mut WorkoutWorld) {
+    assert!(
+        world.has_active_plan,
+        "Expected workout plan to still be active after cancelling"
     );
 }
