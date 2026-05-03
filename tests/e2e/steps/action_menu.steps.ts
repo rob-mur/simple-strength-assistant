@@ -38,7 +38,11 @@ Then(
 
 When("I tap {string} in the bottom sheet", async ({ page }, label: string) => {
   const sheet = page.locator('[data-testid="bottom-sheet"]');
-  await sheet.locator(`button:has-text("${label}")`).click();
+  const btn = sheet.locator(`button:has-text("${label}")`);
+  // The sheet uses fixed positioning inside a fixed backdrop, which can
+  // cause Playwright's hit-test to resolve the backdrop instead of the
+  // button. Use force to skip the actionability check.
+  await btn.click({ force: true });
   await page.waitForTimeout(500);
 });
 

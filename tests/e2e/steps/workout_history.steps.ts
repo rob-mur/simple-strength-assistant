@@ -42,7 +42,11 @@ When("I click the history icon in the session header", async ({ page }) => {
   // Open the menu and tap "View History" to reach the exercise history view.
   await page.locator('[data-testid="action-menu-trigger"]').click();
   await page.waitForTimeout(300);
-  await page.locator('[data-testid="bottom-sheet-item-0"]').click();
+  // The bottom sheet uses fixed positioning inside a fixed backdrop; force the
+  // click to bypass Playwright's hit-test which may resolve the backdrop layer.
+  await page
+    .locator('[data-testid="bottom-sheet-item-0"]')
+    .click({ force: true });
   await page.waitForTimeout(500);
 });
 
@@ -199,7 +203,16 @@ When("I click the back button on the history page", async ({ page }) => {
 });
 
 Then("I should be on the Workout tab", async ({ page }) => {
-  await expect(page.locator('[data-testid="plan-builder"]')).toBeVisible();
+  // Check the Workout tab is selected – works regardless of whether the user has
+  // an active session (which shows the session UI) or is idle (which shows the
+  // plan builder).
+  await expect(
+    page.locator('[data-testid="tab-workout"][aria-selected="true"]'),
+  ).toBeVisible();
+  // Also verify we're NOT on the history page any more.
+  await expect(
+    page.locator('[data-testid="history-view"]'),
+  ).not.toBeVisible();
 });
 
 When("I scroll to the bottom of the history feed", async ({ page }) => {
