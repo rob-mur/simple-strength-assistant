@@ -263,7 +263,7 @@ When(
 );
 
 When("I set up sync and copy the sync code", async ({ page }) => {
-  await page.click('[data-testid="tab-settings"]');
+  await page.click('[data-testid="gear-icon-button"]');
   const setupBtn = page.locator('[data-testid="setup-sync-button"]');
   await expect(setupBtn).toBeVisible({ timeout: 10000 });
   (page as any).__syncLogCursor = (
@@ -393,7 +393,7 @@ When("I join sync with the copied sync code", async ({ page }) => {
   const syncCode = (page as any).__copiedSyncCode;
   if (!syncCode) throw new Error("No sync code was copied earlier");
 
-  await page.click('[data-testid="tab-settings"]');
+  await page.click('[data-testid="gear-icon-button"]');
 
   // Should show unpaired state since we cleared storage
   const joinBtn = page.locator('[data-testid="scan-code-button"]');

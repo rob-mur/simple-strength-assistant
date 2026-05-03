@@ -94,6 +94,8 @@ pub enum Route {
     LibraryTab,
     #[route("/library/:exercise_id")]
     LibraryExercise { exercise_id: String },
+    #[route("/analysis")]
+    AnalysisTab,
     #[route("/settings")]
     SettingsTab,
     #[end_layout]
@@ -110,12 +112,14 @@ fn Shell() -> Element {
     let route = use_route::<Route>();
     let navigator = use_navigator();
 
+    let is_settings_route = matches!(&route, Route::SettingsTab);
+
     let active_tab = match &route {
         Route::WorkoutTab | Route::WorkoutHistory | Route::WorkoutHistoryExercise { .. } => {
             Tab::Workout
         }
         Route::LibraryTab | Route::LibraryExercise { .. } => Tab::Library,
-        Route::SettingsTab => Tab::Settings,
+        Route::AnalysisTab => Tab::Analysis,
         _ => Tab::Workout,
     };
 
@@ -200,33 +204,37 @@ fn Shell() -> Element {
                 "data-testid": "shell-content",
                 div {
                     class: "container mx-auto p-4",
-                    {storage_mode_banner}
-                    {save_error_banner}
+                    if !is_settings_route {
+                        {storage_mode_banner}
+                        {save_error_banner}
+                    }
                     Outlet::<Route> {}
                 }
             }
-            TabBar {
-                active_tab,
-                on_change: move |tab| {
-                    match tab {
-                        Tab::Workout => {
-                            if active_tab == Tab::Workout {
-                                navigator.push(Route::WorkoutTab);
-                            } else {
-                                let target = navigation_state.last_workout_route.peek();
-                                navigator.push(target.clone());
+            if !is_settings_route {
+                TabBar {
+                    active_tab,
+                    on_change: move |tab| {
+                        match tab {
+                            Tab::Workout => {
+                                if active_tab == Tab::Workout {
+                                    navigator.push(Route::WorkoutTab);
+                                } else {
+                                    let target = navigation_state.last_workout_route.peek();
+                                    navigator.push(target.clone());
+                                }
                             }
-                        }
-                        Tab::Library => {
-                            if active_tab == Tab::Library {
-                                navigator.push(Route::LibraryTab);
-                            } else {
-                                let target = navigation_state.last_library_route.peek();
-                                navigator.push(target.clone());
+                            Tab::Library => {
+                                if active_tab == Tab::Library {
+                                    navigator.push(Route::LibraryTab);
+                                } else {
+                                    let target = navigation_state.last_library_route.peek();
+                                    navigator.push(target.clone());
+                                }
                             }
-                        }
-                        Tab::Settings => {
-                            navigator.push(Route::SettingsTab);
+                            Tab::Analysis => {
+                                navigator.push(Route::AnalysisTab);
+                            }
                         }
                     }
                 }
@@ -263,9 +271,50 @@ fn LibraryTab() -> Element {
 }
 
 #[component]
+fn AnalysisTab() -> Element {
+    let state = consume_context::<WorkoutState>();
+    rsx! { HistoryView { state, exercise_id: None } }
+}
+
+#[component]
 fn SettingsTab() -> Element {
     let state = consume_context::<WorkoutState>();
-    rsx! { SettingsView { state } }
+    rsx! {
+        div {
+            // Back arrow header for Settings
+            div {
+                class: "flex items-center gap-2 mb-4",
+                button {
+                    class: "btn btn-ghost btn-sm btn-circle",
+                    "data-testid": "settings-back-button",
+                    onclick: move |_| {
+                        // Use browser history back so user returns to whichever tab they came from
+                        if let Some(window) = web_sys::window() {
+                            let _ = window.history().and_then(|h| h.back());
+                        }
+                    },
+                    svg {
+                        xmlns: "http://www.w3.org/2000/svg",
+                        fill: "none",
+                        view_box: "0 0 24 24",
+                        stroke_width: "2.5",
+                        stroke: "currentColor",
+                        class: "w-6 h-6",
+                        path {
+                            stroke_linecap: "round",
+                            stroke_linejoin: "round",
+                            d: "M15.75 19.5L8.25 12l7.5-7.5"
+                        }
+                    }
+                }
+                h2 {
+                    class: "text-xl font-bold",
+                    "Settings"
+                }
+            }
+            SettingsView { state }
+        }
+    }
 }
 
 #[component]
@@ -508,9 +557,47 @@ pub fn App() -> Element {
                     }
                 }
                 div {
-                    class: "flex items-center justify-end pr-4",
+                    class: "flex items-center justify-end pr-4 gap-2",
                     SyncStatusIndicator {
                         status: workout_state.sync_status()
+                    }
+                    button {
+                        class: "btn btn-ghost btn-sm btn-circle text-primary-content",
+                        "data-testid": "gear-icon-button",
+                        "aria-label": "Settings",
+                        onclick: move |_| {
+                            // Navigate to settings using pushState + popstate event
+                            // so the Dioxus router picks up the navigation without a full reload
+                            if let Some(window) = web_sys::window() {
+                                let history = window.history().unwrap();
+                                let _ = history.push_state_with_url(
+                                    &wasm_bindgen::JsValue::NULL,
+                                    "",
+                                    Some("/settings"),
+                                );
+                                // Dispatch popstate so the Dioxus router reacts to the URL change
+                                let event = web_sys::Event::new("popstate").unwrap();
+                                let _ = window.dispatch_event(&event);
+                            }
+                        },
+                        svg {
+                            xmlns: "http://www.w3.org/2000/svg",
+                            fill: "none",
+                            view_box: "0 0 24 24",
+                            stroke_width: "1.5",
+                            stroke: "currentColor",
+                            class: "w-6 h-6",
+                            path {
+                                stroke_linecap: "round",
+                                stroke_linejoin: "round",
+                                d: "M9.594 3.94c.09-.542.56-.94 1.11-.94h2.593c.55 0 1.02.398 1.11.94l.213 1.281c.063.374.313.686.645.87.074.04.147.083.22.127.325.196.72.257 1.075.124l1.217-.456a1.125 1.125 0 011.37.49l1.296 2.247a1.125 1.125 0 01-.26 1.431l-1.003.827c-.293.241-.438.613-.43.992a7.723 7.723 0 010 .255c-.008.378.137.75.43.991l1.004.827c.424.35.534.955.26 1.43l-1.298 2.247a1.125 1.125 0 01-1.369.491l-1.217-.456c-.355-.133-.75-.072-1.076.124a6.47 6.47 0 01-.22.128c-.331.183-.581.495-.644.869l-.213 1.281c-.09.543-.56.94-1.11.94h-2.594c-.55 0-1.019-.398-1.11-.94l-.213-1.281c-.062-.374-.312-.686-.644-.87a6.52 6.52 0 01-.22-.127c-.325-.196-.72-.257-1.076-.124l-1.217.456a1.125 1.125 0 01-1.369-.49l-1.297-2.247a1.125 1.125 0 01.26-1.431l1.004-.827c.292-.24.437-.613.43-.991a6.932 6.932 0 010-.255c.007-.38-.138-.751-.43-.992l-1.004-.827a1.125 1.125 0 01-.26-1.43l1.297-2.247a1.125 1.125 0 011.37-.491l1.216.456c.356.133.751.072 1.076-.124.072-.044.146-.086.22-.128.332-.183.582-.495.644-.869l.214-1.28z"
+                            }
+                            path {
+                                stroke_linecap: "round",
+                                stroke_linejoin: "round",
+                                d: "M15 12a3 3 0 11-6 0 3 3 0 016 0z"
+                            }
+                        }
                     }
                 }
             }

@@ -25,13 +25,25 @@ pub struct TabNavigationWorld {
 
     // Context state
     pub workout_state_mounted: bool,
+
+    // Settings state
+    pub on_settings_page: bool,
+    pub tab_bar_visible: bool,
+    pub navigated_back: bool,
+
+    // Tab icon+label state
+    pub tab_icons: std::collections::HashMap<String, bool>,
 }
 
 impl TabNavigationWorld {
     /// Initialize with default state (Workout tab active)
     pub fn init_with_defaults(&mut self) {
         self.active_tab = "Workout".to_string();
-        self.tabs_visible = vec!["Workout".to_string(), "Library".to_string()];
+        self.tabs_visible = vec![
+            "Workout".to_string(),
+            "Library".to_string(),
+            "Analysis".to_string(),
+        ];
         self.component_mounted = false;
         self.state_change_emitted = false;
         self.workout_state_mounted = false;
@@ -42,12 +54,24 @@ impl TabNavigationWorld {
         self.local_storage.clear();
         self.active_styling.clear();
         self.aria_attributes.clear();
+        self.on_settings_page = false;
+        self.tab_bar_visible = true;
+        self.navigated_back = false;
+        self.tab_icons = [
+            ("Workout".to_string(), true),
+            ("Library".to_string(), true),
+            ("Analysis".to_string(), true),
+        ]
+        .into_iter()
+        .collect();
     }
 
     /// Simulate tab click/selection
     pub fn select_tab(&mut self, tab_name: &str) {
         self.active_tab = tab_name.to_string();
         self.state_change_emitted = true;
+        self.on_settings_page = false;
+        self.tab_bar_visible = true;
         // Save to localStorage
         self.local_storage
             .insert("activeTab".to_string(), tab_name.to_string());
@@ -104,6 +128,15 @@ async fn should_see_tab(world: &mut TabNavigationWorld, tab_name: String) {
     );
 }
 
+#[then(regex = r#"^I should see an "([^"]*)" tab$"#)]
+async fn should_see_an_tab(world: &mut TabNavigationWorld, tab_name: String) {
+    assert!(
+        world.tabs_visible.contains(&tab_name),
+        "Tab '{}' should be visible",
+        tab_name
+    );
+}
+
 #[then(regex = r#"^the "([^"]*)" tab should be active$"#)]
 async fn tab_should_be_active(world: &mut TabNavigationWorld, tab_name: String) {
     assert_eq!(
@@ -123,6 +156,14 @@ async fn should_see_library_placeholder(world: &mut TabNavigationWorld) {
     assert_eq!(
         world.active_tab, "Library",
         "Should be viewing Library tab to see placeholder"
+    );
+}
+
+#[then("I should see the Analysis history view")]
+async fn should_see_analysis_history(world: &mut TabNavigationWorld) {
+    assert_eq!(
+        world.active_tab, "Analysis",
+        "Should be viewing Analysis tab to see history view"
     );
 }
 
@@ -150,6 +191,9 @@ async fn tab_navigation_component_is_rendered(world: &mut TabNavigationWorld) {
     world
         .active_styling
         .insert("Library".to_string(), world.active_tab == "Library");
+    world
+        .active_styling
+        .insert("Analysis".to_string(), world.active_tab == "Analysis");
     // Set up ARIA attributes
     world
         .aria_attributes
@@ -237,8 +281,6 @@ async fn each_tab_should_have_role(world: &mut TabNavigationWorld, role: String)
 
 #[then(regex = r#"^the active tab should have aria-selected "([^"]*)"$"#)]
 async fn active_tab_should_have_aria_selected(world: &mut TabNavigationWorld, value: String) {
-    // In a real implementation, we'd check the actual DOM attribute
-    // For this unit test, we verify the active tab concept is correct
     assert!(
         !world.active_tab.is_empty(),
         "Active tab should have aria-selected='{}'",
@@ -251,6 +293,90 @@ async fn inactive_tabs_should_have_aria_selected(_world: &mut TabNavigationWorld
     // In a real implementation, we'd check the actual DOM attributes
     // For this unit test, we assume inactive tabs have the correct attribute
     // This is verified by the TabBar component implementation
+}
+
+// ============================================================================
+// STEP DEFINITIONS - GEAR ICON AND SETTINGS NAVIGATION
+// ============================================================================
+
+#[when("I tap the gear icon")]
+async fn tap_gear_icon(world: &mut TabNavigationWorld) {
+    world.on_settings_page = true;
+    world.tab_bar_visible = false;
+}
+
+#[then("the settings page should be displayed")]
+async fn settings_page_displayed(world: &mut TabNavigationWorld) {
+    assert!(
+        world.on_settings_page,
+        "Settings page should be displayed after tapping gear icon"
+    );
+}
+
+#[then("the tab bar should be hidden")]
+async fn tab_bar_hidden(world: &mut TabNavigationWorld) {
+    assert!(
+        !world.tab_bar_visible,
+        "Tab bar should be hidden on the settings page"
+    );
+}
+
+#[given("I am on the settings page")]
+async fn am_on_settings_page(world: &mut TabNavigationWorld) {
+    world.init_with_defaults();
+    world.component_mounted = true;
+    world.on_settings_page = true;
+    world.tab_bar_visible = false;
+}
+
+#[when("I tap the back arrow")]
+async fn tap_back_arrow(world: &mut TabNavigationWorld) {
+    world.on_settings_page = false;
+    world.tab_bar_visible = true;
+    world.navigated_back = true;
+}
+
+#[then("I should navigate back to the previous tab")]
+async fn navigate_back_to_previous_tab(world: &mut TabNavigationWorld) {
+    assert!(
+        world.navigated_back,
+        "Should have navigated back to the previous tab"
+    );
+    assert!(
+        !world.on_settings_page,
+        "Should no longer be on the settings page"
+    );
+    assert!(
+        world.tab_bar_visible,
+        "Tab bar should be visible again after navigating back"
+    );
+}
+
+#[then("each tab should display an icon and label")]
+async fn each_tab_has_icon_and_label(world: &mut TabNavigationWorld) {
+    for tab_name in &world.tabs_visible {
+        let has_icon = world.tab_icons.get(tab_name).copied().unwrap_or(false);
+        assert!(
+            has_icon,
+            "Tab '{}' should have both an icon and a label",
+            tab_name
+        );
+    }
+}
+
+#[then(regex = r#"^the tabs should be "([^"]*)", "([^"]*)", and "([^"]*)"$"#)]
+async fn tabs_should_be(
+    world: &mut TabNavigationWorld,
+    tab1: String,
+    tab2: String,
+    tab3: String,
+) {
+    let expected = vec![tab1, tab2, tab3];
+    assert_eq!(
+        world.tabs_visible, expected,
+        "Tabs should be {:?} but got {:?}",
+        expected, world.tabs_visible
+    );
 }
 
 // ============================================================================

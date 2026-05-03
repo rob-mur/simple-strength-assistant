@@ -7,7 +7,7 @@ import { setDioxusInput } from "./dioxus_helpers";
 // ── Navigation step ────────────────────────────────────────────────────────────
 
 Given("I navigate to the Settings tab", async ({ page }) => {
-  await page.click('[data-testid="tab-settings"]');
+  await page.click('[data-testid="gear-icon-button"]');
   await page.waitForTimeout(300);
 });
 
@@ -58,7 +58,7 @@ Given(
     await expect(page.locator("#exercise-name-input")).not.toBeVisible();
 
     // Go to Settings tab to use the export button
-    await page.click('[data-testid="tab-settings"]');
+    await page.click('[data-testid="gear-icon-button"]');
 
     // Export the database to a temporary file
     const downloadPromise = page.waitForEvent("download");
