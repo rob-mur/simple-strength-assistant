@@ -110,6 +110,19 @@ async fn step_check_session_active(world: &mut WorkoutWorld, name: String) {
     assert!(world.rendered_html.contains(&name));
 }
 
+#[then(expr = "the session exercise should be {string}")]
+async fn step_check_session_exercise(world: &mut WorkoutWorld, name: String) {
+    let session = world
+        .current_session
+        .as_ref()
+        .expect("Expected an active session");
+    assert_eq!(
+        session.exercise.name, name,
+        "Expected session exercise '{}', got '{}'",
+        name, session.exercise.name
+    );
+}
+
 #[given("no workout session is currently active")]
 async fn step_no_active_session(world: &mut WorkoutWorld) {
     world.current_session = None;
@@ -468,5 +481,67 @@ async fn step_plan_still_active(world: &mut WorkoutWorld) {
     assert!(
         world.has_active_plan,
         "Expected workout plan to still be active after cancelling"
+    );
+}
+
+// Issue 168: Discard Workout
+
+#[given(expr = "a started plan with exercise {string} and {int} logged sets")]
+async fn step_started_plan_with_sets(
+    world: &mut WorkoutWorld,
+    exercise_name: String,
+    set_count: u32,
+) {
+    let mut completed_sets = Vec::new();
+    for i in 0..set_count {
+        completed_sets.push(simple_strength_assistant::models::CompletedSet {
+            set_number: i + 1,
+            reps: 5,
+            rpe: 7.0,
+            set_type: simple_strength_assistant::models::SetType::Weighted { weight: 80.0 },
+        });
+    }
+    world.current_session = Some(WorkoutSession {
+        session_id: Some("1".to_string()),
+        exercise: ExerciseMetadata {
+            id: Some("1".to_string()),
+            name: exercise_name.clone(),
+            set_type_config: SetTypeConfig::Weighted {
+                min_weight: 0.0,
+                increment: 5.0,
+            },
+            min_reps: 1,
+            max_reps: None,
+        },
+        completed_sets,
+        predicted: PredictedParameters {
+            weight: Some(80.0),
+            reps: 5,
+            rpe: 7.0,
+        },
+    });
+    world.has_active_plan = true;
+    world.planned_exercises = vec![exercise_name];
+}
+
+#[when("the workout is discarded")]
+async fn step_discard_workout(world: &mut WorkoutWorld) {
+    // Simulate WorkoutStateManager::discard_plan:
+    // - Clears session
+    // - Plan reverts to unstarted state (has_active_plan becomes false but
+    //   planned_exercises are preserved)
+    world.current_session = None;
+    world.has_active_plan = false;
+}
+
+#[then("the plan should be unstarted with exercises preserved")]
+async fn step_plan_unstarted_exercises_preserved(world: &mut WorkoutWorld) {
+    assert!(
+        !world.has_active_plan,
+        "Expected plan to be unstarted (not active) after discard"
+    );
+    assert!(
+        !world.planned_exercises.is_empty(),
+        "Expected planned exercises to be preserved after discard"
     );
 }

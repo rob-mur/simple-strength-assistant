@@ -1769,6 +1769,78 @@ impl Database {
         Ok(())
     }
 
+    /// Discard an in-progress workout plan:
+    /// 1. Soft-delete every completed set whose `recorded_at >= started_at` AND
+    ///    whose `exercise_id` is in the plan's exercise list.
+    /// 2. Clear the plan's `started_at` (and `ended_at`) so it reverts to the
+    ///    unstarted state, preserving the exercise list for retry.
+    pub async fn discard_plan(&self, plan_id: &str) -> Result<(), DatabaseError> {
+        let now = js_sys::Date::now();
+
+        // Fetch the plan's started_at timestamp.
+        let plan_result = self
+            .execute(
+                "SELECT started_at FROM workout_plans WHERE id = ? AND deleted_at IS NULL",
+                &[JsValue::from_str(plan_id)],
+            )
+            .await?;
+        let plan_arr = plan_result
+            .dyn_ref::<js_sys::Array>()
+            .ok_or_else(|| DatabaseError::QueryError("Expected array for plan query".into()))?;
+        if plan_arr.length() == 0 {
+            return Err(DatabaseError::QueryError("Plan not found".into()));
+        }
+        let started_at = js_sys::Reflect::get(&plan_arr.get(0), &JsValue::from_str("started_at"))
+            .ok()
+            .and_then(|v| v.as_f64())
+            .unwrap_or(0.0);
+
+        // Fetch the plan's exercise IDs.
+        let ex_result = self
+            .execute(
+                "SELECT exercise_id FROM workout_plan_exercises WHERE plan_id = ? AND deleted_at IS NULL",
+                &[JsValue::from_str(plan_id)],
+            )
+            .await?;
+        let ex_arr = ex_result.dyn_ref::<js_sys::Array>();
+        if let Some(arr) = ex_arr {
+            // Build the IN clause for exercise IDs and soft-delete matching sets.
+            let mut exercise_ids: Vec<String> = Vec::new();
+            for i in 0..arr.length() {
+                if let Ok(eid) =
+                    js_sys::Reflect::get(&arr.get(i), &JsValue::from_str("exercise_id"))
+                    && let Some(s) = eid.as_string()
+                {
+                    exercise_ids.push(s);
+                }
+            }
+
+            if !exercise_ids.is_empty() {
+                let placeholders: Vec<&str> = exercise_ids.iter().map(|_| "?").collect();
+                let sql = format!(
+                    "UPDATE completed_sets SET deleted_at = ?, updated_at = ? WHERE exercise_id IN ({}) AND recorded_at >= ? AND deleted_at IS NULL",
+                    placeholders.join(",")
+                );
+                let mut params: Vec<JsValue> = vec![JsValue::from_f64(now), JsValue::from_f64(now)];
+                for eid in &exercise_ids {
+                    params.push(JsValue::from_str(eid));
+                }
+                params.push(JsValue::from_f64(started_at));
+
+                self.execute(&sql, &params).await?;
+            }
+        }
+
+        // Clear started_at and ended_at so the plan reverts to the unstarted state.
+        self.execute(
+            "UPDATE workout_plans SET started_at = NULL, ended_at = NULL, updated_at = ? WHERE id = ?",
+            &[JsValue::from_f64(now), JsValue::from_str(plan_id)],
+        )
+        .await?;
+
+        Ok(())
+    }
+
     pub async fn get_active_plan(&self) -> Result<Option<WorkoutPlan>, DatabaseError> {
         let result = self
             .execute(

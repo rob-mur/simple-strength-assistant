@@ -92,7 +92,7 @@ Then(
   "the step control buttons should have the {string} effect and shadow",
   async ({ page }, effectClass: string) => {
     const glassButton = page
-      .locator(`button.btn-circle.${effectClass}`)
+      .locator(`button[data-testid^='step-btn-'].${effectClass}`)
       .first();
     if (await glassButton.isVisible()) {
       await expect(glassButton).toBeVisible();

@@ -54,3 +54,44 @@ Feature: Three-dot action menu in active session
   Scenario: No history-icon-btn element exists in active session
     Given I start a test session with "Squat"
     Then the old history icon should not be present
+
+  Scenario: Bottom sheet contains Complete Workout and Discard Workout
+    Given I start a test session with "Squat"
+    When I tap the action menu trigger
+    Then the bottom sheet should be visible
+    And the bottom sheet should contain "View History"
+    And the bottom sheet should contain "Complete Workout"
+    And the bottom sheet should contain "Discard Workout"
+    And the bottom sheet should contain "Cancel"
+
+  Scenario: Tapping Discard Workout opens confirmation dialog
+    Given I start a test session with "Squat"
+    When I tap the action menu trigger
+    And I tap "Discard Workout" in the bottom sheet
+    Then the confirmation dialog should be visible
+    And the confirmation dialog title should be "Discard this workout?"
+
+  Scenario: Cancelling discard confirmation dismisses the dialog
+    Given I start a test session with "Squat"
+    When I tap the action menu trigger
+    And I tap "Discard Workout" in the bottom sheet
+    Then the confirmation dialog should be visible
+    When I tap cancel on the confirmation dialog
+    Then the confirmation dialog should not be visible
+
+  Scenario: Confirming discard returns to plan builder
+    Given I start a plan-based session with "Squat"
+    And I log a set in the current session
+    When I tap the action menu trigger
+    And I tap "Discard Workout" in the bottom sheet
+    And I confirm the discard dialog
+    Then I should see the plan builder
+
+  Scenario: Tapping Complete Workout ends the workout
+    Given I start a plan-based session with "Squat"
+    And I log a set in the current session
+    When I tap the action menu trigger
+    And I tap "Complete Workout" in the bottom sheet
+    Then the confirmation dialog should be visible
+    When I confirm the complete dialog
+    Then I should see the plan builder

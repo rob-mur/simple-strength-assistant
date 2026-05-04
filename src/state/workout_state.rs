@@ -610,10 +610,15 @@ impl WorkoutStateManager {
             .as_ref()
             .and_then(|p| p.exercises.first())
             .map(|pe| pe.exercise.clone());
-        state.set_current_plan(refreshed);
+        // IMPORTANT: start the session BEFORE updating the plan signal.
+        // Updating the plan signal triggers a re-render which unmounts
+        // PlanBuilder (where this spawn lives). Dioxus drops spawned tasks
+        // when the owning component unmounts, so any awaits after
+        // set_current_plan would be cancelled.
         if let Some(exercise) = first_exercise {
             Self::start_session(state, exercise).await?;
         }
+        state.set_current_plan(refreshed);
         Ok(())
     }
 
@@ -624,6 +629,26 @@ impl WorkoutStateManager {
             .await
             .map_err(WorkoutError::Database)?;
         state.set_current_plan(None);
+        state.set_current_session(None);
+        Ok(())
+    }
+
+    /// Discard an in-progress workout: soft-delete sets recorded since
+    /// `started_at` for the plan's exercises, then un-start the plan so the
+    /// user lands back on PlanBuilder with the original exercise list.
+    pub async fn discard_plan(state: &WorkoutState) -> Result<(), WorkoutError> {
+        let plan = state.current_plan().ok_or(WorkoutError::NoActiveSession)?;
+        let db = state.database().ok_or(WorkoutError::NotInitialized)?;
+        db.discard_plan(&plan.id)
+            .await
+            .map_err(WorkoutError::Database)?;
+        // Refresh the plan from the database so the UI sees the unstarted state
+        // with the original exercise list preserved.
+        let refreshed = db
+            .get_plan(&plan.id)
+            .await
+            .map_err(WorkoutError::Database)?;
+        state.set_current_plan(refreshed);
         state.set_current_session(None);
         Ok(())
     }

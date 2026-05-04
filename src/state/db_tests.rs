@@ -1807,3 +1807,309 @@ async fn test_latest_set_today_ignores_other_days() {
 
     assert!(latest.is_none(), "Yesterday's set should not appear");
 }
+
+// ── discard_plan integration tests ──────────────────────────────────────────
+
+/// `discard_plan` should soft-delete sets recorded after `started_at` for
+/// exercises in the plan, leave older sets and other exercises' sets untouched,
+/// clear `started_at` so the plan reverts to unstarted, and preserve the
+/// exercise list.
+#[wasm_bindgen_test]
+async fn test_discard_plan_soft_deletes_session_sets_and_unstarts_plan() {
+    use wasm_bindgen::JsCast;
+
+    let mut db = Database::new();
+    db.init(None).await.expect("Database init failed");
+
+    // Create two exercises: one in the plan, one not.
+    let exercise_a = ExerciseMetadata {
+        id: None,
+        name: "Plan Exercise".to_string(),
+        set_type_config: SetTypeConfig::Weighted {
+            min_weight: 0.0,
+            increment: 5.0,
+        },
+        min_reps: 1,
+        max_reps: None,
+    };
+    let eid_a = db
+        .save_exercise(&exercise_a)
+        .await
+        .expect("Save exercise A failed");
+
+    let exercise_b = ExerciseMetadata {
+        id: None,
+        name: "Other Exercise".to_string(),
+        set_type_config: SetTypeConfig::Weighted {
+            min_weight: 0.0,
+            increment: 5.0,
+        },
+        min_reps: 1,
+        max_reps: None,
+    };
+    let eid_b = db
+        .save_exercise(&exercise_b)
+        .await
+        .expect("Save exercise B failed");
+
+    // Create and start a plan with exercise A only.
+    let plan_id = db.create_plan().await.expect("create_plan failed");
+    db.add_exercise_to_plan(&plan_id, &eid_a, 3)
+        .await
+        .expect("add_exercise_to_plan failed");
+    db.start_plan(&plan_id).await.expect("start_plan failed");
+
+    // Get the plan's started_at.
+    let plan = db
+        .get_plan(&plan_id)
+        .await
+        .expect("get_plan failed")
+        .unwrap();
+    let started_at = plan.started_at.unwrap();
+
+    // Log a set for exercise A *before* the plan started (should survive discard).
+    let old_set = CompletedSet {
+        set_number: 1,
+        reps: 5,
+        rpe: 7.0,
+        set_type: SetType::Weighted { weight: 60.0 },
+    };
+    db.log_set_at(&eid_a, &old_set, started_at - 100_000.0)
+        .await
+        .expect("log_set_at old failed");
+
+    // Log sets for exercise A *after* the plan started (should be discarded).
+    let new_set_1 = CompletedSet {
+        set_number: 1,
+        reps: 8,
+        rpe: 7.0,
+        set_type: SetType::Weighted { weight: 80.0 },
+    };
+    let new_set_2 = CompletedSet {
+        set_number: 2,
+        reps: 6,
+        rpe: 8.0,
+        set_type: SetType::Weighted { weight: 85.0 },
+    };
+    db.log_set_at(&eid_a, &new_set_1, started_at + 1000.0)
+        .await
+        .expect("log_set_at new1 failed");
+    db.log_set_at(&eid_a, &new_set_2, started_at + 2000.0)
+        .await
+        .expect("log_set_at new2 failed");
+
+    // Log a set for exercise B after plan started (should survive — not in plan).
+    let other_set = CompletedSet {
+        set_number: 1,
+        reps: 10,
+        rpe: 6.5,
+        set_type: SetType::Weighted { weight: 50.0 },
+    };
+    db.log_set_at(&eid_b, &other_set, started_at + 3000.0)
+        .await
+        .expect("log_set_at other failed");
+
+    // Discard the plan.
+    db.discard_plan(&plan_id)
+        .await
+        .expect("discard_plan failed");
+
+    // ── Assertions ──────────────────────────────────────────────────────────
+
+    // 1. Plan should be unstarted (started_at NULL, ended_at NULL).
+    let plan_after = db
+        .get_plan(&plan_id)
+        .await
+        .expect("get_plan after discard failed")
+        .expect("Plan should still exist");
+    assert!(
+        plan_after.started_at.is_none(),
+        "started_at should be cleared"
+    );
+    assert!(plan_after.ended_at.is_none(), "ended_at should be cleared");
+
+    // 2. Exercise list should be preserved.
+    assert_eq!(
+        plan_after.exercises.len(),
+        1,
+        "Plan should still have 1 exercise"
+    );
+    assert_eq!(
+        plan_after.exercises[0].exercise.name, "Plan Exercise",
+        "Plan exercise should be preserved"
+    );
+
+    // 3. Sets recorded after started_at for plan exercises should be soft-deleted.
+    let visible_a = db
+        .get_sets_for_exercise(&eid_a, 100, 0)
+        .await
+        .expect("get_sets_for_exercise A failed");
+    assert_eq!(
+        visible_a.len(),
+        1,
+        "Only the old set (before started_at) should be visible for exercise A"
+    );
+
+    // 4. Sets for other exercises should be untouched.
+    let visible_b = db
+        .get_sets_for_exercise(&eid_b, 100, 0)
+        .await
+        .expect("get_sets_for_exercise B failed");
+    assert_eq!(
+        visible_b.len(),
+        1,
+        "Exercise B's set should be untouched by discard"
+    );
+
+    // 5. Soft-deleted rows should still exist in the raw table.
+    let raw_result = db
+        .execute(
+            "SELECT id, deleted_at FROM completed_sets WHERE exercise_id = ? AND deleted_at IS NOT NULL",
+            &[wasm_bindgen::JsValue::from_str(&eid_a)],
+        )
+        .await
+        .expect("Raw query failed");
+    let raw_arr = raw_result
+        .dyn_ref::<js_sys::Array>()
+        .expect("Expected array");
+    assert_eq!(
+        raw_arr.length(),
+        2,
+        "Two soft-deleted rows should exist for exercise A"
+    );
+}
+
+/// `discard_plan` with no logged sets should still un-start the plan cleanly.
+#[wasm_bindgen_test]
+async fn test_discard_plan_no_sets_unstarts_plan() {
+    let mut db = Database::new();
+    db.init(None).await.expect("Database init failed");
+
+    let exercise = ExerciseMetadata {
+        id: None,
+        name: "Empty Plan Exercise".to_string(),
+        set_type_config: SetTypeConfig::Bodyweight,
+        min_reps: 1,
+        max_reps: None,
+    };
+    let eid = db
+        .save_exercise(&exercise)
+        .await
+        .expect("Save exercise failed");
+
+    let plan_id = db.create_plan().await.expect("create_plan failed");
+    db.add_exercise_to_plan(&plan_id, &eid, 3)
+        .await
+        .expect("add_exercise_to_plan failed");
+    db.start_plan(&plan_id).await.expect("start_plan failed");
+
+    // Discard with no sets logged.
+    db.discard_plan(&plan_id)
+        .await
+        .expect("discard_plan failed");
+
+    let plan_after = db
+        .get_plan(&plan_id)
+        .await
+        .expect("get_plan after discard failed")
+        .expect("Plan should still exist");
+    assert!(
+        plan_after.started_at.is_none(),
+        "started_at should be cleared"
+    );
+    assert!(plan_after.ended_at.is_none(), "ended_at should be cleared");
+    assert_eq!(
+        plan_after.exercises.len(),
+        1,
+        "Exercise list should be preserved"
+    );
+}
+
+/// Soft-delete tombstones from `discard_plan` must be eligible for sync push
+/// (i.e. they have non-null `deleted_at` and `updated_at` values) and a
+/// subsequent query must not resurrect them.
+#[wasm_bindgen_test]
+async fn test_discard_plan_tombstones_sync_eligible() {
+    use wasm_bindgen::JsCast;
+
+    let mut db = Database::new();
+    db.init(None).await.expect("Database init failed");
+
+    let exercise = ExerciseMetadata {
+        id: None,
+        name: "Sync Test Exercise".to_string(),
+        set_type_config: SetTypeConfig::Weighted {
+            min_weight: 0.0,
+            increment: 2.5,
+        },
+        min_reps: 1,
+        max_reps: None,
+    };
+    let eid = db
+        .save_exercise(&exercise)
+        .await
+        .expect("Save exercise failed");
+
+    let plan_id = db.create_plan().await.expect("create_plan failed");
+    db.add_exercise_to_plan(&plan_id, &eid, 2)
+        .await
+        .expect("add_exercise_to_plan failed");
+    db.start_plan(&plan_id).await.expect("start_plan failed");
+
+    let plan = db
+        .get_plan(&plan_id)
+        .await
+        .expect("get_plan failed")
+        .unwrap();
+    let started_at = plan.started_at.unwrap();
+
+    let set = CompletedSet {
+        set_number: 1,
+        reps: 5,
+        rpe: 7.0,
+        set_type: SetType::Weighted { weight: 70.0 },
+    };
+    db.log_set_at(&eid, &set, started_at + 500.0)
+        .await
+        .expect("log_set_at failed");
+
+    db.discard_plan(&plan_id)
+        .await
+        .expect("discard_plan failed");
+
+    // Verify tombstone has both deleted_at and updated_at set (sync-eligible).
+    let raw = db
+        .execute(
+            "SELECT deleted_at, updated_at FROM completed_sets WHERE exercise_id = ? AND deleted_at IS NOT NULL",
+            &[wasm_bindgen::JsValue::from_str(&eid)],
+        )
+        .await
+        .expect("Raw query failed");
+    let arr = raw.dyn_ref::<js_sys::Array>().expect("Expected array");
+    assert_eq!(arr.length(), 1, "One tombstone should exist");
+
+    let row = arr.get(0);
+    let deleted_at =
+        js_sys::Reflect::get(&row, &wasm_bindgen::JsValue::from_str("deleted_at")).unwrap();
+    let updated_at =
+        js_sys::Reflect::get(&row, &wasm_bindgen::JsValue::from_str("updated_at")).unwrap();
+    assert!(
+        !deleted_at.is_null() && !deleted_at.is_undefined(),
+        "deleted_at must be set for sync eligibility"
+    );
+    assert!(
+        !updated_at.is_null() && !updated_at.is_undefined(),
+        "updated_at must be set for sync eligibility"
+    );
+
+    // Verify the set does not appear in normal queries (not resurrected).
+    let visible = db
+        .get_sets_for_exercise(&eid, 100, 0)
+        .await
+        .expect("get_sets_for_exercise failed");
+    assert_eq!(
+        visible.len(),
+        0,
+        "Soft-deleted set must not appear in normal queries (no resurrection)"
+    );
+}
