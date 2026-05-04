@@ -222,6 +222,7 @@ pub fn LibraryView() -> Element {
                                         if workout_state.current_plan().is_some() {
                                             {
                                                 let eid = exercise.id.clone().unwrap_or_default();
+                                                let ex_for_session = exercise.clone();
                                                 let default_sets = workout_state.settings().default_planned_sets;
                                                 rsx! {
                                                     button {
@@ -230,10 +231,16 @@ pub fn LibraryView() -> Element {
                                                         onclick: move |evt| {
                                                             evt.stop_propagation();
                                                             let eid = eid.clone();
+                                                            let ex = ex_for_session.clone();
                                                             spawn(async move {
                                                                 if let Err(e) = WorkoutStateManager::add_exercise_to_plan(&workout_state, &eid, default_sets).await {
                                                                     log::warn!("Failed to add exercise to plan: {}", e);
                                                                 } else {
+                                                                    // Start a session on the newly added exercise so
+                                                                    // the user lands on the recording UI for it.
+                                                                    if let Err(e) = WorkoutStateManager::start_session(&workout_state, ex).await {
+                                                                        log::warn!("Failed to start session: {}", e);
+                                                                    }
                                                                     navigator.push(Route::WorkoutTab);
                                                                 }
                                                             });
@@ -252,7 +259,7 @@ pub fn LibraryView() -> Element {
                                                             evt.stop_propagation();
                                                             let e_clone = e.clone();
                                                             spawn(async move {
-                                                                if let Err(err) = WorkoutStateManager::start_session(&workout_state, e_clone).await {
+                                                                if let Err(err) = WorkoutStateManager::start_adhoc_plan(&workout_state, &e_clone).await {
                                                                     WorkoutStateManager::handle_error(&workout_state, err);
                                                                 } else {
                                                                     navigator.push(Route::WorkoutTab);

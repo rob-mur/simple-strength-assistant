@@ -116,3 +116,10 @@ Feature: Streamlined Workout Flow
     When the workout is discarded
     Then no workout session should be active
     And the plan should be unstarted with exercises preserved
+
+  # Issue 166: Library START creates ad-hoc one-exercise plan
+  Scenario: Library START creates ad-hoc plan with active session on chosen exercise
+    Given the Library tab is open
+    When the user starts exercise "Bench Press" from the Library
+    Then a one-exercise plan should be active with planned sets from settings
+    And the active session should be for "Bench Press"

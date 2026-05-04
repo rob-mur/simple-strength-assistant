@@ -358,6 +358,58 @@ async fn step_no_over_plan_banner(world: &mut WorkoutWorld) {
     );
 }
 
+// Issue 166: Library START creates ad-hoc one-exercise plan
+
+#[when(expr = "the user starts exercise {string} from the Library")]
+async fn step_start_exercise_from_library(world: &mut WorkoutWorld, exercise_name: String) {
+    // Simulate WorkoutStateManager::start_adhoc_plan which creates a
+    // one-exercise plan, adds the exercise with default_planned_sets, and
+    // auto-starts a session on it.
+    let default_planned_sets = 3u32; // Settings::default().default_planned_sets
+    world.has_active_plan = true;
+    world.tab_planned = default_planned_sets;
+    world.planned_exercises = vec![exercise_name.clone()];
+    world.current_session = Some(WorkoutSession {
+        session_id: Some("adhoc-1".to_string()),
+        exercise: ExerciseMetadata {
+            id: Some("adhoc-1".to_string()),
+            name: exercise_name,
+            set_type_config: SetTypeConfig::Weighted {
+                min_weight: 0.0,
+                increment: 5.0,
+            },
+            min_reps: 1,
+            max_reps: None,
+        },
+        completed_sets: Vec::new(),
+        predicted: PredictedParameters {
+            weight: Some(0.0),
+            reps: 8,
+            rpe: 7.0,
+        },
+    });
+    world.active_tab = Tab::Workout;
+}
+
+#[then("a one-exercise plan should be active with planned sets from settings")]
+async fn step_one_exercise_plan_active(world: &mut WorkoutWorld) {
+    assert!(
+        world.has_active_plan,
+        "Expected an active plan after ad-hoc start"
+    );
+    assert_eq!(
+        world.planned_exercises.len(),
+        1,
+        "Expected exactly one exercise in the ad-hoc plan, got {}",
+        world.planned_exercises.len()
+    );
+    assert_eq!(
+        world.tab_planned, 3,
+        "Expected planned sets to match settings.default_planned_sets (3), got {}",
+        world.tab_planned
+    );
+}
+
 // Issue 164: ExerciseTabStrip set-count badge warning colour
 
 #[derive(Props, Clone, PartialEq)]

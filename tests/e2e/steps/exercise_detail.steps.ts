@@ -71,9 +71,8 @@ When("the user taps the Start button in the detail view", async ({ page }) => {
 });
 
 Then("the user should be on the Workout tab", async ({ page }) => {
-  // Checking for the active tab state
   await expect(
-    page.locator('button[role="tab"].tab-active:has-text("Workout")'),
+    page.locator('[data-testid="tab-workout"][aria-selected="true"]'),
   ).toBeVisible();
 });
 
@@ -102,6 +101,15 @@ Then(
     }
   },
 );
+
+Then("an active plan should exist with the exercise", async ({ page }) => {
+  // An active plan means the action menu trigger is visible (only rendered
+  // when a session is active) and the exercise tab strip is present.
+  await expect(
+    page.locator('[data-testid="action-menu-trigger"]'),
+  ).toBeVisible();
+  await expect(page.locator('[data-testid="exercise-tab"]')).toHaveCount(1);
+});
 
 When("the user taps the Edit button in the detail view", async ({ page }) => {
   await page.getByTestId("edit-button").click();
