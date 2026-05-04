@@ -12,6 +12,24 @@
 | **Weighted Exercise**   | An Exercise where load is expressed as an external weight value                                      | Barbell exercise, loaded exercise |
 | **Bodyweight Exercise** | An Exercise where load is the trainee's own body mass; progression is via reps, not weight           | BW exercise                       |
 
+## Library & Plans
+
+| Term                  | Definition                                                                                                                                 | Aliases to avoid                  |
+| --------------------- | ------------------------------------------------------------------------------------------------------------------------------------------ | --------------------------------- |
+| **Library**           | The user's collection of defined Exercises, browsable as a list and filterable between Active and Archived views                           | Catalog, exercise list            |
+| **Active Exercise**   | An Exercise visible in the default Library view (`exercises.deleted_at IS NULL`); the Candidate Pool for new Plan Slots                    | Live exercise, current exercise   |
+| **Archived Exercise** | An Exercise hidden from the default Library view (`exercises.deleted_at IS NOT NULL`); its historical Sets remain in the Historical Signal | Hidden exercise, deleted exercise |
+| **Plan**              | An ordered list of Plan Slots representing one workout, with a lifecycle of Future → Active → Completed                                    | Workout, session, routine         |
+| **Future Plan**       | A Plan not yet started (`started_at IS NULL`); editable scaffolding for an upcoming workout                                                | Scheduled workout, upcoming plan  |
+| **Active Plan**       | A Plan started but not ended (`started_at IS NOT NULL AND ended_at IS NULL`); the workout the user is currently training                   | Live workout, in-progress plan    |
+| **Completed Plan**    | A Plan whose workout has ended (`ended_at IS NOT NULL`); the historical record of one workout                                              | Finished workout, past plan       |
+| **Plan Slot**         | A single Exercise's placement within a Plan, including its planned set count and ordering position                                         | Plan exercise, planned exercise   |
+| **Record Screen**     | The UI surface where the user logs Sets for the currently selected Plan Slot in the Active Plan                                            | Workout view, training screen     |
+| **Current Session**   | The Plan Slot in the Active Plan that the Record Screen is currently rendering; held in-memory as a snapshot                               | Active session, selected exercise |
+| **Archive**           | The action of soft-deleting an Active Exercise: hides it from the Library, strips it from Future and Active Plans (reversible)             | Hide, remove                      |
+| **Unarchive**         | The action of reverting an Archived Exercise to Active by clearing `deleted_at`; does not restore Plan Slots stripped during Archive       | Restore, unhide                   |
+| **Permanent Delete**  | The action of irreversibly erasing an Exercise and cascading to its Sets, all Plan Slots, and any Plans that become empty as a result      | Purge, hard delete                |
+
 ## Muscle Groups
 
 | Term                  | Definition                                                                                                                                                 | Aliases to avoid                   |
@@ -49,6 +67,8 @@
 | **Historical Max at R** | The maximum weight recorded within the History Window in a Set where `reps_done ≥ R`; used to determine whether a Suggestion offers a personal best at rep count R                                       | Rep PB, per-rep best                 |
 | **Per-Rep PB Margin**   | `projected_weight(blended_e1rm, r, target_rpe) − Historical Max at R`; positive means a personal best is available at rep count R; in bounded mode, the rep with the highest positive margin is selected | PB headroom, margin                  |
 | **Clamped Suggestion**  | A Suggestion whose rep count has been constrained to a Rep Range boundary; surfaced in the UI so the trainee knows the Rep Range is limiting the recommendation                                          | Bounded suggestion, constrained reps |
+| **Candidate Pool**      | The set of Active Exercises eligible to be recommended for new Plan Slots; Archived Exercises are excluded                                                                                               | Eligible set, available exercises    |
+| **Historical Signal**   | The set of completed Sets that feeds the suggestion algorithm and Volume aggregation; includes Sets logged against Archived Exercises                                                                    | Training data, signal set            |
 
 ## Progress Detection
 
@@ -91,6 +111,12 @@
 - **Peak e1RM** is derived from the **Sets** of a **Training Day** and is the data point used in the **e1RM Trend** regression.
 - **e1RM Trend** requires at least **Min Sessions** Training Days within the **Training Window** to produce a **Progress State**; otherwise **Insufficient Data** is returned.
 - **Volume** for a **Muscle Group** on a given day = sum of **Intensity-Adjusted Sets** across all Sets whose Exercise contributes to that Muscle Group.
+- A **Plan** contains zero or more **Plan Slots**, each referencing one **Exercise**.
+- A **Plan Slot**'s **Exercise** may be **Active** or **Archived**; archiving an Exercise strips its Slots from **Future Plans** and the **Active Plan** only — **Completed Plan** Slots are untouched.
+- The **Current Session** is always a Plan Slot within the **Active Plan**.
+- The **Candidate Pool** for **Suggestions** filters on **Active Exercise**; the **Historical Signal** does not — a recently archived Exercise's prior Sets continue to inform Volume and the **e1RM Trend**.
+- **Archive** is reversible at the Exercise level (via **Unarchive**) but irreversible at the Plan level: stripped Plan Slots and emptied **Future Plans** are not restored on Unarchive.
+- **Permanent Delete** cascades: the Exercise's **Sets** are soft-deleted; all of its **Plan Slots** (including those in **Completed Plans**) are soft-deleted; any **Plan** whose remaining Slots are all soft-deleted is itself soft-deleted.
 
 ## Example dialogue
 
@@ -138,6 +164,18 @@
 >
 > **Domain expert:** "Fully editable, and changes are retroactive. No snapshotting — if you fix a tagging mistake, the whole system reflects the update."
 
+> **Dev:** "If the trainee Archives an **Exercise**, what happens to their **Plans** and history?"
+>
+> **Domain expert:** "The Exercise becomes an **Archived Exercise** — hidden from the Library by default, but findable via the 'Show archived' toggle. Its **Plan Slots** are stripped from any **Future Plans** and the **Active Plan**, and any Future Plan that becomes empty is deleted. **Completed Plans** are untouched, and all the **Sets** logged against it remain in the **Historical Signal** so trends and Volume aren't affected."
+>
+> **Dev:** "And the **Candidate Pool** for new Plans?"
+>
+> **Domain expert:** "An Archived Exercise drops out of the Candidate Pool immediately — it can't be added to a new Plan Slot until **Unarchived**. The asymmetry is deliberate: the engine forgets it as a recommendation candidate while still remembering its training history."
+>
+> **Dev:** "What if they meant to **Permanent Delete** instead of Archive?"
+>
+> **Domain expert:** "There's an escalation link in the Archive dialog. Permanent Delete is irreversible — it cascades to all Sets, all Plan Slots including those in Completed Plans, and any Plan that becomes empty as a result. The dialog shows the count up front."
+
 ## Flagged ambiguities
 
 - **"Session"** was used loosely in the issue tracker and codebase (`WorkoutSession`, `session_id`) but the domain has no explicit session record — the unit is the **Training Day** (a calendar date). Code may use "session" internally but domain conversations should use Training Day. Note: **Min Sessions** is an unfortunate legacy name in the settings — it counts **Training Days**, not sessions.
@@ -150,3 +188,8 @@
 - **Contribution Tier vs Muscle Group Weight (normalisation)** — the old Muscle Group Weight system normalised stimulus to always sum to 100% across Muscle Groups. Contribution Tiers do not: each Muscle Group receives its full tier value independently. Volume totals will therefore be higher for multi-muscle exercises under the new model.
 - **"Available PB" (deprecated)** — superseded by **Per-Rep PB Margin**. Available PB implied a binary has/hasn't framing; Per-Rep PB Margin is the signed value actually used for rep selection. Do not use Available PB in new code or discussion.
 - **"Max reps" for Bodyweight Exercises** — avoid "max reps" as a standalone term; it ambiguously refers to either the `max_reps` Rep Range bound or **Failure Reps** (the capacity estimate). Use **Failure Reps** for the estimated maximum and **Rep Range** bound for the configuration.
+- **"Workout" vs "Plan" vs "Training Day"** — three related concepts used loosely. **Plan** is the user-managed list of Plan Slots to be executed (a row in `workout_plans`). **Training Day** is the analytical calendar grouping of all Sets logged on one date. They overlap but are not synonymous: a Training Day spans whatever Sets were logged that day regardless of which Plans they came from. Avoid "Workout" as a domain term — use **Plan** for the executable construct and **Training Day** for the analytical unit.
+- **"Active"** is overloaded. **Active Exercise** = not Archived (`exercises.deleted_at IS NULL`). **Active Plan** = started but not ended (`started_at IS NOT NULL AND ended_at IS NULL`). Always qualify with the noun. "Active" alone is ambiguous in any conversation that touches both Exercises and Plans.
+- **"Delete"** is overloaded between **Archive** (safe, reversible soft-delete of an Exercise) and **Permanent Delete** (irreversible cascade through Sets, Plan Slots, and emptied Plans). User-facing copy must distinguish the two; "delete" alone in UI is reserved for the destructive action — the safe action is "Archive".
+- **`deleted_at` semantics** — the column is used uniformly across `exercises`, `workout_plans`, `workout_plan_exercises`, and `completed_sets` to mean "soft-deleted, hidden from active queries." For `exercises` specifically, a non-null `deleted_at` corresponds to the domain term **Archived**; for the other tables it corresponds to Archive cascade fallout or Permanent Delete cascade fallout. The column name does not distinguish which. The asymmetry between domain term ("Archived") and column name (`deleted_at`) is intentional — no migration.
+- **Candidate Pool vs Historical Signal asymmetry** — when querying for Suggestions, the **Candidate Pool** must filter `e.deleted_at IS NULL` so Archived Exercises aren't recommended; the **Historical Signal** must NOT add this filter to its JOIN onto `exercises`, so Archived Exercises' prior Sets continue to inform Volume and trend calculations. New analytical queries should be reviewed against this rule.
