@@ -36,9 +36,6 @@ jobs:
         run: echo "sha=$(git rev-list -n 1 HEAD)" >> "$GITHUB_OUTPUT"
         shell: bash
 
-      - name: Install npm dependencies
-        run: npm ci
-
       - name: Decrypt secrets
         run: sops --decrypt --output-type dotenv secrets.yaml >> "$GITHUB_ENV"
         env:

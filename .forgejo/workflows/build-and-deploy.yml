@@ -38,9 +38,6 @@ jobs:
           ref: ${{ inputs.git-ref }}
           fetch-depth: 0
 
-      - name: Install npm dependencies
-        run: npm ci
-
       - name: Decrypt secrets
         run: sops --decrypt --output-type dotenv secrets.yaml >> "$GITHUB_ENV"
         env:

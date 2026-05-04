@@ -17,6 +17,20 @@ else
 fi
 echo ""
 
+# Lockfile drift detection
+echo "→ Checking package-lock.json is in sync with package.json..."
+LOCK_BEFORE=$(sha256sum package-lock.json)
+npm install --package-lock-only --ignore-scripts > /dev/null 2>&1
+LOCK_AFTER=$(sha256sum package-lock.json)
+if [ "$LOCK_BEFORE" != "$LOCK_AFTER" ]; then
+  echo "✗ package-lock.json is out of sync with package.json!"
+  echo "  Run 'npm install' locally and commit the updated lockfile."
+  git checkout -- package-lock.json 2>/dev/null || true
+  exit 1
+fi
+echo "✓ Lockfile is in sync"
+echo ""
+
 # CSS build check
 echo "→ Checking CSS is in sync with source..."
 
