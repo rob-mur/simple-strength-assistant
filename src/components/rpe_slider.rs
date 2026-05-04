@@ -46,8 +46,12 @@ pub fn RPESlider(props: RPESliderProps) -> Element {
             }
 
             // Standard HTML Range Slider (Enhanced with DaisyUI)
+            // touch-action: pan-x keeps the drag alive when the finger drifts
+            // vertically — the browser will not reclassify the gesture as a
+            // page scroll and therefore will not fire pointercancel mid-drag.
             div {
                 class: "px-4",
+                style: "touch-action: pan-x;",
                 input {
                     r#type: "range",
                     min: "{MIN_RPE}",
@@ -55,6 +59,7 @@ pub fn RPESlider(props: RPESliderProps) -> Element {
                     step: "{STEP_RPE}",
                     value: "{props.value}",
                     class: "range range-lg {range_class}",
+                    style: "touch-action: pan-x;",
                     oninput: move |evt| {
                         if let Ok(val) = evt.value().parse::<f64>() {
                             props.on_change.call(val);

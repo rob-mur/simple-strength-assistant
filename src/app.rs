@@ -1128,12 +1128,12 @@ pub fn ActiveSession(state: WorkoutState, session: crate::state::WorkoutSession)
                                     "data-testid": "reps-step-down",
                                     class: "btn btn-circle btn-sm glass border border-error/30 hover:border-error text-error transition-all",
                                     onclick: move |_| {
-                                        let new_val = (reps_input() - 1.0).clamp(1.0, 100.0);
+                                        let new_val = (reps_input() - 5.0).clamp(1.0, 100.0);
                                         if (new_val - reps_input()).abs() > 0.001 {
                                             reps_input.set(new_val);
                                         }
                                     },
-                                    "−1"
+                                    "−5"
                                 }
                                 div {
                                     class: "flex items-baseline gap-2",
@@ -1145,7 +1145,7 @@ pub fn ActiveSession(state: WorkoutState, session: crate::state::WorkoutSession)
                                     span {
                                         class: "text-2xl font-black text-primary",
                                         "data-testid": "reps-readout",
-                                        "{reps_input} reps"
+                                        "{reps_input}"
                                     }
                                 }
                                 button {
@@ -1214,18 +1214,19 @@ pub fn ActiveSession(state: WorkoutState, session: crate::state::WorkoutSession)
                             "aria-label": "More actions",
                             "data-testid": "action-menu-trigger",
                             onclick: move |_| show_action_menu.set(true),
-                            // Vertical ellipsis icon
+                            // Vertical ellipsis icon — larger size + heavier dots so it's
+                            // clearly visible inside its 48px touch target on mobile.
                             svg {
                                 xmlns: "http://www.w3.org/2000/svg",
-                                fill: "none",
+                                fill: "currentColor",
                                 view_box: "0 0 24 24",
-                                stroke_width: "1.5",
+                                stroke_width: "2.5",
                                 stroke: "currentColor",
-                                class: "w-6 h-6",
+                                class: "w-8 h-8",
                                 path {
                                     stroke_linecap: "round",
                                     stroke_linejoin: "round",
-                                    d: "M12 6.75a.75.75 0 1 1 0-1.5.75.75 0 0 1 0 1.5ZM12 12.75a.75.75 0 1 1 0-1.5.75.75 0 0 1 0 1.5ZM12 18.75a.75.75 0 1 1 0-1.5.75.75 0 0 1 0 1.5Z"
+                                    d: "M12 8a2 2 0 1 1 0-4 2 2 0 0 1 0 4Zm0 6a2 2 0 1 1 0-4 2 2 0 0 1 0 4Zm0 6a2 2 0 1 1 0-4 2 2 0 0 1 0 4Z"
                                 }
                             }
                         }

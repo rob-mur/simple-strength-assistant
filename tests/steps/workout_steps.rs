@@ -597,3 +597,195 @@ async fn step_plan_unstarted_exercises_preserved(world: &mut WorkoutWorld) {
         "Expected planned exercises to be preserved after discard"
     );
 }
+
+// Issue 183: Record screen UI polish
+
+#[then(r#"the tab strip should not contain the textual "x/N" counter"#)]
+async fn step_no_textual_counter(world: &mut WorkoutWorld) {
+    // The textual counter previously rendered a span with
+    // data-testid="set-count-badge" containing "{completed}/{planned}".
+    // After the fix only the dotted indicator should remain — the badge
+    // span itself is removed, so the data-testid should not appear.
+    assert!(
+        !world.rendered_html.contains("set-count-badge"),
+        "Expected tab strip to NOT contain a set-count-badge text span. HTML: {}",
+        world.rendered_html
+    );
+    // Also assert the literal "1/3" text is not present in the tab strip
+    // header (the fixture in step_exercise_tab_with_counts uses 1/3 or 3/2).
+    let composed = format!("{}/{}", world.tab_completed, world.tab_planned);
+    // Allow the digits to appear elsewhere, but they must not appear with
+    // the slash in a span sibling to the dot indicator. The simplest check
+    // is that the exact "completed/planned" pair is absent.
+    assert!(
+        !world.rendered_html.contains(&composed),
+        "Expected tab strip to NOT contain the textual counter '{}'. HTML: {}",
+        composed,
+        world.rendered_html
+    );
+}
+
+#[then("the tab strip should still contain progress dots")]
+async fn step_tab_strip_has_dots(world: &mut WorkoutWorld) {
+    assert!(
+        world.rendered_html.contains("dot-filled") || world.rendered_html.contains("dot-empty"),
+        "Expected tab strip to contain progress dots. HTML: {}",
+        world.rendered_html
+    );
+}
+
+#[when("I render the active session")]
+async fn step_render_active_session(world: &mut WorkoutWorld) {
+    world.active_tab = Tab::Workout;
+    world.render_component();
+}
+
+#[then(r#"the reps step-down button label should be "−5""#)]
+async fn step_reps_step_down_minus_five(world: &mut WorkoutWorld) {
+    // The step-down button is identified by data-testid="reps-step-down".
+    // After the fix it should display the label "−5" (U+2212 MINUS SIGN + 5),
+    // matching the symmetric +5 increment.
+    let html = &world.rendered_html;
+    let testid = "reps-step-down";
+    let pos = html
+        .find(testid)
+        .unwrap_or_else(|| panic!("reps-step-down testid missing in HTML: {}", html));
+    // Look at the next ~400 bytes for the button label content
+    let window = &html[pos..(pos + 400).min(html.len())];
+    assert!(
+        window.contains("−5"),
+        "Expected reps-step-down to render label '−5'. Window: {}",
+        window
+    );
+    assert!(
+        !window.contains("−1"),
+        "Expected reps-step-down to NOT render the old '−1' label. Window: {}",
+        window
+    );
+}
+
+#[then(r#"the reps step-up button label should be "+5""#)]
+async fn step_reps_step_up_plus_five(world: &mut WorkoutWorld) {
+    let html = &world.rendered_html;
+    let testid = "reps-step-up";
+    let pos = html
+        .find(testid)
+        .unwrap_or_else(|| panic!("reps-step-up testid missing in HTML: {}", html));
+    let window = &html[pos..(pos + 400).min(html.len())];
+    assert!(
+        window.contains("+5"),
+        "Expected reps-step-up to render label '+5'. Window: {}",
+        window
+    );
+}
+
+#[then(r#"the rendered reps readout should not contain " reps""#)]
+async fn step_reps_readout_no_dup(world: &mut WorkoutWorld) {
+    let html = &world.rendered_html;
+    let testid = "reps-readout";
+    let pos = html
+        .find(testid)
+        .unwrap_or_else(|| panic!("reps-readout testid missing in HTML: {}", html));
+    // Slice from the testid to the end of its enclosing span
+    let after = &html[pos..(pos + 200).min(html.len())];
+    // After the fix, the readout span should contain just the numeric
+    // value (e.g. "8") with no trailing literal " reps" word.
+    assert!(
+        !after.contains(" reps"),
+        "Expected reps-readout to NOT contain the literal ' reps' word. Window: {}",
+        after
+    );
+}
+
+#[then("the action menu trigger SVG should have a large icon class")]
+async fn step_menu_icon_large(world: &mut WorkoutWorld) {
+    let html = &world.rendered_html;
+    let testid = "action-menu-trigger";
+    let pos = html
+        .find(testid)
+        .unwrap_or_else(|| panic!("action-menu-trigger missing in HTML: {}", html));
+    // Look ahead for the embedded SVG class attribute
+    let window = &html[pos..(pos + 800).min(html.len())];
+    // After the fix the icon must visibly fill the touch target — at least w-8 h-8.
+    let big =
+        window.contains("w-8 h-8") || window.contains("w-9 h-9") || window.contains("w-10 h-10");
+    assert!(
+        big,
+        "Expected action-menu-trigger SVG to have a large class (>=w-8 h-8). Window: {}",
+        window
+    );
+    assert!(
+        !window.contains("w-6 h-6"),
+        "Expected action-menu-trigger SVG to NOT use the small w-6 h-6 size. Window: {}",
+        window
+    );
+}
+
+#[then("the action menu trigger SVG should have a heavy stroke")]
+async fn step_menu_icon_heavy_stroke(world: &mut WorkoutWorld) {
+    let html = &world.rendered_html;
+    let testid = "action-menu-trigger";
+    let pos = html
+        .find(testid)
+        .unwrap_or_else(|| panic!("action-menu-trigger missing in HTML: {}", html));
+    let window = &html[pos..(pos + 800).min(html.len())];
+    // Heavy stroke = 2 or larger so the dots are visible. The previous
+    // 1.5 stroke must not be retained.
+    assert!(
+        !window.contains(r#"stroke-width="1.5""#),
+        "Expected action-menu-trigger SVG to NOT use the thin stroke-width 1.5. Window: {}",
+        window
+    );
+}
+
+#[then("the RPESlider should be rendered with hide_value true")]
+async fn step_rpe_hide_value_true(world: &mut WorkoutWorld) {
+    // The slider component should not render its own large value display
+    // — that responsibility lives in the title bar (rpe-readout). The
+    // simplest behavioural check is that the rpe-readout testid appears
+    // exactly once (the title bar) in the rendered output.
+    let count = world.rendered_html.matches("rpe-readout").count();
+    assert_eq!(
+        count, 1,
+        "Expected rpe-readout to appear exactly once (in the title bar), got {}. HTML: {}",
+        count, world.rendered_html
+    );
+}
+
+#[then("the RPE slider input should declare a horizontal-only touch-action style")]
+async fn step_rpe_touch_action_horizontal(world: &mut WorkoutWorld) {
+    // The RPE slider must keep its horizontal drag alive even if the
+    // user's finger drifts vertically. The reliable cross-browser way is
+    // to declare `touch-action: pan-x` (or `none`) on the slider input,
+    // which prevents the browser from reclassifying the gesture into a
+    // vertical scroll and therefore stops `pointercancel` firing mid-drag.
+    let html = &world.rendered_html;
+    let pos = html
+        .find(r#"type="range""#)
+        .or_else(|| html.find("range range-lg"))
+        .unwrap_or_else(|| panic!("RPE slider input missing in HTML: {}", html));
+    let window = &html[pos.saturating_sub(200)..(pos + 600).min(html.len())];
+    let has_pan_x = window.contains("touch-action:pan-x")
+        || window.contains("touch-action: pan-x")
+        || window.contains("touch-action:none")
+        || window.contains("touch-action: none");
+    assert!(
+        has_pan_x,
+        "Expected RPE slider input to declare touch-action: pan-x (or none). Window: {}",
+        window
+    );
+}
+
+#[then("the rendered output should not contain a duplicate RPE value display")]
+async fn step_no_dup_rpe_value(world: &mut WorkoutWorld) {
+    // The numeric RPE value is "7.0" given the fixture's predicted.rpe = 7.0.
+    // The title bar renders {rpe_input:.1} once. The slider must not render
+    // its own copy. So the formatted "7.0" should appear at most once.
+    let occurrences = world.rendered_html.matches("7.0").count();
+    assert!(
+        occurrences <= 1,
+        "Expected RPE value '7.0' to appear at most once on the screen, got {}. HTML: {}",
+        occurrences,
+        world.rendered_html
+    );
+}
