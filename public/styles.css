@@ -3945,6 +3945,20 @@ details.collapse summary::-webkit-details-marker {
 .pb-safe-tabbar {
     padding-bottom: calc(0.5rem + env(safe-area-inset-bottom));
   }
+
+/* Disable browser pull-to-refresh on the document root.
+ * Pull-to-refresh is a gesture owned by the document scroller, not the
+ * touched element, so a child's `touch-action` is not always sufficient
+ * (notably on iOS Safari and standalone PWAs). Declaring
+ * `overscroll-behavior-y: contain` on html and body suppresses the
+ * gesture app-wide and protects every drag-style interaction (RPE
+ * slider, tape-measure, future swipeable cards) from the same class of
+ * pointercancel-mid-drag bug. The app has no pull-to-refresh action it
+ * needs to expose, so this has no UX cost. See issue #188. */
+html,
+body {
+  overscroll-behavior-y: contain;
+}
 .last\:border-b-0:last-child {
   border-bottom-width: 0px;
 }

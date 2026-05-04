@@ -16,7 +16,11 @@ const baseURL = process.env.PLAYWRIGHT_BASE_URL || "http://localhost:3000";
 
 export default defineConfig({
   testDir,
-  timeout: process.env.CI ? 60000 : 30000,
+  // Sync edge-case scenarios chain multiple offline/online transitions and
+  // each "I wait for sync to complete" can wait up to 30s for the next
+  // periodic sync tick, so 60s is too tight in CI and produces flakes
+  // (see PR #189). 120s gives headroom for retries and back-to-back ticks.
+  timeout: process.env.CI ? 120000 : 30000,
   fullyParallel: true,
   forbidOnly: !!process.env.CI,
   retries: process.env.CI ? 2 : 0,
