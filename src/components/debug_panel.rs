@@ -23,7 +23,7 @@ pub fn DebugPanel() -> Element {
 
     rsx! {
         div {
-            class: "fixed bottom-16 right-2 z-50 bg-base-300 border border-base-content/20 rounded-lg shadow-lg p-2 pointer-events-none",
+            class: "hidden sm:block fixed bottom-16 right-2 z-50 bg-base-300 border border-base-content/20 rounded-lg shadow-lg p-2",
             "data-testid": "debug-panel",
             p {
                 class: "text-xs font-bold text-base-content/60 uppercase tracking-wider mb-2 text-center",
@@ -37,9 +37,9 @@ pub fn DebugPanel() -> Element {
                         rsx! {
                             button {
                                 class: if current == status {
-                                    "btn btn-xs btn-primary pointer-events-auto"
+                                    "btn btn-xs btn-primary"
                                 } else {
-                                    "btn btn-xs btn-ghost pointer-events-auto"
+                                    "btn btn-xs btn-ghost"
                                 },
                                 "data-testid": "debug-set-{status.as_attr_str()}",
                                 onclick: move |_| workout_state.set_sync_status(status_for_click.clone()),

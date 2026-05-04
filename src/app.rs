@@ -1192,10 +1192,11 @@ pub fn ActiveSession(state: WorkoutState, session: crate::state::WorkoutSession)
                                     {crate::domain::rpe::rpe_description(rpe_input())}
                                 }
                             }
-                            // Row 2: RPESlider
+                            // Row 2: RPESlider (value shown in header above)
                             RPESlider {
                                 value: rpe_input(),
-                                on_change: move |val| rpe_input.set(val)
+                                on_change: move |val| rpe_input.set(val),
+                                hide_value: true
                             }
                         }
                     }
