@@ -610,10 +610,15 @@ impl WorkoutStateManager {
             .as_ref()
             .and_then(|p| p.exercises.first())
             .map(|pe| pe.exercise.clone());
-        state.set_current_plan(refreshed);
+        // IMPORTANT: start the session BEFORE updating the plan signal.
+        // Updating the plan signal triggers a re-render which unmounts
+        // PlanBuilder (where this spawn lives). Dioxus drops spawned tasks
+        // when the owning component unmounts, so any awaits after
+        // set_current_plan would be cancelled.
         if let Some(exercise) = first_exercise {
             Self::start_session(state, exercise).await?;
         }
+        state.set_current_plan(refreshed);
         Ok(())
     }
 
