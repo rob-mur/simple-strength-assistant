@@ -13,7 +13,7 @@ pub fn ExerciseTabStrip(
 
     rsx! {
         div {
-            class: "relative w-full mb-4",
+            class: "relative w-full mb-2",
             "data-testid": "exercise-tab-strip",
 
             button {

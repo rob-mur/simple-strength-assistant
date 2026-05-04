@@ -203,7 +203,7 @@ fn Shell() -> Element {
                 class: "flex-1 overflow-y-auto min-h-0",
                 "data-testid": "shell-content",
                 div {
-                    class: "container mx-auto p-4",
+                    class: "container mx-auto p-2 sm:p-4",
                     if !is_settings_route {
                         {storage_mode_banner}
                         {save_error_banner}
@@ -548,11 +548,11 @@ pub fn App() -> Element {
         div {
             class: "flex flex-col h-[100dvh] bg-base-200",
             header {
-                class: "navbar bg-primary text-primary-content flex-none",
+                class: "navbar min-h-0 py-1 bg-primary text-primary-content flex-none",
                 div {
                     class: "flex-1",
                     h1 {
-                        class: "text-2xl font-bold px-4",
+                        class: "text-lg sm:text-2xl font-bold px-4",
                         "Simple Strength Assistant"
                     }
                 }
@@ -1048,15 +1048,15 @@ pub fn ActiveSession(state: WorkoutState, session: crate::state::WorkoutSession)
 
     rsx! {
         div {
-            class: "max-w-md mx-auto space-y-4 pb-10",
+            class: "max-w-md mx-auto space-y-2",
 
             // Input Section
             div {
                 class: "card bg-base-100 shadow-xl",
                 div {
-                    class: "card-body p-3 sm:p-6",
+                    class: "card-body p-2 sm:p-6",
                     div {
-                        class: "flex flex-col gap-4 items-stretch w-full",
+                        class: "flex flex-col gap-2 items-stretch w-full",
 
                         // Weight Input (compact: inline header + tape measure)
                         if let SetTypeConfig::Weighted { min_weight, increment } = session_for_display.exercise.set_type_config {
@@ -1192,24 +1192,25 @@ pub fn ActiveSession(state: WorkoutState, session: crate::state::WorkoutSession)
                                     {crate::domain::rpe::rpe_description(rpe_input())}
                                 }
                             }
-                            // Row 2: RPESlider
+                            // Row 2: RPESlider (value shown in header above)
                             RPESlider {
                                 value: rpe_input(),
-                                on_change: move |val| rpe_input.set(val)
+                                on_change: move |val| rpe_input.set(val),
+                                hide_value: true
                             }
                         }
                     }
 
                     // Log Set Button + Action Menu Trigger
                     div {
-                        class: "mt-4 flex gap-2",
+                        class: "mt-2 flex gap-2",
                         button {
-                            class: "btn btn-primary btn-lg flex-1 h-14 text-xl font-black shadow-lg",
+                            class: "btn btn-primary flex-1 h-12 text-lg font-black shadow-lg",
                             onclick: log_set,
                             "LOG SET"
                         }
                         button {
-                            class: "btn btn-ghost btn-lg w-14 h-14",
+                            class: "btn btn-ghost w-12 h-12",
                             "aria-label": "More actions",
                             "data-testid": "action-menu-trigger",
                             onclick: move |_| show_action_menu.set(true),

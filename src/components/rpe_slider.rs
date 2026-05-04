@@ -4,6 +4,9 @@ use dioxus::prelude::*;
 pub struct RPESliderProps {
     pub value: f64,
     pub on_change: EventHandler<f64>,
+    /// When true, hide the value display above the slider (caller shows it elsewhere).
+    #[props(default = false)]
+    pub hide_value: bool,
 }
 
 const MIN_RPE: f64 = 1.0;
@@ -29,14 +32,16 @@ pub fn RPESlider(props: RPESliderProps) -> Element {
 
     rsx! {
         div {
-            class: "rpe-slider-container w-full py-1 px-2",
+            class: "rpe-slider-container w-full px-2",
 
-            // Value Display
-            div {
-                class: "flex justify-center mb-1",
+            // Value Display (hidden when caller provides its own)
+            if !props.hide_value {
                 div {
-                    class: "text-3xl font-black {text_color_class} transition-colors duration-300",
-                    "{props.value:.1}"
+                    class: "flex justify-center mb-1",
+                    div {
+                        class: "text-3xl font-black {text_color_class} transition-colors duration-300",
+                        "{props.value:.1}"
+                    }
                 }
             }
 
@@ -54,20 +59,6 @@ pub fn RPESlider(props: RPESliderProps) -> Element {
                         if let Ok(val) = evt.value().parse::<f64>() {
                             props.on_change.call(val);
                         }
-                    }
-                }
-            }
-
-            // Legend/Context
-            div {
-                class: "flex justify-center mt-2",
-                div {
-                    class: "badge badge-outline opacity-70",
-                    match props.value {
-                        v if v >= 9.0 => "Extremely Hard",
-                        v if v >= 7.5 => "Heavy / Challenging",
-                        v if v >= 6.0 => "Moderate / Solid",
-                        _ => "Warmup / Recovery",
                     }
                 }
             }

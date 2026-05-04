@@ -44,5 +44,19 @@ export default defineConfig({
         },
       },
     },
+    {
+      name: "mobile-iphone-se",
+      testMatch: /mobile_no_scroll/,
+      use: {
+        viewport: { width: 375, height: 667 },
+        userAgent: devices["Desktop Chrome"].userAgent,
+        launchOptions: {
+          headless: true,
+          ...(process.env.CHROMIUM_EXECUTABLE_PATH && {
+            executablePath: process.env.CHROMIUM_EXECUTABLE_PATH,
+          }),
+        },
+      },
+    },
   ],
 });

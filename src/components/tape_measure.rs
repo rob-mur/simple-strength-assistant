@@ -16,7 +16,7 @@ const FRICTION: f64 = 0.85; // Faster deceleration
 const VELOCITY_THRESHOLD: f64 = 0.5; // Trigger snap much sooner
 const SNAP_STIFFNESS: f64 = 0.25;
 const VIEWPORT_WIDTH: f64 = 300.0;
-const VIEWPORT_HEIGHT: f64 = 80.0;
+const VIEWPORT_HEIGHT: f64 = 60.0;
 const CENTER_X: f64 = VIEWPORT_WIDTH / 2.0;
 const EPSILON_TOLERANCE: f64 = 1e-9;
 const CLICK_DRAG_THRESHOLD: f64 = 5.0;
@@ -300,7 +300,7 @@ pub fn TapeMeasure(props: TapeMeasureProps) -> Element {
                 height: "100%",
 
                 line {
-                    x1: "{CENTER_X}", y1: "10", x2: "{CENTER_X}", y2: "70",
+                    x1: "{CENTER_X}", y1: "8", x2: "{CENTER_X}", y2: "52",
                     stroke: "currentColor", stroke_width: "3", class: "text-primary"
                 }
 
@@ -319,7 +319,7 @@ pub fn TapeMeasure(props: TapeMeasureProps) -> Element {
                                                                         key: "{val}",
                                                                         style: "opacity: {opacity}",
                                                                         line {
-                                                                            x1: "{x}", y1: if is_major { "50" } else { "55" },                                        x2: "{x}", y2: "70",
+                                                                            x1: "{x}", y1: if is_major { "38" } else { "41" },                                        x2: "{x}", y2: "52",
                                         stroke: "currentColor", stroke_width: "2"
                                     }
                                     if is_major {
@@ -328,8 +328,8 @@ pub fn TapeMeasure(props: TapeMeasureProps) -> Element {
                                             let formatted_val = format!("{}", rounded_val);
                                             rsx! {
                                                 text {
-                                                    x: "{x}", y: "40", text_anchor: "middle",
-                                                    font_size: "20", font_weight: "bold", fill: "currentColor",
+                                                    x: "{x}", y: "30", text_anchor: "middle",
+                                                    font_size: "16", font_weight: "bold", fill: "currentColor",
                                                     style: "pointer-events: none;",
                                                     "{formatted_val}"
                                                 }
