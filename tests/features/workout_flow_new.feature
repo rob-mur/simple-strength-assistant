@@ -73,12 +73,14 @@ Feature: Streamlined Workout Flow
     Given an active session for "Bench Press" with completed sets
     Then the over-plan warning banner should not be present
 
-  # Issue 164: Set-count badge renders in warning colour when completed > planned
+  # Issue 164/183: Over-plan signal now lives on the progress-dots row
+  # (the textual badge was removed in Issue 183). The dot row wrapper carries
+  # the text-warning class when completed > planned.
   Scenario: Set-count badge uses warning colour when completed sets exceed planned
     Given an exercise tab with 3 completed sets and 2 planned sets
     Then the set-count badge should render in warning colour
 
-  # Issue 164: Set-count badge uses default colour when completed <= planned
+  # Issue 164/183: Default colour means no text-warning on the dot row wrapper.
   Scenario: Set-count badge uses default colour when completed sets are within plan
     Given an exercise tab with 2 completed sets and 3 planned sets
     Then the set-count badge should render in default colour

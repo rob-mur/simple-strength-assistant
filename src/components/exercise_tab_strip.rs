@@ -77,17 +77,13 @@ pub fn ExerciseTabStrip(
                                             }
                                         }
                                     }
-                                    span {
-                                        class: if over_plan {
-                                            "text-xs font-semibold mt-1 text-warning"
-                                        } else {
-                                            "text-xs font-semibold mt-1"
-                                        },
-                                        "data-testid": "set-count-badge",
-                                        "{completed}/{planned}"
-                                    }
                                     div {
-                                        class: "flex gap-1 mt-1",
+                                        class: if over_plan {
+                                            "flex gap-1 mt-1 text-warning"
+                                        } else {
+                                            "flex gap-1 mt-1"
+                                        },
+                                        "data-testid": "set-progress-dots",
                                         for dot_idx in 0..planned {
                                             span {
                                                 key: "{dot_idx}",
@@ -97,6 +93,16 @@ pub fn ExerciseTabStrip(
                                                     if is_active { "w-2 h-2 rounded-full bg-primary-content/30" } else { "w-2 h-2 rounded-full bg-base-content/20" }
                                                 },
                                                 "data-testid": if dot_idx < completed { "dot-filled" } else { "dot-empty" },
+                                            }
+                                        }
+                                        // When over plan, render extra dots in warning colour for each extra completed set
+                                        if over_plan {
+                                            for extra_idx in planned..completed {
+                                                span {
+                                                    key: "extra-{extra_idx}",
+                                                    class: "w-2 h-2 rounded-full bg-warning",
+                                                    "data-testid": "dot-overflow",
+                                                }
                                             }
                                         }
                                     }

@@ -3367,6 +3367,9 @@ details.collapse summary::-webkit-details-marker {
 .h-6 {
   height: 1.5rem;
 }
+.h-8 {
+  height: 2rem;
+}
 .h-\[100dvh\] {
   height: 100dvh;
 }
@@ -3637,6 +3640,10 @@ details.collapse summary::-webkit-details-marker {
 }
 .bg-primary-content\/30 {
   background-color: var(--fallback-pc,oklch(var(--pc)/0.3));
+}
+.bg-warning {
+  --tw-bg-opacity: 1;
+  background-color: var(--fallback-wa,oklch(var(--wa)/var(--tw-bg-opacity, 1)));
 }
 .stroke-current {
   stroke: currentColor;
