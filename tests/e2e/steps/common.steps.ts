@@ -44,30 +44,43 @@ Given("I finish any active session", async ({ page }) => {
 Given(
   "I start a test session with {string}",
   async ({ page }, exerciseName: string) => {
-    // Navigate to Library
-    await page.click('button:has-text("Library")');
+    // Navigate to Library and wait for the Library view to actually render.
+    // Dioxus WASM apps may render the tab bar before event handlers are
+    // fully attached, so a bare click can silently fail. We retry the tab
+    // click until the Library view is confirmed visible.
+    const libraryTab = page.locator('[data-testid="tab-library"]');
+    const libraryView = page.locator('[data-testid="library-view"]');
+    for (let attempt = 0; attempt < 5; attempt++) {
+      await libraryTab.click();
+      if (
+        await libraryView
+          .waitFor({ state: "visible", timeout: 3000 })
+          .then(() => true)
+          .catch(() => false)
+      ) {
+        break;
+      }
+    }
 
-    // Click Add Exercise or Add First Exercise
-    const addBtn = page
-      .locator(
-        'button:has-text("Add First Exercise"), button:has-text("Add New Exercise")',
-      )
-      .first();
-    // Or look for the FAB if we can't find text
-    if (await addBtn.isVisible()) {
-      await addBtn.click();
+    // Click Add Exercise (FAB or empty-state button)
+    const addFirstBtn = page.locator('button:has-text("Add First Exercise")');
+    const fab = page.locator("button.btn-circle.btn-primary");
+    if (await addFirstBtn.isVisible().catch(() => false)) {
+      await addFirstBtn.click();
     } else {
-      // Try clicking the plus icon button if it's the FAB
-      await page.locator("button.btn-circle.btn-primary").click();
+      await fab.click();
     }
 
     await setDioxusInput(page, "#exercise-name-input", exerciseName);
     await page.click('button:has-text("Save Exercise")');
 
+    // Wait for the exercise card to appear in the list after save completes.
+    const card = page.locator("div.card", { hasText: exerciseName });
+    await card.waitFor({ state: "visible", timeout: 10000 });
+
     // Now start session from the list.
     // When no plan is active the button reads "START"; when a plan already
     // exists (adhoc or otherwise) the button reads "Add to workout".
-    const card = page.locator("div.card", { hasText: exerciseName });
     const startBtn = card.getByRole("button", { name: "START" });
     const addToWorkoutBtn = card.getByRole("button", {
       name: "Add to workout",
@@ -167,10 +180,21 @@ Given(
     }
 
     // Navigate to Library and re-start the same exercise.
-    await page.click(
-      'button[role="tab"]:has-text("Library"), button:has-text("Library")',
-    );
-    await page.waitForTimeout(200);
+    {
+      const libTab = page.locator('[data-testid="tab-library"]');
+      const libView = page.locator('[data-testid="library-view"]');
+      for (let attempt = 0; attempt < 5; attempt++) {
+        await libTab.click();
+        if (
+          await libView
+            .waitFor({ state: "visible", timeout: 3000 })
+            .then(() => true)
+            .catch(() => false)
+        ) {
+          break;
+        }
+      }
+    }
     const reCard = page.locator("div.card", { hasText: exerciseName });
     const reStartBtn = reCard.getByRole("button", { name: "START" });
     const reAddBtn = reCard.getByRole("button", { name: "Add to workout" });
