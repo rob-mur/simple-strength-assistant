@@ -78,9 +78,12 @@ Given(
       await addToWorkoutBtn.click();
     }
 
-    await page.waitForSelector('body[data-hydrated="true"]', {
-      timeout: 10000,
-    });
+    // Wait for the active session UI to render (action menu trigger appears
+    // when a session is active, confirming start_adhoc_plan completed).
+    await page.waitForSelector(
+      '[data-testid="action-menu-trigger"], button:has-text("LOG SET")',
+      { timeout: 15000 },
+    );
   },
 );
 
