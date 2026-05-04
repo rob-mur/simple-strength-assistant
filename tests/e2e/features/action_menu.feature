@@ -92,4 +92,6 @@ Feature: Three-dot action menu in active session
     And I log a set in the current session
     When I tap the action menu trigger
     And I tap "Complete Workout" in the bottom sheet
+    Then the confirmation dialog should be visible
+    When I confirm the complete dialog
     Then I should see the plan builder

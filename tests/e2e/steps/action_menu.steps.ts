@@ -100,6 +100,13 @@ When("I confirm the discard dialog", async ({ page }) => {
   await page.waitForTimeout(500);
 });
 
+When("I confirm the complete dialog", async ({ page }) => {
+  await page
+    .locator('[data-testid="confirmation-dialog-confirm"]')
+    .click({ force: true });
+  await page.waitForTimeout(500);
+});
+
 // ── Plan builder ───────────────────────────────────────────────────────────
 
 Then("I should see the plan builder", async ({ page }) => {
