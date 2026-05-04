@@ -27,17 +27,17 @@ Feature: Record screen UI polish (Issue 183)
     Given an active session for "Bench Press" with completed sets
     When I render the active session
     Then the action menu trigger SVG should have a large icon class
-    And the action menu trigger SVG should have a heavy stroke
-
-  # Cycle 6 — RPE value/description appear once
-  Scenario: RPE numeric value appears exactly once on the recording screen
-    Given an active session for "Bench Press" with completed sets
-    When I render the active session
-    Then the RPESlider should be rendered with hide_value true
-    And the rendered output should not contain a duplicate RPE value display
+    And the action menu trigger SVG should have filled dots without a stroke
 
   # Cycle 5 — slider drag survives vertical drift
   Scenario: RPE slider input declares touch-action that prevents vertical scroll cancellation
     Given an active session for "Bench Press" with completed sets
     When I render the active session
     Then the RPE slider input should declare a horizontal-only touch-action style
+
+  # Cycle 6 — RPE value/description appear once
+  Scenario: RPE numeric value appears exactly once on the recording screen
+    Given an active session for "Bench Press" with completed sets
+    When I render the active session
+    Then the rpe-readout testid should appear exactly once
+    And the rendered output should not contain a duplicate RPE value display

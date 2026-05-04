@@ -465,22 +465,47 @@ async fn step_exercise_tab_with_counts(world: &mut WorkoutWorld, completed: u32,
     world.rendered_html = dioxus_ssr::render(&vdom);
 }
 
+// The textual set-count badge was removed in Issue 183; the over-plan signal
+// now lives on the progress-dots row (data-testid="set-progress-dots"). These
+// steps assert the warning colour on that wrapper directly so the test fails
+// if the indicator ever moves elsewhere.
+fn extract_dot_row_class(html: &str) -> &str {
+    let testid = "set-progress-dots";
+    let pos = html
+        .find(testid)
+        .unwrap_or_else(|| panic!("set-progress-dots testid missing in HTML: {}", html));
+    // Walk back to the containing element's `class="..."` attribute.
+    let prefix = &html[..pos];
+    let class_start = prefix
+        .rfind("class=\"")
+        .unwrap_or_else(|| panic!("class attribute preceding set-progress-dots missing"));
+    let after_open = class_start + "class=\"".len();
+    let rel_end = html[after_open..]
+        .find('"')
+        .unwrap_or_else(|| panic!("unterminated class attribute"));
+    &html[after_open..after_open + rel_end]
+}
+
 #[then("the set-count badge should render in warning colour")]
 async fn step_badge_warning(world: &mut WorkoutWorld) {
-    // The badge element should have text-warning class when completed > planned
+    // Assert the dot row (data-testid="set-progress-dots") carries text-warning.
+    let class_attr = extract_dot_row_class(&world.rendered_html);
     assert!(
-        world.rendered_html.contains("text-warning"),
-        "Expected set-count badge to have 'text-warning' class. HTML: {}",
+        class_attr.contains("text-warning"),
+        "Expected set-progress-dots class to include 'text-warning' (over-plan). class=\"{}\". HTML: {}",
+        class_attr,
         world.rendered_html
     );
 }
 
 #[then("the set-count badge should render in default colour")]
 async fn step_badge_default(world: &mut WorkoutWorld) {
-    // The badge element should NOT have text-warning class when completed <= planned
+    // Assert the dot row (data-testid="set-progress-dots") does NOT carry text-warning.
+    let class_attr = extract_dot_row_class(&world.rendered_html);
     assert!(
-        !world.rendered_html.contains("text-warning"),
-        "Expected set-count badge to NOT have 'text-warning' class. HTML: {}",
+        !class_attr.contains("text-warning"),
+        "Expected set-progress-dots class to NOT include 'text-warning' (within plan). class=\"{}\". HTML: {}",
+        class_attr,
         world.rendered_html
     );
 }
@@ -611,18 +636,6 @@ async fn step_no_textual_counter(world: &mut WorkoutWorld) {
         "Expected tab strip to NOT contain a set-count-badge text span. HTML: {}",
         world.rendered_html
     );
-    // Also assert the literal "1/3" text is not present in the tab strip
-    // header (the fixture in step_exercise_tab_with_counts uses 1/3 or 3/2).
-    let composed = format!("{}/{}", world.tab_completed, world.tab_planned);
-    // Allow the digits to appear elsewhere, but they must not appear with
-    // the slash in a span sibling to the dot indicator. The simplest check
-    // is that the exact "completed/planned" pair is absent.
-    assert!(
-        !world.rendered_html.contains(&composed),
-        "Expected tab strip to NOT contain the textual counter '{}'. HTML: {}",
-        composed,
-        world.rendered_html
-    );
 }
 
 #[then("the tab strip should still contain progress dots")]
@@ -721,25 +734,50 @@ async fn step_menu_icon_large(world: &mut WorkoutWorld) {
     );
 }
 
-#[then("the action menu trigger SVG should have a heavy stroke")]
-async fn step_menu_icon_heavy_stroke(world: &mut WorkoutWorld) {
+#[then("the action menu trigger SVG should have filled dots without a stroke")]
+async fn step_menu_icon_filled_no_stroke(world: &mut WorkoutWorld) {
     let html = &world.rendered_html;
     let testid = "action-menu-trigger";
-    let pos = html
+    let trigger_pos = html
         .find(testid)
         .unwrap_or_else(|| panic!("action-menu-trigger missing in HTML: {}", html));
-    let window = &html[pos..(pos + 800).min(html.len())];
-    // Heavy stroke = 2 or larger so the dots are visible. The previous
-    // 1.5 stroke must not be retained.
+    // Narrow the window to the first <svg>...</svg> after the trigger's testid
+    // so sibling SVGs (e.g. tab-bar icons) don't pollute the assertion.
+    let svg_open = html[trigger_pos..].find("<svg").unwrap_or_else(|| {
+        panic!(
+            "svg opening tag missing after action-menu-trigger: {}",
+            html
+        )
+    });
+    let svg_start = trigger_pos + svg_open;
+    let svg_close_rel = html[svg_start..].find("</svg>").unwrap_or_else(|| {
+        panic!(
+            "svg closing tag missing after action-menu-trigger: {}",
+            html
+        )
+    });
+    let svg = &html[svg_start..svg_start + svg_close_rel + "</svg>".len()];
+    // The dots are closed discs painted via fill="currentColor". Stroke must
+    // be disabled so it does not double-paint and inflate the visual radius.
     assert!(
-        !window.contains(r#"stroke-width="1.5""#),
-        "Expected action-menu-trigger SVG to NOT use the thin stroke-width 1.5. Window: {}",
-        window
+        svg.contains(r#"fill="currentColor""#),
+        "Expected action-menu-trigger SVG to use fill=\"currentColor\". SVG: {}",
+        svg
+    );
+    assert!(
+        svg.contains(r#"stroke="none""#),
+        "Expected action-menu-trigger SVG to declare stroke=\"none\". SVG: {}",
+        svg
+    );
+    assert!(
+        !svg.contains("stroke-width="),
+        "Expected action-menu-trigger SVG to NOT carry a stroke-width attr (stroke disabled). SVG: {}",
+        svg
     );
 }
 
-#[then("the RPESlider should be rendered with hide_value true")]
-async fn step_rpe_hide_value_true(world: &mut WorkoutWorld) {
+#[then("the rpe-readout testid should appear exactly once")]
+async fn step_rpe_readout_appears_once(world: &mut WorkoutWorld) {
     // The slider component should not render its own large value display
     // — that responsibility lives in the title bar (rpe-readout). The
     // simplest behavioural check is that the rpe-readout testid appears

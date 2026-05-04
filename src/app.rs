@@ -1214,18 +1214,17 @@ pub fn ActiveSession(state: WorkoutState, session: crate::state::WorkoutSession)
                             "aria-label": "More actions",
                             "data-testid": "action-menu-trigger",
                             onclick: move |_| show_action_menu.set(true),
-                            // Vertical ellipsis icon — larger size + heavier dots so it's
+                            // Vertical ellipsis icon — larger size with filled discs so it's
                             // clearly visible inside its 48px touch target on mobile.
+                            // Stroke is disabled because the path is closed discs; combining
+                            // fill and stroke would double-paint and inflate the visual radius.
                             svg {
                                 xmlns: "http://www.w3.org/2000/svg",
                                 fill: "currentColor",
                                 view_box: "0 0 24 24",
-                                stroke_width: "2.5",
-                                stroke: "currentColor",
+                                stroke: "none",
                                 class: "w-8 h-8",
                                 path {
-                                    stroke_linecap: "round",
-                                    stroke_linejoin: "round",
                                     d: "M12 8a2 2 0 1 1 0-4 2 2 0 0 1 0 4Zm0 6a2 2 0 1 1 0-4 2 2 0 0 1 0 4Zm0 6a2 2 0 1 1 0-4 2 2 0 0 1 0 4Z"
                                 }
                             }
