@@ -422,14 +422,11 @@ fn LibraryExercise(exercise_id: String) -> Element {
                         onclick: move |_| {
                             let state = workout_state;
                             let ex = exercise.clone();
-                            // Navigate BEFORE the async work so we land on
-                            // WorkoutTab immediately.  start_adhoc_plan updates
-                            // signals which can unmount this component, killing
-                            // a `spawn` task mid-flight.
-                            navigator.push(Route::WorkoutTab);
                             spawn(async move {
                                 if let Err(e) = WorkoutStateManager::start_adhoc_plan(&state, &ex).await {
                                     WorkoutStateManager::handle_error(&state, e);
+                                } else {
+                                    navigator.push(Route::WorkoutTab);
                                 }
                             });
                         },

@@ -628,6 +628,11 @@ impl WorkoutStateManager {
     ///
     /// This replaces the legacy `start_session`-only path from the Library so
     /// that every workout always has a plan backing it.
+    ///
+    /// IMPORTANT: This method performs all DB operations first and only updates
+    /// reactive signals at the very end.  Updating `current_plan` mid-flight
+    /// triggers a re-render that unmounts the calling Library component, which
+    /// kills the `spawn` task that is running this future.
     pub async fn start_adhoc_plan(
         state: &WorkoutState,
         exercise: &ExerciseMetadata,
@@ -637,15 +642,33 @@ impl WorkoutStateManager {
             .as_deref()
             .ok_or(WorkoutError::SessionNotPersisted)?;
         let planned_sets = state.settings().default_planned_sets;
+        let db = state.database().ok_or(WorkoutError::NotInitialized)?;
 
-        // Create a fresh plan, add the single exercise, then start it.
-        let plan_id = Self::create_plan(state).await?;
-        // `create_plan` sets current_plan on state, so `add_exercise_to_plan`
-        // will find it.
-        Self::add_exercise_to_plan(state, exercise_id, planned_sets).await?;
-        // `start_plan` marks the plan as started and auto-starts a session on
-        // the first (only) exercise.
-        Self::start_plan(state).await?;
+        // 1. Create plan in DB (no signal update yet)
+        let plan_id = db.create_plan().await.map_err(WorkoutError::Database)?;
+
+        // 2. Add the single exercise to the plan in DB
+        db.add_exercise_to_plan(&plan_id, exercise_id, planned_sets)
+            .await
+            .map_err(WorkoutError::Database)?;
+
+        // 3. Start the plan in DB
+        db.start_plan(&plan_id)
+            .await
+            .map_err(WorkoutError::Database)?;
+
+        // 4. Auto-start a session on the exercise (this updates current_session
+        //    signal but that does NOT unmount the Library component)
+        Self::start_session(state, exercise.clone()).await?;
+
+        // 5. NOW update the plan signal — all DB work is done, so even if the
+        //    component unmounts after this point, nothing is lost.
+        let refreshed = db
+            .get_plan(&plan_id)
+            .await
+            .map_err(WorkoutError::Database)?;
+        state.set_current_plan(refreshed);
+
         js_log(&format!(
             "[Workout] Ad-hoc plan {} started for exercise {}",
             plan_id, exercise_id
