@@ -46,7 +46,7 @@ export default defineConfig({
     },
     {
       name: "mobile-iphone-se",
-      testMatch: /mobile_no_scroll/,
+      testMatch: /mobile_no_scroll|overscroll_pull_to_refresh/,
       use: {
         viewport: { width: 375, height: 667 },
         userAgent: devices["Desktop Chrome"].userAgent,
