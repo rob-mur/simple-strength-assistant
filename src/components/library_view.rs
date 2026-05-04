@@ -251,11 +251,14 @@ pub fn LibraryView() -> Element {
                                                         onclick: move |evt| {
                                                             evt.stop_propagation();
                                                             let e_clone = e.clone();
+                                                            // Navigate BEFORE the async work so we land on
+                                                            // WorkoutTab immediately.  start_adhoc_plan
+                                                            // updates signals which can unmount this Library
+                                                            // component, killing a `spawn` task mid-flight.
+                                                            navigator.push(Route::WorkoutTab);
                                                             spawn(async move {
                                                                 if let Err(err) = WorkoutStateManager::start_adhoc_plan(&workout_state, &e_clone).await {
                                                                     WorkoutStateManager::handle_error(&workout_state, err);
-                                                                } else {
-                                                                    navigator.push(Route::WorkoutTab);
                                                                 }
                                                             });
                                                         },
