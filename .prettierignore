@@ -1,3 +1,8 @@
 public/
 .claude/
 secrets.yaml
+
+# Ralph workspace clones (e.g. 158/, 183/) — untracked transient checkouts
+# from automated runs that contain test artifacts (playwright reports, etc.)
+# which prettier should not touch.
+[0-9]*/

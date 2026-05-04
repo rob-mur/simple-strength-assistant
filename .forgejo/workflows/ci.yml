@@ -23,6 +23,7 @@ jobs:
           FORGEJO_ACTIONS: "true"
           BASE_SHA: ${{ github.event.pull_request.base.sha }}
           HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+          PR_TITLE: ${{ github.event.pull_request.title }}
 
   test:
     runs-on: nix-host

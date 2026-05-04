@@ -17,6 +17,13 @@ else
 fi
 echo ""
 
+# PR title validation
+# A squash merge uses the PR title verbatim as the commit message on `main`,
+# which feeds semantic-release. Lint it against the same rules so a
+# non-conventional title fails CI before it can be merged.
+bash "$(dirname "$0")/lint-pr-title.sh"
+echo ""
+
 # Lockfile drift detection
 echo "→ Checking package-lock.json is in sync with package.json..."
 LOCK_BEFORE=$(sha256sum package-lock.json)
