@@ -519,6 +519,16 @@ impl WorkoutStateManager {
         Ok(())
     }
 
+    /// Fetches soft-deleted (archived) exercises from the database.
+    pub async fn fetch_archived_exercises(
+        state: &WorkoutState,
+    ) -> Result<Vec<ExerciseMetadata>, WorkoutError> {
+        let db = state.database().ok_or(WorkoutError::NotInitialized)?;
+        db.get_archived_exercises()
+            .await
+            .map_err(WorkoutError::Database)
+    }
+
     /// Load settings from the database into app state.
     pub async fn load_settings(state: &WorkoutState) -> Result<(), WorkoutError> {
         let db = state.database().ok_or(WorkoutError::NotInitialized)?;

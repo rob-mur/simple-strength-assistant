@@ -22,13 +22,35 @@ pub fn LibraryView() -> Element {
     let test_query = try_consume_context::<TestSearchQuery>();
     let mut search_query = use_signal(|| test_query.map(|t| t.0).unwrap_or_default());
     let mut show_form = use_signal(|| FormState::Closed);
+    let mut show_archived = use_signal(|| false);
+    // Holds archived exercises fetched on demand when the toggle is ON.
+    let mut archived_exercises: Signal<Vec<ExerciseMetadata>> = use_signal(Vec::new);
+
+    // When show_archived flips to true, fetch archived exercises from DB.
+    use_effect(move || {
+        if show_archived() {
+            spawn(async move {
+                match WorkoutStateManager::fetch_archived_exercises(&workout_state).await {
+                    Ok(exercises) => archived_exercises.set(exercises),
+                    Err(e) => log::warn!("Failed to fetch archived exercises: {}", e),
+                }
+            });
+        } else {
+            // Clear stale archived list when toggling back to active view.
+            archived_exercises.set(Vec::new());
+        }
+    });
+
     let filtered_exercises = use_memo(move || {
         let query = search_query().to_lowercase();
-        workout_state
-            .exercises()
-            .iter()
+        let source: Vec<ExerciseMetadata> = if show_archived() {
+            archived_exercises()
+        } else {
+            workout_state.exercises()
+        };
+        source
+            .into_iter()
             .filter(|e| e.name.to_lowercase().contains(&query))
-            .cloned()
             .collect::<Vec<_>>()
     });
 
@@ -62,30 +84,35 @@ pub fn LibraryView() -> Element {
         FormState::Closed => {}
     }
 
+    // Determine empty-state copy based on toggle
+    let is_truly_empty = workout_state.exercises().is_empty() && !show_archived();
+
     rsx! {
         div {
-            class: "max-w-2xl mx-auto p-4",
+            class: "relative max-w-2xl mx-auto p-4",
             "data-testid": "library-view",
+
+            // Header: title + "Show archived" toggle
             div {
                 class: "flex justify-between items-center mb-6",
                 h2 {
                     class: "text-3xl font-black text-base-content tracking-tighter min-h-8",
                     "LIBRARY"
                 }
-                button {
-                    class: "btn btn-primary btn-circle shadow-lg",
-                    onclick: move |_| show_form.set(FormState::New),
-                    svg {
-                        xmlns: "http://www.w3.org/2000/svg",
-                        fill: "none",
-                        view_box: "0 0 24 24",
-                        stroke_width: "3",
-                        stroke: "currentColor",
-                        class: "w-6 h-6",
-                        path {
-                            stroke_linecap: "round",
-                            stroke_linejoin: "round",
-                            d: "M12 4.5v15m7.5-7.5h-15"
+                label {
+                    class: "flex items-center gap-2 cursor-pointer",
+                    "data-testid": "show-archived-label",
+                    span {
+                        class: "text-sm font-semibold text-base-content/70",
+                        "Show archived"
+                    }
+                    input {
+                        r#type: "checkbox",
+                        class: "toggle toggle-primary toggle-sm",
+                        "data-testid": "show-archived-toggle",
+                        checked: show_archived(),
+                        onchange: move |evt| {
+                            show_archived.set(evt.checked());
                         }
                     }
                 }
@@ -121,7 +148,7 @@ pub fn LibraryView() -> Element {
                 }
             }
 
-            if workout_state.exercises().is_empty() {
+            if is_truly_empty {
                 div {
                     class: "card bg-base-100 shadow-xl py-12 text-center",
                     div {
@@ -157,7 +184,15 @@ pub fn LibraryView() -> Element {
             } else if filtered_exercises().is_empty() {
                 div {
                     class: "text-center py-12",
-                    p { class: "text-base-content/50 italic", "No exercises match your search" }
+                    p {
+                        class: "text-base-content/50 italic",
+                        "data-testid": "empty-archived-state",
+                        if show_archived() {
+                            "No archived exercises"
+                        } else {
+                            "No exercises match your search"
+                        }
+                    }
                 }
             } else {
                 div {
@@ -192,81 +227,84 @@ pub fn LibraryView() -> Element {
                                             }
                                         }
                                     }
-                                    div {
-                                        class: "flex gap-2",
-                                        button {
-                                            class: "btn btn-ghost btn-sm btn-circle",
-                                            onclick: {
-                                                let e = exercise.clone();
-                                                // Note: e must be cloned again here because the onclick handler is an FnMut
-                                                // and FormState::Edit takes ownership of the value.
-                                                move |evt| {
-                                                    evt.stop_propagation();
-                                                    show_form.set(FormState::Edit(e.clone()));
-                                                }
-                                            },
-                                            svg {
-                                                xmlns: "http://www.w3.org/2000/svg",
-                                                fill: "none",
-                                                view_box: "0 0 24 24",
-                                                stroke_width: "2",
-                                                stroke: "currentColor",
-                                                class: "w-4 h-4",
-                                                path {
-                                                    stroke_linecap: "round",
-                                                    stroke_linejoin: "round",
-                                                    d: "m16.862 4.487 1.687-1.688a1.875 1.875 0 1 1 2.652 2.652L10.582 16.07a4.5 4.5 0 0 1-1.897 1.13L6 18l.8-2.685a4.5 4.5 0 0 1 1.13-1.897l8.932-8.931Zm0 0L19.5 7.125M18 14v4.75A2.25 2.25 0 0 1 15.75 21H5.25A2.25 2.25 0 0 1 3 18.75V8.25A2.25 2.25 0 0 1 5.25 6H10"
-                                                }
-                                            }
-                                        }
-                                        if workout_state.current_plan().is_some() {
-                                            {
-                                                let eid = exercise.id.clone().unwrap_or_default();
-                                                let ex_for_session = exercise.clone();
-                                                let default_sets = workout_state.settings().default_planned_sets;
-                                                rsx! {
-                                                    button {
-                                                        class: "btn btn-secondary btn-sm px-4 font-bold shadow-sm",
-                                                        "data-testid": "add-to-workout-btn",
-                                                        onclick: move |evt| {
-                                                            evt.stop_propagation();
-                                                            let eid = eid.clone();
-                                                            let ex = ex_for_session.clone();
-                                                            spawn(async move {
-                                                                if let Err(e) = WorkoutStateManager::add_exercise_to_plan(&workout_state, &eid, default_sets).await {
-                                                                    log::warn!("Failed to add exercise to plan: {}", e);
-                                                                } else {
-                                                                    // Start a session on the newly added exercise so
-                                                                    // the user lands on the recording UI for it.
-                                                                    if let Err(e) = WorkoutStateManager::start_session(&workout_state, ex).await {
-                                                                        log::warn!("Failed to start session: {}", e);
-                                                                    }
-                                                                    navigator.push(Route::WorkoutTab);
-                                                                }
-                                                            });
-                                                        },
-                                                        "Add to workout"
+                                    // Action buttons: only show edit/start when viewing active (non-archived) exercises
+                                    if !show_archived() {
+                                        div {
+                                            class: "flex gap-2",
+                                            button {
+                                                class: "btn btn-ghost btn-sm btn-circle",
+                                                onclick: {
+                                                    let e = exercise.clone();
+                                                    // Note: e must be cloned again here because the onclick handler is an FnMut
+                                                    // and FormState::Edit takes ownership of the value.
+                                                    move |evt| {
+                                                        evt.stop_propagation();
+                                                        show_form.set(FormState::Edit(e.clone()));
+                                                    }
+                                                },
+                                                svg {
+                                                    xmlns: "http://www.w3.org/2000/svg",
+                                                    fill: "none",
+                                                    view_box: "0 0 24 24",
+                                                    stroke_width: "2",
+                                                    stroke: "currentColor",
+                                                    class: "w-4 h-4",
+                                                    path {
+                                                        stroke_linecap: "round",
+                                                        stroke_linejoin: "round",
+                                                        d: "m16.862 4.487 1.687-1.688a1.875 1.875 0 1 1 2.652 2.652L10.582 16.07a4.5 4.5 0 0 1-1.897 1.13L6 18l.8-2.685a4.5 4.5 0 0 1 1.13-1.897l8.932-8.931Zm0 0L19.5 7.125M18 14v4.75A2.25 2.25 0 0 1 15.75 21H5.25A2.25 2.25 0 0 1 3 18.75V8.25A2.25 2.25 0 0 1 5.25 6H10"
                                                     }
                                                 }
                                             }
-                                        } else {
-                                            {
-                                                let e = exercise.clone();
-                                                rsx! {
-                                                    button {
-                                                        class: "btn btn-primary btn-sm px-4 font-bold shadow-sm",
-                                                        onclick: move |evt| {
-                                                            evt.stop_propagation();
-                                                            let e_clone = e.clone();
-                                                            spawn(async move {
-                                                                if let Err(err) = WorkoutStateManager::start_adhoc_plan(&workout_state, &e_clone).await {
-                                                                    WorkoutStateManager::handle_error(&workout_state, err);
-                                                                } else {
-                                                                    navigator.push(Route::WorkoutTab);
-                                                                }
-                                                            });
-                                                        },
-                                                        "START"
+                                            if workout_state.current_plan().is_some() {
+                                                {
+                                                    let eid = exercise.id.clone().unwrap_or_default();
+                                                    let ex_for_session = exercise.clone();
+                                                    let default_sets = workout_state.settings().default_planned_sets;
+                                                    rsx! {
+                                                        button {
+                                                            class: "btn btn-secondary btn-sm px-4 font-bold shadow-sm",
+                                                            "data-testid": "add-to-workout-btn",
+                                                            onclick: move |evt| {
+                                                                evt.stop_propagation();
+                                                                let eid = eid.clone();
+                                                                let ex = ex_for_session.clone();
+                                                                spawn(async move {
+                                                                    if let Err(e) = WorkoutStateManager::add_exercise_to_plan(&workout_state, &eid, default_sets).await {
+                                                                        log::warn!("Failed to add exercise to plan: {}", e);
+                                                                    } else {
+                                                                        // Start a session on the newly added exercise so
+                                                                        // the user lands on the recording UI for it.
+                                                                        if let Err(e) = WorkoutStateManager::start_session(&workout_state, ex).await {
+                                                                            log::warn!("Failed to start session: {}", e);
+                                                                        }
+                                                                        navigator.push(Route::WorkoutTab);
+                                                                    }
+                                                                });
+                                                            },
+                                                            "Add to workout"
+                                                        }
+                                                    }
+                                                }
+                                            } else {
+                                                {
+                                                    let e = exercise.clone();
+                                                    rsx! {
+                                                        button {
+                                                            class: "btn btn-primary btn-sm px-4 font-bold shadow-sm",
+                                                            onclick: move |evt| {
+                                                                evt.stop_propagation();
+                                                                let e_clone = e.clone();
+                                                                spawn(async move {
+                                                                    if let Err(err) = WorkoutStateManager::start_adhoc_plan(&workout_state, &e_clone).await {
+                                                                        WorkoutStateManager::handle_error(&workout_state, err);
+                                                                    } else {
+                                                                        navigator.push(Route::WorkoutTab);
+                                                                    }
+                                                                });
+                                                            },
+                                                            "START"
+                                                        }
                                                     }
                                                 }
                                             }
@@ -274,6 +312,30 @@ pub fn LibraryView() -> Element {
                                     }
                                 }
                             }
+                        }
+                    }
+                }
+            }
+
+            // FAB: only shown on Library list (not on archived view — archived exercises
+            // cannot be started). Hidden when form is open (handled by early return above).
+            if !show_archived() {
+                button {
+                    class: "btn btn-primary btn-circle shadow-lg fixed bottom-20 right-4 z-[60]",
+                    "data-testid": "add-exercise-fab",
+                    "aria-label": "Add Exercise",
+                    onclick: move |_| show_form.set(FormState::New),
+                    svg {
+                        xmlns: "http://www.w3.org/2000/svg",
+                        fill: "none",
+                        view_box: "0 0 24 24",
+                        stroke_width: "3",
+                        stroke: "currentColor",
+                        class: "w-6 h-6",
+                        path {
+                            stroke_linecap: "round",
+                            stroke_linejoin: "round",
+                            d: "M12 4.5v15m7.5-7.5h-15"
                         }
                     }
                 }

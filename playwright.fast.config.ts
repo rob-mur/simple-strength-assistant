@@ -58,5 +58,19 @@ export default defineConfig({
         },
       },
     },
+    {
+      name: "mobile-library-fab",
+      testMatch: /library_fab_archived/,
+      use: {
+        viewport: { width: 375, height: 667 },
+        userAgent: devices["Desktop Chrome"].userAgent,
+        launchOptions: {
+          headless: true,
+          ...(process.env.CHROMIUM_EXECUTABLE_PATH && {
+            executablePath: process.env.CHROMIUM_EXECUTABLE_PATH,
+          }),
+        },
+      },
+    },
   ],
 });

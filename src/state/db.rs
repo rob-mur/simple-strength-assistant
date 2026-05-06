@@ -1144,8 +1144,20 @@ impl Database {
         Ok(id)
     }
 
+    pub async fn get_archived_exercises(&self) -> Result<Vec<ExerciseMetadata>, DatabaseError> {
+        let sql = "SELECT uuid, name, is_weighted, min_weight, increment, min_reps, max_reps FROM exercises WHERE deleted_at IS NOT NULL ORDER BY name";
+        self.fetch_exercises_with_sql(sql).await
+    }
+
     pub async fn get_exercises(&self) -> Result<Vec<ExerciseMetadata>, DatabaseError> {
         let sql = "SELECT uuid, name, is_weighted, min_weight, increment, min_reps, max_reps FROM exercises WHERE deleted_at IS NULL ORDER BY name";
+        self.fetch_exercises_with_sql(sql).await
+    }
+
+    async fn fetch_exercises_with_sql(
+        &self,
+        sql: &str,
+    ) -> Result<Vec<ExerciseMetadata>, DatabaseError> {
         let result = self.execute(sql, &[]).await?;
 
         let array = result
