@@ -243,6 +243,20 @@ impl WorkoutState {
     }
 }
 
+/// Returns true iff archiving `exercise_id` should be blocked.
+///
+/// Blocked when the exercise is the one currently being recorded on the
+/// Record screen: `current_session.is_some()` AND
+/// `current_session.exercise.id == Some(exercise_id)`.
+///
+/// Pure function — no UI dependencies.
+pub fn is_archive_blocked(exercise_id: &str, current_session: &Option<WorkoutSession>) -> bool {
+    match current_session {
+        Some(session) => session.exercise.id.as_deref() == Some(exercise_id),
+        None => false,
+    }
+}
+
 pub struct WorkoutStateManager;
 
 impl WorkoutStateManager {
@@ -1001,6 +1015,56 @@ impl WorkoutStateManager {
 mod tests {
     use super::*;
     use crate::models::{SetType, SetTypeConfig};
+
+    // ── is_archive_blocked ────────────────────────────────────────────────────
+
+    fn make_session(exercise_id: &str) -> WorkoutSession {
+        WorkoutSession {
+            // session_id is not read by is_archive_blocked (which checks
+            // session.exercise.id); it is included here only to satisfy the
+            // struct definition and does not affect any of these test outcomes.
+            session_id: Some(exercise_id.to_string()),
+            exercise: crate::models::ExerciseMetadata {
+                id: Some(exercise_id.to_string()),
+                name: "Test Exercise".to_string(),
+                set_type_config: SetTypeConfig::Bodyweight,
+                min_reps: 1,
+                max_reps: None,
+            },
+            completed_sets: Vec::new(),
+            predicted: PredictedParameters {
+                weight: None,
+                reps: 10,
+                rpe: 7.0,
+            },
+        }
+    }
+
+    #[test]
+    fn test_is_archive_blocked_same_exercise_as_current_session() {
+        let session = make_session("exercise-abc");
+        assert!(
+            is_archive_blocked("exercise-abc", &Some(session)),
+            "should be blocked when exercise matches current session"
+        );
+    }
+
+    #[test]
+    fn test_is_archive_blocked_different_exercise() {
+        let session = make_session("exercise-abc");
+        assert!(
+            !is_archive_blocked("exercise-xyz", &Some(session)),
+            "should not be blocked when exercise differs from current session"
+        );
+    }
+
+    #[test]
+    fn test_is_archive_blocked_no_current_session() {
+        assert!(
+            !is_archive_blocked("exercise-abc", &None),
+            "should not be blocked when no session is active"
+        );
+    }
 
     #[test]
     fn test_initial_predictions_weighted() {

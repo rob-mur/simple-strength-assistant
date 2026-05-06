@@ -16,7 +16,7 @@ pub use file_system::FileSystemError;
 pub use file_system::FileSystemManager;
 pub use workout_state::{
     InitializationState, PredictedParameters, SyncStatus, WorkoutSession, WorkoutState,
-    WorkoutStateManager,
+    WorkoutStateManager, is_archive_blocked,
 };
 
 // Storage is always the OPFS-backed FileSystemManager.
