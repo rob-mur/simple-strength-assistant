@@ -1149,6 +1149,39 @@ impl Database {
         self.fetch_exercises_with_sql(sql).await
     }
 
+    /// Soft-archives an exercise by setting `deleted_at` to now.
+    /// The exercise is excluded from normal queries but remains in the database.
+    pub async fn archive_exercise(&self, exercise_id: &str) -> Result<(), DatabaseError> {
+        let now = js_sys::Date::now();
+        self.execute(
+            "UPDATE exercises SET deleted_at = ?, updated_at = ? WHERE uuid = ?",
+            &[
+                JsValue::from_f64(now),
+                JsValue::from_f64(now),
+                JsValue::from_str(exercise_id),
+            ],
+        )
+        .await?;
+        Ok(())
+    }
+
+    /// Restores an archived exercise by clearing `deleted_at`.
+    pub async fn unarchive_exercise(&self, exercise_id: &str) -> Result<(), DatabaseError> {
+        let now = js_sys::Date::now();
+        self.execute(
+            "UPDATE exercises SET deleted_at = NULL, updated_at = ? WHERE uuid = ?",
+            &[JsValue::from_f64(now), JsValue::from_str(exercise_id)],
+        )
+        .await?;
+        Ok(())
+    }
+
+    /// Returns the number of future plans that would be deleted when archiving
+    /// the given exercise.  In this slice (no plan cascade) the count is always 0.
+    pub async fn preview_archive(&self, _exercise_id: &str) -> Result<u32, DatabaseError> {
+        Ok(0)
+    }
+
     pub async fn get_exercises(&self) -> Result<Vec<ExerciseMetadata>, DatabaseError> {
         let sql = "SELECT uuid, name, is_weighted, min_weight, increment, min_reps, max_reps FROM exercises WHERE deleted_at IS NULL ORDER BY name";
         self.fetch_exercises_with_sql(sql).await

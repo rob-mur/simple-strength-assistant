@@ -529,6 +529,44 @@ impl WorkoutStateManager {
             .map_err(WorkoutError::Database)
     }
 
+    /// Archives an exercise (sets `deleted_at` to now) and refreshes the
+    /// active exercise list in app state.
+    pub async fn archive_exercise(
+        state: &WorkoutState,
+        exercise_id: &str,
+    ) -> Result<(), WorkoutError> {
+        let db = state.database().ok_or(WorkoutError::NotInitialized)?;
+        db.archive_exercise(exercise_id)
+            .await
+            .map_err(WorkoutError::Database)?;
+        Self::sync_exercises(state).await
+    }
+
+    /// Restores an archived exercise (clears `deleted_at`) and refreshes the
+    /// active exercise list in app state.
+    pub async fn unarchive_exercise(
+        state: &WorkoutState,
+        exercise_id: &str,
+    ) -> Result<(), WorkoutError> {
+        let db = state.database().ok_or(WorkoutError::NotInitialized)?;
+        db.unarchive_exercise(exercise_id)
+            .await
+            .map_err(WorkoutError::Database)?;
+        Self::sync_exercises(state).await
+    }
+
+    /// Returns the number of future plans that would be deleted if the exercise
+    /// were archived.  Always 0 in this slice (no plan cascade).
+    pub async fn preview_archive(
+        state: &WorkoutState,
+        exercise_id: &str,
+    ) -> Result<u32, WorkoutError> {
+        let db = state.database().ok_or(WorkoutError::NotInitialized)?;
+        db.preview_archive(exercise_id)
+            .await
+            .map_err(WorkoutError::Database)
+    }
+
     /// Load settings from the database into app state.
     pub async fn load_settings(state: &WorkoutState) -> Result<(), WorkoutError> {
         let db = state.database().ok_or(WorkoutError::NotInitialized)?;

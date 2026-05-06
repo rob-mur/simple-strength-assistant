@@ -322,12 +322,46 @@ fn LibraryExercise(exercise_id: String) -> Element {
     let workout_state = consume_context::<WorkoutState>();
     let navigator = use_navigator();
     let mut show_edit_form = use_signal(|| false);
+    let mut show_archive_dialog = use_signal(|| false);
 
-    let exercises = workout_state.exercises();
-    let exercise = exercises
+    // Look in active exercises first; fall back to archived exercises.
+    let active_exercises = workout_state.exercises();
+    let active_match = active_exercises
         .iter()
         .find(|e| e.id.as_deref() == Some(exercise_id.as_str()))
         .cloned();
+    let is_archived = active_match.is_none();
+
+    // For archived exercises we need to fetch separately.  We store the
+    // result in a signal so the async fetch can update the UI.
+    let mut archived_exercise: Signal<Option<crate::models::ExerciseMetadata>> =
+        use_signal(|| None);
+
+    {
+        let eid = exercise_id.clone();
+        use_effect(move || {
+            if is_archived {
+                let eid2 = eid.clone();
+                spawn(async move {
+                    match WorkoutStateManager::fetch_archived_exercises(&workout_state).await {
+                        Ok(list) => {
+                            let found = list
+                                .into_iter()
+                                .find(|e| e.id.as_deref() == Some(eid2.as_str()));
+                            archived_exercise.set(found);
+                        }
+                        Err(e) => log::warn!("Failed to fetch archived exercises: {}", e),
+                    }
+                });
+            }
+        });
+    }
+
+    let exercise = if is_archived {
+        archived_exercise()
+    } else {
+        active_match
+    };
 
     let Some(exercise) = exercise else {
         return rsx! {
@@ -364,10 +398,39 @@ fn LibraryExercise(exercise_id: String) -> Element {
         };
     }
 
+    let exercise_name = exercise.name.clone();
+    let exercise_id_for_archive = exercise_id.clone();
+    let exercise_id_for_unarchive = exercise_id.clone();
+
     rsx! {
         div {
             class: "max-w-md mx-auto",
             "data-testid": "exercise-detail-view",
+
+            // Archive dialog (active exercises only)
+            if show_archive_dialog() {
+                ConfirmationDialog {
+                    title: format!("Archive {}?", exercise_name),
+                    body: "Hidden from library, removed from upcoming plans. 0 future plans will be deleted.".to_string(),
+                    confirm_label: "Archive".to_string(),
+                    cancel_label: "Cancel".to_string(),
+                    variant: ConfirmVariant::Default,
+                    on_cancel: move |_| show_archive_dialog.set(false),
+                    on_confirm: move |_| {
+                        let state = workout_state;
+                        let eid = exercise_id_for_archive.clone();
+                        show_archive_dialog.set(false);
+                        spawn(async move {
+                            if let Err(e) = WorkoutStateManager::archive_exercise(&state, &eid).await {
+                                WorkoutStateManager::handle_error(&state, e);
+                            } else {
+                                navigator.push(Route::LibraryTab);
+                            }
+                        });
+                    }
+                }
+            }
+
             // Header
             div {
                 class: "flex items-center justify-between mb-4 sticky top-0 bg-base-200 z-20 py-2",
@@ -398,6 +461,7 @@ fn LibraryExercise(exercise_id: String) -> Element {
                 }
                 div {
                     class: "flex gap-2",
+                    // Edit pencil — always available (rename allowed on archived too)
                     button {
                         class: "btn btn-ghost btn-sm btn-circle",
                         "data-testid": "edit-button",
@@ -416,21 +480,62 @@ fn LibraryExercise(exercise_id: String) -> Element {
                             }
                         }
                     }
-                    button {
-                        class: "btn btn-primary btn-sm px-4 font-bold shadow-sm",
-                        "data-testid": "start-button",
-                        onclick: move |_| {
-                            let state = workout_state;
-                            let ex = exercise.clone();
-                            spawn(async move {
-                                if let Err(e) = WorkoutStateManager::start_adhoc_plan(&state, &ex).await {
-                                    WorkoutStateManager::handle_error(&state, e);
-                                } else {
-                                    navigator.push(Route::WorkoutTab);
+
+                    if is_archived {
+                        // Archived: show Unarchive button instead of START/trash
+                        button {
+                            class: "btn btn-primary btn-sm px-4 font-bold shadow-sm",
+                            "data-testid": "unarchive-button",
+                            onclick: move |_| {
+                                let state = workout_state;
+                                let eid = exercise_id_for_unarchive.clone();
+                                spawn(async move {
+                                    if let Err(e) = WorkoutStateManager::unarchive_exercise(&state, &eid).await {
+                                        WorkoutStateManager::handle_error(&state, e);
+                                    } else {
+                                        navigator.push(Route::LibraryTab);
+                                    }
+                                });
+                            },
+                            "Unarchive"
+                        }
+                    } else {
+                        // Active: trash icon to open archive dialog
+                        button {
+                            class: "btn btn-ghost btn-sm btn-circle",
+                            "data-testid": "archive-button",
+                            onclick: move |_| show_archive_dialog.set(true),
+                            svg {
+                                xmlns: "http://www.w3.org/2000/svg",
+                                fill: "none",
+                                view_box: "0 0 24 24",
+                                stroke_width: "2",
+                                stroke: "currentColor",
+                                class: "w-5 h-5",
+                                path {
+                                    stroke_linecap: "round",
+                                    stroke_linejoin: "round",
+                                    d: "m14.74 9-.346 9m-4.788 0L9.26 9m9.968-3.21c.342.052.682.107 1.022.166m-1.022-.165L18.16 19.673a2.25 2.25 0 0 1-2.244 2.077H8.084a2.25 2.25 0 0 1-2.244-2.077L4.772 5.79m14.456 0a48.108 48.108 0 0 0-3.478-.397m-12 .562c.34-.059.68-.114 1.022-.165m0 0a48.11 48.11 0 0 1 3.478-.397m7.5 0v-.916c0-1.18-.91-2.164-2.09-2.201a51.964 51.964 0 0 0-3.32 0c-1.18.037-2.09 1.022-2.09 2.201v.916m7.5 0a48.667 48.667 0 0 0-7.5 0"
                                 }
-                            });
-                        },
-                        "START"
+                            }
+                        }
+                        // START button
+                        button {
+                            class: "btn btn-primary btn-sm px-4 font-bold shadow-sm",
+                            "data-testid": "start-button",
+                            onclick: move |_| {
+                                let state = workout_state;
+                                let ex = exercise.clone();
+                                spawn(async move {
+                                    if let Err(e) = WorkoutStateManager::start_adhoc_plan(&state, &ex).await {
+                                        WorkoutStateManager::handle_error(&state, e);
+                                    } else {
+                                        navigator.push(Route::WorkoutTab);
+                                    }
+                                });
+                            },
+                            "START"
+                        }
                     }
                 }
             }

@@ -2113,3 +2113,156 @@ async fn test_discard_plan_tombstones_sync_eligible() {
         "Soft-deleted set must not appear in normal queries (no resurrection)"
     );
 }
+
+// ── Issue #192: archive / unarchive / preview_archive ────────────────────────
+
+/// `archive_exercise` sets `deleted_at` → exercise disappears from active list
+/// and appears in archived list.
+#[wasm_bindgen_test]
+async fn test_archive_exercise_moves_to_archived() {
+    use wasm_bindgen::JsCast;
+
+    let mut db = Database::new();
+    db.init(None).await.expect("Database init failed");
+
+    let exercise = ExerciseMetadata {
+        id: None,
+        name: "Bench Press".to_string(),
+        set_type_config: SetTypeConfig::Weighted {
+            min_weight: 20.0,
+            increment: 2.5,
+        },
+        min_reps: 1,
+        max_reps: None,
+    };
+    let eid = db.save_exercise(&exercise).await.expect("save failed");
+
+    // Sanity: visible in active list before archive.
+    let active_before = db.get_exercises().await.expect("get_exercises failed");
+    assert_eq!(active_before.len(), 1, "Should have 1 active exercise");
+
+    // Archive it.
+    db.archive_exercise(&eid)
+        .await
+        .expect("archive_exercise failed");
+
+    // Must disappear from active list.
+    let active_after = db
+        .get_exercises()
+        .await
+        .expect("get_exercises after archive failed");
+    assert_eq!(
+        active_after.len(),
+        0,
+        "Active list must be empty after archive"
+    );
+
+    // Must appear in archived list.
+    let archived = db
+        .get_archived_exercises()
+        .await
+        .expect("get_archived_exercises failed");
+    assert_eq!(archived.len(), 1, "Archived list must have 1 exercise");
+    assert_eq!(archived[0].name, "Bench Press");
+
+    // deleted_at must be set in the raw row.
+    let raw = db
+        .execute(
+            "SELECT deleted_at FROM exercises WHERE uuid = ?",
+            &[wasm_bindgen::JsValue::from_str(&eid)],
+        )
+        .await
+        .expect("raw query failed");
+    let arr = raw.dyn_ref::<js_sys::Array>().expect("Expected array");
+    assert_eq!(arr.length(), 1);
+    let deleted_at =
+        js_sys::Reflect::get(&arr.get(0), &wasm_bindgen::JsValue::from_str("deleted_at")).unwrap();
+    assert!(
+        !deleted_at.is_null() && !deleted_at.is_undefined(),
+        "deleted_at must be set after archive"
+    );
+}
+
+/// `unarchive_exercise` clears `deleted_at` → exercise returns to active list.
+#[wasm_bindgen_test]
+async fn test_unarchive_exercise_returns_to_active() {
+    use wasm_bindgen::JsCast;
+
+    let mut db = Database::new();
+    db.init(None).await.expect("Database init failed");
+
+    let exercise = ExerciseMetadata {
+        id: None,
+        name: "Pull-ups".to_string(),
+        set_type_config: SetTypeConfig::Bodyweight,
+        min_reps: 1,
+        max_reps: None,
+    };
+    let eid = db.save_exercise(&exercise).await.expect("save failed");
+
+    // Archive then unarchive.
+    db.archive_exercise(&eid).await.expect("archive failed");
+    db.unarchive_exercise(&eid).await.expect("unarchive failed");
+
+    // Must reappear in active list.
+    let active = db.get_exercises().await.expect("get_exercises failed");
+    assert_eq!(
+        active.len(),
+        1,
+        "Should have 1 active exercise after unarchive"
+    );
+    assert_eq!(active[0].name, "Pull-ups");
+
+    // Must be absent from archived list.
+    let archived = db
+        .get_archived_exercises()
+        .await
+        .expect("get_archived_exercises failed");
+    assert_eq!(
+        archived.len(),
+        0,
+        "Archived list must be empty after unarchive"
+    );
+
+    // deleted_at must be NULL in the raw row.
+    let raw = db
+        .execute(
+            "SELECT deleted_at FROM exercises WHERE uuid = ?",
+            &[wasm_bindgen::JsValue::from_str(&eid)],
+        )
+        .await
+        .expect("raw query failed");
+    let arr = raw.dyn_ref::<js_sys::Array>().expect("Expected array");
+    assert_eq!(arr.length(), 1);
+    let deleted_at =
+        js_sys::Reflect::get(&arr.get(0), &wasm_bindgen::JsValue::from_str("deleted_at")).unwrap();
+    assert!(
+        deleted_at.is_null() || deleted_at.is_undefined(),
+        "deleted_at must be NULL after unarchive"
+    );
+}
+
+/// `preview_archive` returns `{ future_plans_to_delete: 0 }` in this slice.
+#[wasm_bindgen_test]
+async fn test_preview_archive_returns_zero() {
+    let mut db = Database::new();
+    db.init(None).await.expect("Database init failed");
+
+    let exercise = ExerciseMetadata {
+        id: None,
+        name: "Squat".to_string(),
+        set_type_config: SetTypeConfig::Weighted {
+            min_weight: 20.0,
+            increment: 2.5,
+        },
+        min_reps: 1,
+        max_reps: None,
+    };
+    let eid = db.save_exercise(&exercise).await.expect("save failed");
+
+    let count = db
+        .preview_archive(&eid)
+        .await
+        .expect("preview_archive failed");
+    assert_eq!(count, 0, "preview_archive must return 0 in this slice");
+}

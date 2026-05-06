@@ -211,19 +211,28 @@ pub fn LibraryView() -> Element {
                                     class: "flex justify-between items-start",
                                     div {
                                         h3 {
-                                    class: "font-black text-xl text-base-content tracking-tight min-h-6",
+                                    class: if show_archived() { "font-black text-xl text-base-content/40 tracking-tight min-h-6" } else { "font-black text-xl text-base-content tracking-tight min-h-6" },
+                                    "data-testid": if show_archived() { "archived-exercise-name" } else { "exercise-name" },
                                     "{exercise.name.to_uppercase()}"
                                 }
                                         div {
                                             class: "flex gap-2 mt-1 items-center",
-                                            match exercise.set_type_config {
-                                                SetTypeConfig::Weighted { min_weight, increment } => rsx! {
-                                                    span { class: "badge badge-primary badge-sm font-bold", "WEIGHTED" }
-                                                    span { class: "text-xs font-bold text-base-content/50", "START: {crate::format::fmt_weight(min_weight)}kg (+{crate::format::fmt_weight(increment)}kg)" }
-                                                },
-                                                SetTypeConfig::Bodyweight => rsx! {
-                                                    span { class: "badge badge-secondary badge-sm font-bold", "BODYWEIGHT" }
-                                                },
+                                            if show_archived() {
+                                                span {
+                                                    class: "badge badge-ghost badge-sm font-bold",
+                                                    "data-testid": "archived-badge",
+                                                    "ARCHIVED"
+                                                }
+                                            } else {
+                                                match exercise.set_type_config {
+                                                    SetTypeConfig::Weighted { min_weight, increment } => rsx! {
+                                                        span { class: "badge badge-primary badge-sm font-bold", "WEIGHTED" }
+                                                        span { class: "text-xs font-bold text-base-content/50", "START: {crate::format::fmt_weight(min_weight)}kg (+{crate::format::fmt_weight(increment)}kg)" }
+                                                    },
+                                                    SetTypeConfig::Bodyweight => rsx! {
+                                                        span { class: "badge badge-secondary badge-sm font-bold", "BODYWEIGHT" }
+                                                    },
+                                                }
                                             }
                                         }
                                     }
