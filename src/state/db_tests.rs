@@ -1,4 +1,7 @@
-use crate::models::{CompletedSet, ExerciseMetadata, SetType, SetTypeConfig};
+use crate::models::{
+    CompletedSet, ContributionTier, ExerciseMetadata, ExerciseMuscleGroup, MuscleGroup, SetType,
+    SetTypeConfig,
+};
 use crate::state::{Database, DatabaseError};
 use wasm_bindgen::JsValue;
 use wasm_bindgen_test::*;
@@ -4169,5 +4172,356 @@ async fn test_e1rm_session_history_sorted_oldest_first() {
     assert!(
         history[0].0 < history[1].0 && history[1].0 < history[2].0,
         "History must be sorted oldest-first"
+    );
+}
+
+// ── get_muscle_group_volume tests ────────────────────────────────────────────
+
+/// Helper: save a weighted exercise and assign it a single muscle group.
+async fn make_exercise_with_muscle(
+    db: &crate::state::Database,
+    name: &str,
+    muscle: MuscleGroup,
+    tier: ContributionTier,
+) -> String {
+    let ex = ExerciseMetadata {
+        id: None,
+        name: name.to_string(),
+        set_type_config: SetTypeConfig::Weighted {
+            min_weight: 0.0,
+            increment: 2.5,
+        },
+        min_reps: 1,
+        max_reps: None,
+    };
+    let eid = db.save_exercise(&ex).await.expect("save exercise");
+    let groups = vec![ExerciseMuscleGroup {
+        exercise_id: eid.clone(),
+        muscle_group: muscle,
+        tier,
+    }];
+    db.set_muscle_groups(&eid, &groups)
+        .await
+        .expect("set_muscle_groups");
+    eid
+}
+
+/// No sets → all volumes are zero.
+#[wasm_bindgen_test]
+async fn test_muscle_group_volume_zero_when_no_sets() {
+    let mut db = crate::state::Database::new();
+    db.init(None).await.expect("DB init");
+
+    let _ = make_exercise_with_muscle(
+        &db,
+        "Bench Press",
+        MuscleGroup::Chest,
+        ContributionTier::Primary,
+    )
+    .await;
+
+    let vol = db
+        .get_muscle_group_volume(&MuscleGroup::Chest, 12)
+        .await
+        .expect("get_muscle_group_volume");
+
+    assert_eq!(vol.daily, 0.0);
+    assert_eq!(vol.rolling_7d, 0.0);
+    assert_eq!(vol.rolling_training_period, 0.0);
+}
+
+/// Single Primary exercise: normalised_weight = 1.0/1.0 = 1.0, contribution = rpe/10.
+#[wasm_bindgen_test]
+async fn test_muscle_group_volume_single_primary_contribution() {
+    let mut db = crate::state::Database::new();
+    db.init(None).await.expect("DB init");
+
+    let eid = make_exercise_with_muscle(
+        &db,
+        "Bench Press",
+        MuscleGroup::Chest,
+        ContributionTier::Primary,
+    )
+    .await;
+
+    let now_ms = js_sys::Date::now();
+    db.log_set_at(
+        &eid,
+        &CompletedSet {
+            set_number: 1,
+            reps: 5,
+            rpe: 8.0,
+            set_type: SetType::Weighted { weight: 100.0 },
+        },
+        now_ms - 1_000.0,
+    )
+    .await
+    .expect("log set");
+
+    let vol = db
+        .get_muscle_group_volume(&MuscleGroup::Chest, 12)
+        .await
+        .expect("get_muscle_group_volume");
+
+    // Chest is Primary (weight=1.0), only muscle group so sum_weights=1.0.
+    // contribution = (8.0/10.0) * (1.0/1.0) = 0.8
+    let expected = 0.8;
+    assert!(
+        (vol.daily - expected).abs() < 1e-9,
+        "daily expected {expected}, got {}",
+        vol.daily
+    );
+    assert!(
+        (vol.rolling_7d - expected).abs() < 1e-9,
+        "rolling_7d expected {expected}, got {}",
+        vol.rolling_7d
+    );
+    assert!(
+        (vol.rolling_training_period - expected).abs() < 1e-9,
+        "rolling_training_period expected {expected}, got {}",
+        vol.rolling_training_period
+    );
+}
+
+/// Multi-muscle exercise: normalised_weight splits across muscles.
+/// Bench: Chest/Primary(1.0) + Triceps/Secondary(0.5). sum=1.5.
+/// Chest share = 1.0/1.5. Triceps share = 0.5/1.5.
+#[wasm_bindgen_test]
+async fn test_muscle_group_volume_normalised_across_multi_muscle_exercise() {
+    let mut db = crate::state::Database::new();
+    db.init(None).await.expect("DB init");
+
+    let ex = ExerciseMetadata {
+        id: None,
+        name: "Bench Press".to_string(),
+        set_type_config: SetTypeConfig::Weighted {
+            min_weight: 0.0,
+            increment: 2.5,
+        },
+        min_reps: 1,
+        max_reps: None,
+    };
+    let eid = db.save_exercise(&ex).await.expect("save exercise");
+    db.set_muscle_groups(
+        &eid,
+        &[
+            ExerciseMuscleGroup {
+                exercise_id: eid.clone(),
+                muscle_group: MuscleGroup::Chest,
+                tier: ContributionTier::Primary,
+            },
+            ExerciseMuscleGroup {
+                exercise_id: eid.clone(),
+                muscle_group: MuscleGroup::Triceps,
+                tier: ContributionTier::Secondary,
+            },
+        ],
+    )
+    .await
+    .expect("set_muscle_groups");
+
+    let now_ms = js_sys::Date::now();
+    db.log_set_at(
+        &eid,
+        &CompletedSet {
+            set_number: 1,
+            reps: 5,
+            rpe: 10.0,
+            set_type: SetType::Weighted { weight: 100.0 },
+        },
+        now_ms - 1_000.0,
+    )
+    .await
+    .expect("log set");
+
+    // sum_weights = 1.0 (Primary) + 0.5 (Secondary) = 1.5
+    let sum_w = 1.5_f64;
+
+    let chest_vol = db
+        .get_muscle_group_volume(&MuscleGroup::Chest, 12)
+        .await
+        .expect("chest volume");
+    let triceps_vol = db
+        .get_muscle_group_volume(&MuscleGroup::Triceps, 12)
+        .await
+        .expect("triceps volume");
+
+    let expected_chest = (10.0 / 10.0) * (1.0 / sum_w);
+    let expected_triceps = (10.0 / 10.0) * (0.5 / sum_w);
+
+    assert!(
+        (chest_vol.daily - expected_chest).abs() < 1e-9,
+        "chest daily expected {expected_chest}, got {}",
+        chest_vol.daily
+    );
+    assert!(
+        (triceps_vol.daily - expected_triceps).abs() < 1e-9,
+        "triceps daily expected {expected_triceps}, got {}",
+        triceps_vol.daily
+    );
+    // Volumes should sum to rpe/10 = 1.0 (all contribution accounted for).
+    let total = chest_vol.daily + triceps_vol.daily;
+    assert!(
+        (total - 1.0).abs() < 1e-9,
+        "sum of all muscle contributions should equal rpe/10 = 1.0, got {total}"
+    );
+}
+
+/// Sets older than the training window do not appear in rolling_training_period.
+#[wasm_bindgen_test]
+async fn test_muscle_group_volume_excludes_sets_outside_window() {
+    let mut db = crate::state::Database::new();
+    db.init(None).await.expect("DB init");
+
+    let eid =
+        make_exercise_with_muscle(&db, "Squat", MuscleGroup::Quads, ContributionTier::Primary)
+            .await;
+
+    let now_ms = js_sys::Date::now();
+    // Set inside 12-week window (4 weeks ago).
+    db.log_set_at(
+        &eid,
+        &CompletedSet {
+            set_number: 1,
+            reps: 5,
+            rpe: 8.0,
+            set_type: SetType::Weighted { weight: 100.0 },
+        },
+        now_ms - 4.0 * 7.0 * 86_400_000.0,
+    )
+    .await
+    .expect("log recent set");
+    // Set outside 12-week window (20 weeks ago).
+    db.log_set_at(
+        &eid,
+        &CompletedSet {
+            set_number: 1,
+            reps: 5,
+            rpe: 8.0,
+            set_type: SetType::Weighted { weight: 100.0 },
+        },
+        now_ms - 20.0 * 7.0 * 86_400_000.0,
+    )
+    .await
+    .expect("log old set");
+
+    let vol = db
+        .get_muscle_group_volume(&MuscleGroup::Quads, 12)
+        .await
+        .expect("get_muscle_group_volume");
+
+    // Only the recent set contributes: (8.0/10.0) * 1.0 = 0.8
+    assert!(
+        (vol.rolling_training_period - 0.8).abs() < 1e-9,
+        "rolling_training_period should be 0.8 (one set), got {}",
+        vol.rolling_training_period
+    );
+}
+
+/// Bodyweight sets do not contribute to volume.
+#[wasm_bindgen_test]
+async fn test_muscle_group_volume_excludes_bodyweight_sets() {
+    let mut db = crate::state::Database::new();
+    db.init(None).await.expect("DB init");
+
+    let ex = ExerciseMetadata {
+        id: None,
+        name: "Pull-up".to_string(),
+        set_type_config: SetTypeConfig::Bodyweight,
+        min_reps: 1,
+        max_reps: None,
+    };
+    let eid = db.save_exercise(&ex).await.expect("save exercise");
+    db.set_muscle_groups(
+        &eid,
+        &[ExerciseMuscleGroup {
+            exercise_id: eid.clone(),
+            muscle_group: MuscleGroup::Back,
+            tier: ContributionTier::Primary,
+        }],
+    )
+    .await
+    .expect("set_muscle_groups");
+
+    let now_ms = js_sys::Date::now();
+    db.log_set_at(
+        &eid,
+        &CompletedSet {
+            set_number: 1,
+            reps: 10,
+            rpe: 7.0,
+            set_type: SetType::Bodyweight,
+        },
+        now_ms - 1_000.0,
+    )
+    .await
+    .expect("log bodyweight set");
+
+    let vol = db
+        .get_muscle_group_volume(&MuscleGroup::Back, 12)
+        .await
+        .expect("get_muscle_group_volume");
+
+    assert_eq!(
+        vol.daily, 0.0,
+        "bodyweight sets must not contribute to volume"
+    );
+    assert_eq!(vol.rolling_7d, 0.0);
+    assert_eq!(vol.rolling_training_period, 0.0);
+}
+
+/// Sets older than 7d don't appear in rolling_7d, even if inside training window.
+#[wasm_bindgen_test]
+async fn test_muscle_group_volume_rolling_7d_excludes_older_sets() {
+    let mut db = crate::state::Database::new();
+    db.init(None).await.expect("DB init");
+
+    let eid =
+        make_exercise_with_muscle(&db, "Curl", MuscleGroup::Biceps, ContributionTier::Primary)
+            .await;
+
+    let now_ms = js_sys::Date::now();
+    // Set 3 days ago — inside 7d.
+    db.log_set_at(
+        &eid,
+        &CompletedSet {
+            set_number: 1,
+            reps: 10,
+            rpe: 7.0,
+            set_type: SetType::Weighted { weight: 20.0 },
+        },
+        now_ms - 3.0 * 86_400_000.0,
+    )
+    .await
+    .expect("log 3d set");
+    // Set 10 days ago — outside 7d but inside 12w.
+    db.log_set_at(
+        &eid,
+        &CompletedSet {
+            set_number: 1,
+            reps: 10,
+            rpe: 7.0,
+            set_type: SetType::Weighted { weight: 20.0 },
+        },
+        now_ms - 10.0 * 86_400_000.0,
+    )
+    .await
+    .expect("log 10d set");
+
+    let vol = db
+        .get_muscle_group_volume(&MuscleGroup::Biceps, 12)
+        .await
+        .expect("get_muscle_group_volume");
+
+    let per_set = 7.0 / 10.0; // rpe/10 * 1.0 (single Primary)
+    assert!(
+        (vol.rolling_7d - per_set).abs() < 1e-9,
+        "rolling_7d should have only 1 set (3d ago), got {}",
+        vol.rolling_7d
+    );
+    assert!(
+        (vol.rolling_training_period - 2.0 * per_set).abs() < 1e-9,
+        "training period should have 2 sets, got {}",
+        vol.rolling_training_period
     );
 }

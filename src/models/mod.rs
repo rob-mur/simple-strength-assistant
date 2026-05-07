@@ -15,7 +15,7 @@ pub mod workout_plan;
 pub use exercise::{ExerciseMetadata, SetTypeConfig};
 #[allow(unused_imports)]
 pub use muscle_group::{
-    ContributionTier, ExerciseMuscleGroup, MuscleGroup, validate_muscle_groups,
+    ContributionTier, ExerciseMuscleGroup, MuscleGroup, MuscleGroupVolume, validate_muscle_groups,
 };
 #[allow(unused_imports)]
 pub use set::{CompletedSet, HistorySet, SetType};

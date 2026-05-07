@@ -343,6 +343,21 @@ mod tests {
     }
 }
 
+/// Intensity-adjusted volume for a single muscle group across three time horizons.
+///
+/// Each field is the sum of per-set contributions where:
+/// `contribution = (rpe / 10.0) × (tier_weight / sum_weights_for_exercise)`
+///
+/// - `daily`: total for sets on today's UTC calendar date
+/// - `rolling_7d`: total over the last 7 calendar days (rolling)
+/// - `rolling_training_period`: total over the configured training window
+#[derive(Debug, Clone, PartialEq)]
+pub struct MuscleGroupVolume {
+    pub daily: f64,
+    pub rolling_7d: f64,
+    pub rolling_training_period: f64,
+}
+
 /// Domain-level validation: at least one muscle group must be provided.
 ///
 /// Returns `Err` with a descriptive message if `groups` is empty.

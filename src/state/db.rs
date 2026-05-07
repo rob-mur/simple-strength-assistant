@@ -1,6 +1,6 @@
 use crate::models::{
     CompletedSet, ContributionTier, ExerciseMetadata, ExerciseMuscleGroup, HistorySet, MuscleGroup,
-    PlanExercise, SetType, SetTypeConfig, WorkoutPlan, WorkoutTemplate,
+    MuscleGroupVolume, PlanExercise, SetType, SetTypeConfig, WorkoutPlan, WorkoutTemplate,
 };
 use std::str::FromStr;
 use thiserror::Error;
@@ -3138,6 +3138,114 @@ impl Database {
         }
 
         Ok(sessions.into_iter().collect())
+    }
+
+    /// Returns intensity-adjusted volume for `muscle_group` across three time horizons.
+    ///
+    /// Per-set contribution formula:
+    /// `(rpe / 10.0) × (tier_weight / sum_of_all_tier_weights_for_exercise)`
+    ///
+    /// Bodyweight sets and deleted sets are excluded.
+    /// The longest horizon is `training_window_weeks` weeks; `daily` and
+    /// `rolling_7d` are computed from the same fetched rows.
+    pub async fn get_muscle_group_volume(
+        &self,
+        muscle_group: &MuscleGroup,
+        training_window_weeks: u32,
+    ) -> Result<MuscleGroupVolume, DatabaseError> {
+        let now_ms = js_sys::Date::now();
+        let window_ms = (training_window_weeks as f64) * 7.0 * 24.0 * 3600.0 * 1000.0;
+        let since_ms = now_ms - window_ms;
+
+        // Start of today in UTC (floor to day boundary).
+        let today_start_ms = (now_ms / 86_400_000.0).floor() * 86_400_000.0;
+        let seven_days_ago_ms = now_ms - 7.0 * 24.0 * 3600.0 * 1000.0;
+
+        // Fetch all contributing sets within the training window.
+        // The correlated subquery computes the total tier-weight across all muscle
+        // groups for the same exercise, so we can normalise the target group's weight.
+        let sql = r#"
+            SELECT
+                cs.recorded_at,
+                cs.rpe,
+                emg.tier,
+                (SELECT SUM(CASE emg2.tier
+                                WHEN 'Primary'   THEN 1.0
+                                WHEN 'Secondary' THEN 0.5
+                                WHEN 'Tertiary'  THEN 0.25
+                                ELSE 0.0
+                            END)
+                 FROM exercise_muscle_groups emg2
+                 WHERE emg2.exercise_id = cs.exercise_id) AS sum_weights
+            FROM completed_sets cs
+            JOIN exercise_muscle_groups emg ON cs.exercise_id = emg.exercise_id
+            WHERE emg.muscle_group = ?
+              AND cs.deleted_at IS NULL
+              AND cs.recorded_at >= ?
+              AND cs.is_bodyweight = 0
+        "#;
+
+        let params = vec![
+            JsValue::from_str(&muscle_group.to_string()),
+            JsValue::from_f64(since_ms),
+        ];
+
+        let result = self.execute(sql, &params).await?;
+
+        let array = result
+            .dyn_ref::<js_sys::Array>()
+            .ok_or_else(|| DatabaseError::QueryError("Expected array result".to_string()))?;
+
+        let tier_weight = |tier_str: &str| -> f64 {
+            match tier_str {
+                "Primary" => 1.0,
+                "Secondary" => 0.5,
+                "Tertiary" => 0.25,
+                _ => 0.0,
+            }
+        };
+
+        let mut daily = 0.0_f64;
+        let mut rolling_7d = 0.0_f64;
+        let mut rolling_training_period = 0.0_f64;
+
+        for i in 0..array.length() {
+            let row = array.get(i);
+
+            let recorded_at_ms = js_sys::Reflect::get(&row, &JsValue::from_str("recorded_at"))?
+                .as_f64()
+                .ok_or_else(|| DatabaseError::QueryError("recorded_at missing".to_string()))?;
+            let rpe = js_sys::Reflect::get(&row, &JsValue::from_str("rpe"))?
+                .as_f64()
+                .ok_or_else(|| DatabaseError::QueryError("rpe missing".to_string()))?;
+            let tier_str = js_sys::Reflect::get(&row, &JsValue::from_str("tier"))?
+                .as_string()
+                .ok_or_else(|| DatabaseError::QueryError("tier missing".to_string()))?;
+            let sum_weights = js_sys::Reflect::get(&row, &JsValue::from_str("sum_weights"))?
+                .as_f64()
+                .unwrap_or(1.0);
+
+            let normalised = if sum_weights > 0.0 {
+                tier_weight(&tier_str) / sum_weights
+            } else {
+                0.0
+            };
+            let contribution = (rpe / 10.0) * normalised;
+
+            rolling_training_period += contribution;
+            if recorded_at_ms >= seven_days_ago_ms {
+                rolling_7d += contribution;
+            }
+            if recorded_at_ms >= today_start_ms {
+                daily += contribution;
+            }
+        }
+
+        Ok(MuscleGroupVolume {
+            daily,
+            rolling_7d,
+            rolling_training_period,
+        })
     }
 }
 
