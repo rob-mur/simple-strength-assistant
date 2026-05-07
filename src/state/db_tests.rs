@@ -2243,9 +2243,9 @@ async fn test_unarchive_exercise_returns_to_active() {
     );
 }
 
-/// `preview_archive` returns `{ future_plans_to_delete: 0 }` in this slice.
+/// `preview_archive` returns 0 when the exercise has no plans at all.
 #[wasm_bindgen_test]
-async fn test_preview_archive_returns_zero() {
+async fn test_preview_archive_returns_zero_no_plans() {
     let mut db = Database::new();
     db.init(None).await.expect("Database init failed");
 
@@ -2265,7 +2265,436 @@ async fn test_preview_archive_returns_zero() {
         .preview_archive(&eid)
         .await
         .expect("preview_archive failed");
-    assert_eq!(count, 0, "preview_archive must return 0 in this slice");
+    assert_eq!(
+        count, 0,
+        "preview_archive must return 0 when no plans exist"
+    );
+}
+
+// ── Issue #193: plan cascade on archive ──────────────────────────────────────
+
+/// Helper: save a minimal bodyweight exercise with the given name.
+async fn save_bw_exercise(db: &Database, name: &str) -> String {
+    let ex = ExerciseMetadata {
+        id: None,
+        name: name.to_string(),
+        set_type_config: SetTypeConfig::Bodyweight,
+        min_reps: 1,
+        max_reps: None,
+    };
+    db.save_exercise(&ex).await.expect("save_exercise failed")
+}
+
+/// Archiving an exercise that is the only slot in a future plan soft-deletes
+/// both the slot AND the plan.
+#[wasm_bindgen_test]
+async fn test_archive_strips_slot_and_deletes_empty_future_plan() {
+    use wasm_bindgen::JsCast;
+
+    let mut db = Database::new();
+    db.init(None).await.expect("Database init failed");
+
+    let eid = save_bw_exercise(&db, "Pull-up").await;
+    let plan_id = db.create_plan().await.expect("create_plan failed");
+    db.add_exercise_to_plan(&plan_id, &eid, 3)
+        .await
+        .expect("add_exercise_to_plan failed");
+
+    db.archive_exercise(&eid).await.expect("archive failed");
+
+    // Slot must be soft-deleted.
+    let slot_row = db
+        .execute(
+            "SELECT deleted_at FROM workout_plan_exercises WHERE plan_id = ? AND exercise_id = ?",
+            &[
+                wasm_bindgen::JsValue::from_str(&plan_id),
+                wasm_bindgen::JsValue::from_str(&eid),
+            ],
+        )
+        .await
+        .expect("slot query failed");
+    let slot_arr = slot_row.dyn_ref::<js_sys::Array>().expect("Expected array");
+    assert_eq!(slot_arr.length(), 1, "Should be exactly one slot row");
+    let slot_deleted_at = js_sys::Reflect::get(
+        &slot_arr.get(0),
+        &wasm_bindgen::JsValue::from_str("deleted_at"),
+    )
+    .unwrap();
+    assert!(
+        !slot_deleted_at.is_null() && !slot_deleted_at.is_undefined(),
+        "Slot deleted_at must be set"
+    );
+
+    // Plan must be soft-deleted (it became empty).
+    let plan_row = db
+        .execute(
+            "SELECT deleted_at FROM workout_plans WHERE id = ?",
+            &[wasm_bindgen::JsValue::from_str(&plan_id)],
+        )
+        .await
+        .expect("plan query failed");
+    let plan_arr = plan_row.dyn_ref::<js_sys::Array>().expect("Expected array");
+    assert_eq!(plan_arr.length(), 1);
+    let plan_deleted_at = js_sys::Reflect::get(
+        &plan_arr.get(0),
+        &wasm_bindgen::JsValue::from_str("deleted_at"),
+    )
+    .unwrap();
+    assert!(
+        !plan_deleted_at.is_null() && !plan_deleted_at.is_undefined(),
+        "Plan deleted_at must be set (plan became empty)"
+    );
+}
+
+/// Archiving an exercise in a future plan alongside other exercises strips only
+/// its slot; the plan remains.
+#[wasm_bindgen_test]
+async fn test_archive_strips_slot_keeps_non_empty_future_plan() {
+    use wasm_bindgen::JsCast;
+
+    let mut db = Database::new();
+    db.init(None).await.expect("Database init failed");
+
+    let eid_a = save_bw_exercise(&db, "Exercise A").await;
+    let eid_b = save_bw_exercise(&db, "Exercise B").await;
+    let plan_id = db.create_plan().await.expect("create_plan failed");
+    db.add_exercise_to_plan(&plan_id, &eid_a, 3)
+        .await
+        .expect("add A failed");
+    db.add_exercise_to_plan(&plan_id, &eid_b, 3)
+        .await
+        .expect("add B failed");
+
+    db.archive_exercise(&eid_a).await.expect("archive A failed");
+
+    // Slot for A must be soft-deleted.
+    let slot_a = db
+        .execute(
+            "SELECT deleted_at FROM workout_plan_exercises WHERE plan_id = ? AND exercise_id = ?",
+            &[
+                wasm_bindgen::JsValue::from_str(&plan_id),
+                wasm_bindgen::JsValue::from_str(&eid_a),
+            ],
+        )
+        .await
+        .expect("slot A query failed");
+    let arr_a = slot_a.dyn_ref::<js_sys::Array>().expect("array");
+    let da_a = js_sys::Reflect::get(
+        &arr_a.get(0),
+        &wasm_bindgen::JsValue::from_str("deleted_at"),
+    )
+    .unwrap();
+    assert!(
+        !da_a.is_null() && !da_a.is_undefined(),
+        "Slot A must be deleted"
+    );
+
+    // Slot for B must be untouched.
+    let slot_b = db
+        .execute(
+            "SELECT deleted_at FROM workout_plan_exercises WHERE plan_id = ? AND exercise_id = ?",
+            &[
+                wasm_bindgen::JsValue::from_str(&plan_id),
+                wasm_bindgen::JsValue::from_str(&eid_b),
+            ],
+        )
+        .await
+        .expect("slot B query failed");
+    let arr_b = slot_b.dyn_ref::<js_sys::Array>().expect("array");
+    let da_b = js_sys::Reflect::get(
+        &arr_b.get(0),
+        &wasm_bindgen::JsValue::from_str("deleted_at"),
+    )
+    .unwrap();
+    assert!(
+        da_b.is_null() || da_b.is_undefined(),
+        "Slot B must NOT be deleted"
+    );
+
+    // Plan must NOT be deleted (still has exercise B).
+    let plan_row = db
+        .execute(
+            "SELECT deleted_at FROM workout_plans WHERE id = ?",
+            &[wasm_bindgen::JsValue::from_str(&plan_id)],
+        )
+        .await
+        .expect("plan query failed");
+    let plan_arr = plan_row.dyn_ref::<js_sys::Array>().expect("array");
+    let plan_da = js_sys::Reflect::get(
+        &plan_arr.get(0),
+        &wasm_bindgen::JsValue::from_str("deleted_at"),
+    )
+    .unwrap();
+    assert!(
+        plan_da.is_null() || plan_da.is_undefined(),
+        "Plan must NOT be deleted (still has exercise B)"
+    );
+}
+
+/// Archiving an exercise in a completed plan leaves the slot and plan untouched.
+#[wasm_bindgen_test]
+async fn test_archive_does_not_touch_completed_plan() {
+    use wasm_bindgen::JsCast;
+
+    let mut db = Database::new();
+    db.init(None).await.expect("Database init failed");
+
+    let eid = save_bw_exercise(&db, "Deadlift").await;
+    let plan_id = db.create_plan().await.expect("create_plan failed");
+    db.add_exercise_to_plan(&plan_id, &eid, 3)
+        .await
+        .expect("add failed");
+    // Make it a completed plan: set both started_at and ended_at.
+    db.start_plan(&plan_id).await.expect("start_plan failed");
+    db.end_plan(&plan_id).await.expect("end_plan failed");
+
+    db.archive_exercise(&eid).await.expect("archive failed");
+
+    // Slot must NOT be deleted.
+    let slot_row = db
+        .execute(
+            "SELECT deleted_at FROM workout_plan_exercises WHERE plan_id = ? AND exercise_id = ?",
+            &[
+                wasm_bindgen::JsValue::from_str(&plan_id),
+                wasm_bindgen::JsValue::from_str(&eid),
+            ],
+        )
+        .await
+        .expect("slot query failed");
+    let arr = slot_row.dyn_ref::<js_sys::Array>().expect("array");
+    let da =
+        js_sys::Reflect::get(&arr.get(0), &wasm_bindgen::JsValue::from_str("deleted_at")).unwrap();
+    assert!(
+        da.is_null() || da.is_undefined(),
+        "Completed plan slot must NOT be deleted"
+    );
+
+    // Plan must NOT be deleted.
+    let plan_row = db
+        .execute(
+            "SELECT deleted_at FROM workout_plans WHERE id = ?",
+            &[wasm_bindgen::JsValue::from_str(&plan_id)],
+        )
+        .await
+        .expect("plan query failed");
+    let plan_arr = plan_row.dyn_ref::<js_sys::Array>().expect("array");
+    let plan_da = js_sys::Reflect::get(
+        &plan_arr.get(0),
+        &wasm_bindgen::JsValue::from_str("deleted_at"),
+    )
+    .unwrap();
+    assert!(
+        plan_da.is_null() || plan_da.is_undefined(),
+        "Completed plan must NOT be deleted"
+    );
+}
+
+/// Archiving an exercise in an active plan (with other exercises) strips its
+/// slot but does NOT delete the active plan.
+#[wasm_bindgen_test]
+async fn test_archive_strips_slot_in_active_plan_never_deletes_plan() {
+    use wasm_bindgen::JsCast;
+
+    let mut db = Database::new();
+    db.init(None).await.expect("Database init failed");
+
+    let eid_a = save_bw_exercise(&db, "Squat").await;
+    let eid_b = save_bw_exercise(&db, "Lunge").await;
+    let plan_id = db.create_plan().await.expect("create_plan failed");
+    db.add_exercise_to_plan(&plan_id, &eid_a, 3)
+        .await
+        .expect("add A failed");
+    db.add_exercise_to_plan(&plan_id, &eid_b, 3)
+        .await
+        .expect("add B failed");
+    db.start_plan(&plan_id).await.expect("start_plan failed");
+
+    db.archive_exercise(&eid_a).await.expect("archive A failed");
+
+    // Slot for A must be soft-deleted.
+    let slot_a = db
+        .execute(
+            "SELECT deleted_at FROM workout_plan_exercises WHERE plan_id = ? AND exercise_id = ?",
+            &[
+                wasm_bindgen::JsValue::from_str(&plan_id),
+                wasm_bindgen::JsValue::from_str(&eid_a),
+            ],
+        )
+        .await
+        .expect("slot A query failed");
+    let arr_a = slot_a.dyn_ref::<js_sys::Array>().expect("array");
+    let da_a = js_sys::Reflect::get(
+        &arr_a.get(0),
+        &wasm_bindgen::JsValue::from_str("deleted_at"),
+    )
+    .unwrap();
+    assert!(
+        !da_a.is_null() && !da_a.is_undefined(),
+        "Active plan slot A must be deleted"
+    );
+
+    // Plan must NOT be deleted (active plans are never deleted by archive).
+    let plan_row = db
+        .execute(
+            "SELECT deleted_at FROM workout_plans WHERE id = ?",
+            &[wasm_bindgen::JsValue::from_str(&plan_id)],
+        )
+        .await
+        .expect("plan query failed");
+    let plan_arr = plan_row.dyn_ref::<js_sys::Array>().expect("array");
+    let plan_da = js_sys::Reflect::get(
+        &plan_arr.get(0),
+        &wasm_bindgen::JsValue::from_str("deleted_at"),
+    )
+    .unwrap();
+    assert!(
+        plan_da.is_null() || plan_da.is_undefined(),
+        "Active plan must NEVER be deleted by archive"
+    );
+}
+
+/// `preview_archive` returns 1 when the exercise is the sole slot in a future plan.
+#[wasm_bindgen_test]
+async fn test_preview_archive_counts_solo_future_plan() {
+    let mut db = Database::new();
+    db.init(None).await.expect("Database init failed");
+
+    let eid = save_bw_exercise(&db, "Chin-up").await;
+    let plan_id = db.create_plan().await.expect("create_plan failed");
+    db.add_exercise_to_plan(&plan_id, &eid, 3)
+        .await
+        .expect("add failed");
+
+    let count = db.preview_archive(&eid).await.expect("preview failed");
+    assert_eq!(
+        count, 1,
+        "Should count 1 future plan that would become empty"
+    );
+}
+
+/// `preview_archive` returns 0 when the exercise shares a future plan with others.
+#[wasm_bindgen_test]
+async fn test_preview_archive_zero_when_plan_has_other_exercises() {
+    let mut db = Database::new();
+    db.init(None).await.expect("Database init failed");
+
+    let eid_a = save_bw_exercise(&db, "Row").await;
+    let eid_b = save_bw_exercise(&db, "Press").await;
+    let plan_id = db.create_plan().await.expect("create_plan failed");
+    db.add_exercise_to_plan(&plan_id, &eid_a, 3)
+        .await
+        .expect("add A failed");
+    db.add_exercise_to_plan(&plan_id, &eid_b, 3)
+        .await
+        .expect("add B failed");
+
+    let count = db.preview_archive(&eid_a).await.expect("preview failed");
+    assert_eq!(
+        count, 0,
+        "Should return 0: plan still has exercise B after stripping A"
+    );
+}
+
+/// `preview_archive` returns 2 when the exercise is the sole slot in 2 future plans.
+#[wasm_bindgen_test]
+async fn test_preview_archive_counts_multiple_empty_future_plans() {
+    let mut db = Database::new();
+    db.init(None).await.expect("Database init failed");
+
+    let eid = save_bw_exercise(&db, "Jump Squat").await;
+
+    let plan1 = db.create_plan().await.expect("plan1 failed");
+    db.add_exercise_to_plan(&plan1, &eid, 3)
+        .await
+        .expect("add to plan1 failed");
+
+    let plan2 = db.create_plan().await.expect("plan2 failed");
+    db.add_exercise_to_plan(&plan2, &eid, 3)
+        .await
+        .expect("add to plan2 failed");
+
+    let count = db.preview_archive(&eid).await.expect("preview failed");
+    assert_eq!(
+        count, 2,
+        "Should count 2 future plans that would become empty"
+    );
+}
+
+/// Mixed scenario: exercise in 1 solo future plan + 1 shared future plan.
+/// preview_archive returns 1; archive deletes the solo plan, keeps the shared plan.
+#[wasm_bindgen_test]
+async fn test_archive_mixed_solo_and_shared_future_plans() {
+    use wasm_bindgen::JsCast;
+
+    let mut db = Database::new();
+    db.init(None).await.expect("Database init failed");
+
+    let eid_target = save_bw_exercise(&db, "Target").await;
+    let eid_other = save_bw_exercise(&db, "Other").await;
+
+    // Solo plan: only the target exercise.
+    let solo_plan = db.create_plan().await.expect("solo plan failed");
+    db.add_exercise_to_plan(&solo_plan, &eid_target, 3)
+        .await
+        .expect("add to solo failed");
+
+    // Shared plan: target + other.
+    let shared_plan = db.create_plan().await.expect("shared plan failed");
+    db.add_exercise_to_plan(&shared_plan, &eid_target, 3)
+        .await
+        .expect("add target to shared failed");
+    db.add_exercise_to_plan(&shared_plan, &eid_other, 3)
+        .await
+        .expect("add other to shared failed");
+
+    // preview_archive: 1 (only the solo plan becomes empty).
+    let preview = db
+        .preview_archive(&eid_target)
+        .await
+        .expect("preview failed");
+    assert_eq!(preview, 1, "Only the solo plan would be deleted");
+
+    db.archive_exercise(&eid_target)
+        .await
+        .expect("archive failed");
+
+    // Solo plan must be soft-deleted.
+    let solo_row = db
+        .execute(
+            "SELECT deleted_at FROM workout_plans WHERE id = ?",
+            &[wasm_bindgen::JsValue::from_str(&solo_plan)],
+        )
+        .await
+        .expect("solo plan query failed");
+    let solo_arr = solo_row.dyn_ref::<js_sys::Array>().expect("array");
+    let solo_da = js_sys::Reflect::get(
+        &solo_arr.get(0),
+        &wasm_bindgen::JsValue::from_str("deleted_at"),
+    )
+    .unwrap();
+    assert!(
+        !solo_da.is_null() && !solo_da.is_undefined(),
+        "Solo plan must be deleted"
+    );
+
+    // Shared plan must NOT be deleted (still has the other exercise).
+    let shared_row = db
+        .execute(
+            "SELECT deleted_at FROM workout_plans WHERE id = ?",
+            &[wasm_bindgen::JsValue::from_str(&shared_plan)],
+        )
+        .await
+        .expect("shared plan query failed");
+    let shared_arr = shared_row.dyn_ref::<js_sys::Array>().expect("array");
+    let shared_da = js_sys::Reflect::get(
+        &shared_arr.get(0),
+        &wasm_bindgen::JsValue::from_str("deleted_at"),
+    )
+    .unwrap();
+    assert!(
+        shared_da.is_null() || shared_da.is_undefined(),
+        "Shared plan must NOT be deleted"
+    );
 }
 
 // ── Issue #195: permanent_delete_exercise / preview_permanent_delete ──────────

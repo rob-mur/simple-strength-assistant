@@ -1,4 +1,4 @@
-import { When, Then, expect } from "./fixtures";
+import { Given, When, Then, expect } from "./fixtures";
 
 When(
   "the user taps the archive button on the detail view",
@@ -79,3 +79,133 @@ Then(
     ).toBeVisible();
   },
 );
+
+// ── Plan cascade steps (Issue #193) ──────────────────────────────────────────
+
+// Globals to hold plan IDs created by the steps below so assertions can
+// reference them across step boundaries.
+let _soloPlanId: string | null = null;
+let _sharedPlanId: string | null = null;
+
+Given(
+  "a future plan exists with only {string}",
+  async ({ page }, exerciseName: string) => {
+    const planId = await page.evaluate(async (name: string) => {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const exec = (window as any).__dbExecuteQuery as (
+        sql: string,
+        params: unknown[],
+      ) => Promise<unknown>;
+      if (!exec) throw new Error("__dbExecuteQuery not available");
+
+      // Look up exercise id by name.
+      const exRows = (await exec(
+        "SELECT uuid FROM exercises WHERE name = ? AND deleted_at IS NULL",
+        [name],
+      )) as Array<{ uuid: string }>;
+      if (!exRows.length) throw new Error(`Exercise '${name}' not found`);
+      const exerciseId = exRows[0].uuid;
+
+      // Create a future plan (no started_at).
+      const planId = "solo-" + Math.random().toString(36).slice(2) + Date.now();
+      const now = Date.now();
+      await exec("INSERT INTO workout_plans (id, updated_at) VALUES (?, ?)", [
+        planId,
+        now,
+      ]);
+      const slotId = "slot-" + Math.random().toString(36).slice(2);
+      await exec(
+        "INSERT INTO workout_plan_exercises (id, plan_id, exercise_id, planned_sets, position, updated_at) VALUES (?, ?, ?, 3, 0, ?)",
+        [slotId, planId, exerciseId, now],
+      );
+      return planId;
+    }, exerciseName);
+    _soloPlanId = planId as string;
+  },
+);
+
+Given(
+  "a future plan exists with {string} and {string}",
+  async ({ page }, nameA: string, nameB: string) => {
+    const planId = await page.evaluate(
+      async ([a, b]: string[]) => {
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        const exec = (window as any).__dbExecuteQuery as (
+          sql: string,
+          params: unknown[],
+        ) => Promise<unknown>;
+        if (!exec) throw new Error("__dbExecuteQuery not available");
+
+        const getEx = async (n: string) => {
+          const rows = (await exec(
+            "SELECT uuid FROM exercises WHERE name = ? AND deleted_at IS NULL",
+            [n],
+          )) as Array<{ uuid: string }>;
+          if (!rows.length) throw new Error(`Exercise '${n}' not found`);
+          return rows[0].uuid;
+        };
+
+        const eidA = await getEx(a);
+        const eidB = await getEx(b);
+
+        const planId =
+          "shared-" + Math.random().toString(36).slice(2) + Date.now();
+        const now = Date.now();
+        await exec("INSERT INTO workout_plans (id, updated_at) VALUES (?, ?)", [
+          planId,
+          now,
+        ]);
+        await exec(
+          "INSERT INTO workout_plan_exercises (id, plan_id, exercise_id, planned_sets, position, updated_at) VALUES (?, ?, ?, 3, 0, ?)",
+          ["slot-a-" + Math.random().toString(36).slice(2), planId, eidA, now],
+        );
+        await exec(
+          "INSERT INTO workout_plan_exercises (id, plan_id, exercise_id, planned_sets, position, updated_at) VALUES (?, ?, ?, 3, 1, ?)",
+          ["slot-b-" + Math.random().toString(36).slice(2), planId, eidB, now],
+        );
+        return planId;
+      },
+      [nameA, nameB],
+    );
+    _sharedPlanId = planId as string;
+  },
+);
+
+Then(
+  "the solo future plan for {string} is deleted",
+  async ({ page }, _exerciseName: string) => {
+    const planId = _soloPlanId;
+    if (!planId) throw new Error("No solo plan ID recorded");
+    const deleted = await page.evaluate(async (id: string) => {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const exec = (window as any).__dbExecuteQuery as (
+        sql: string,
+        params: unknown[],
+      ) => Promise<unknown>;
+      const rows = (await exec(
+        "SELECT deleted_at FROM workout_plans WHERE id = ?",
+        [id],
+      )) as Array<{ deleted_at: number | null }>;
+      return rows.length > 0 && rows[0].deleted_at != null;
+    }, planId);
+    expect(deleted).toBe(true);
+  },
+);
+
+Then("the shared future plan still exists", async ({ page }) => {
+  const planId = _sharedPlanId;
+  if (!planId) throw new Error("No shared plan ID recorded");
+  const alive = await page.evaluate(async (id: string) => {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const exec = (window as any).__dbExecuteQuery as (
+      sql: string,
+      params: unknown[],
+    ) => Promise<unknown>;
+    const rows = (await exec(
+      "SELECT deleted_at FROM workout_plans WHERE id = ?",
+      [id],
+    )) as Array<{ deleted_at: number | null }>;
+    return rows.length > 0 && rows[0].deleted_at == null;
+  }, planId);
+  expect(alive).toBe(true);
+});

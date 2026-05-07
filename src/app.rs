@@ -325,6 +325,9 @@ fn LibraryExercise(exercise_id: String) -> Element {
     let navigator = use_navigator();
     let mut show_edit_form = use_signal(|| false);
     let mut show_archive_dialog = use_signal(|| false);
+    // Holds the count of future plans that would be deleted on archive.
+    // Loaded lazily when the archive dialog first opens.
+    let mut archive_preview_count: Signal<u32> = use_signal(|| 0);
     // (completed_sets_count, plans_to_delete_count) for permanent-delete dialog
     let mut perm_delete_counts: Signal<Option<(u32, u32)>> = use_signal(|| None);
     let mut show_permanent_delete_dialog = use_signal(|| false);
@@ -406,6 +409,7 @@ fn LibraryExercise(exercise_id: String) -> Element {
     let exercise_name = exercise.name.clone();
     let exercise_id_for_archive = exercise_id.clone();
     let exercise_id_for_unarchive = exercise_id.clone();
+    let exercise_id_for_preview = exercise_id.clone();
     let archive_blocked = is_archive_blocked(&exercise_id, &workout_state.current_session());
     // Three clones needed: one for the archive-dialog escalation link, one for
     // the permanent-delete confirm button, one for the archived-detail trash icon.
@@ -441,7 +445,11 @@ fn LibraryExercise(exercise_id: String) -> Element {
                         p {
                             class: "text-base-content/70 mb-6",
                             "data-testid": "confirmation-dialog-body",
-                            "Hidden from library, removed from upcoming plans. 0 future plans will be deleted."
+                            {format!(
+                                "Hidden from library, removed from upcoming plans. {} future {} will be deleted.",
+                                archive_preview_count(),
+                                if archive_preview_count() == 1 { "plan" } else { "plans" }
+                            )}
                         }
 
                         // Button row: Cancel (leftmost), then Archive
@@ -673,7 +681,17 @@ fn LibraryExercise(exercise_id: String) -> Element {
                         button {
                             class: "btn btn-ghost btn-sm btn-circle",
                             "data-testid": "archive-button",
-                            onclick: move |_| show_archive_dialog.set(true),
+                            onclick: move |_| {
+                                let state = workout_state;
+                                let eid = exercise_id_for_preview.clone();
+                                show_archive_dialog.set(true);
+                                spawn(async move {
+                                    match WorkoutStateManager::preview_archive(&state, &eid).await {
+                                        Ok(n) => archive_preview_count.set(n),
+                                        Err(e) => log::warn!("preview_archive failed: {}", e),
+                                    }
+                                });
+                            },
                             svg {
                                 xmlns: "http://www.w3.org/2000/svg",
                                 fill: "none",

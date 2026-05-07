@@ -1150,9 +1150,105 @@ impl Database {
     }
 
     /// Soft-archives an exercise by setting `deleted_at` to now.
-    /// The exercise is excluded from normal queries but remains in the database.
+    ///
+    /// Cascade semantics (Issue #193):
+    /// 1. Soft-delete every `workout_plan_exercises` slot for this exercise
+    ///    where the parent plan is **future** (started_at IS NULL) or
+    ///    **active** (started_at IS NOT NULL AND ended_at IS NULL).
+    ///    Completed plans (started_at IS NOT NULL AND ended_at IS NOT NULL)
+    ///    are untouched.
+    /// 2. After stripping slots, any **future** plan whose remaining
+    ///    non-deleted slots are all gone is itself soft-deleted.
+    ///    Active plans are never deleted.
+    /// 3. The exercise row itself is soft-deleted.
     pub async fn archive_exercise(&self, exercise_id: &str) -> Result<(), DatabaseError> {
         let now = js_sys::Date::now();
+
+        // Wrap all cascade steps in a transaction so a mid-cascade failure
+        // cannot leave the DB in a partial state.
+        self.execute("BEGIN", &[]).await?;
+
+        let result = self.archive_exercise_inner(exercise_id, now).await;
+
+        match result {
+            Ok(()) => {
+                self.execute("COMMIT", &[]).await?;
+                Ok(())
+            }
+            Err(e) => {
+                // Best-effort rollback; ignore rollback errors so the original
+                // error is returned to the caller.
+                let _ = self.execute("ROLLBACK", &[]).await;
+                Err(e)
+            }
+        }
+    }
+
+    async fn archive_exercise_inner(
+        &self,
+        exercise_id: &str,
+        now: f64,
+    ) -> Result<(), DatabaseError> {
+        // 1a. Strip slots in future plans (started_at IS NULL).
+        self.execute(
+            "UPDATE workout_plan_exercises SET deleted_at = ?, updated_at = ?
+             WHERE exercise_id = ?
+               AND deleted_at IS NULL
+               AND plan_id IN (
+                 SELECT id FROM workout_plans
+                 WHERE deleted_at IS NULL
+                   AND started_at IS NULL
+               )",
+            &[
+                JsValue::from_f64(now),
+                JsValue::from_f64(now),
+                JsValue::from_str(exercise_id),
+            ],
+        )
+        .await?;
+
+        // 1b. Strip slots in active plans (started_at IS NOT NULL AND ended_at IS NULL).
+        self.execute(
+            "UPDATE workout_plan_exercises SET deleted_at = ?, updated_at = ?
+             WHERE exercise_id = ?
+               AND deleted_at IS NULL
+               AND plan_id IN (
+                 SELECT id FROM workout_plans
+                 WHERE deleted_at IS NULL
+                   AND started_at IS NOT NULL
+                   AND ended_at IS NULL
+               )",
+            &[
+                JsValue::from_f64(now),
+                JsValue::from_f64(now),
+                JsValue::from_str(exercise_id),
+            ],
+        )
+        .await?;
+
+        // 2. Soft-delete future plans that are now empty (all slots deleted).
+        //    Scoped to plans that contained this exercise, then checks whether
+        //    they became empty — avoids deleting unrelated already-empty plans.
+        self.execute(
+            "UPDATE workout_plans SET deleted_at = ?, updated_at = ?
+             WHERE deleted_at IS NULL
+               AND started_at IS NULL
+               AND id IN (
+                 SELECT plan_id FROM workout_plan_exercises WHERE exercise_id = ?
+               )
+               AND id NOT IN (
+                 SELECT DISTINCT plan_id FROM workout_plan_exercises
+                 WHERE deleted_at IS NULL
+               )",
+            &[
+                JsValue::from_f64(now),
+                JsValue::from_f64(now),
+                JsValue::from_str(exercise_id),
+            ],
+        )
+        .await?;
+
+        // 3. Archive the exercise itself.
         self.execute(
             "UPDATE exercises SET deleted_at = ?, updated_at = ? WHERE uuid = ?",
             &[
@@ -1166,6 +1262,7 @@ impl Database {
     }
 
     /// Restores an archived exercise by clearing `deleted_at`.
+    /// Stripped plan slots and deleted plans are NOT restored (irreversible).
     pub async fn unarchive_exercise(&self, exercise_id: &str) -> Result<(), DatabaseError> {
         let now = js_sys::Date::now();
         self.execute(
@@ -1176,10 +1273,50 @@ impl Database {
         Ok(())
     }
 
-    /// Returns the number of future plans that would be deleted when archiving
-    /// the given exercise.  In this slice (no plan cascade) the count is always 0.
-    pub async fn preview_archive(&self, _exercise_id: &str) -> Result<u32, DatabaseError> {
-        Ok(0)
+    /// Returns the number of **future** plans that would become empty
+    /// (and therefore be deleted) if the given exercise were archived.
+    ///
+    /// A future plan "becomes empty" if, after removing all non-deleted slots
+    /// referencing this exercise, no non-deleted slots remain.
+    pub async fn preview_archive(&self, exercise_id: &str) -> Result<u32, DatabaseError> {
+        // Count future plans where every non-deleted slot belongs to this exercise
+        // (i.e. removing this exercise leaves the plan empty).
+        let result = self
+            .execute(
+                "SELECT COUNT(*) as cnt
+                 FROM workout_plans p
+                 WHERE p.deleted_at IS NULL
+                   AND p.started_at IS NULL
+                   AND NOT EXISTS (
+                     SELECT 1 FROM workout_plan_exercises pe
+                     WHERE pe.plan_id = p.id
+                       AND pe.deleted_at IS NULL
+                       AND pe.exercise_id != ?
+                   )
+                   AND EXISTS (
+                     SELECT 1 FROM workout_plan_exercises pe2
+                     WHERE pe2.plan_id = p.id
+                       AND pe2.deleted_at IS NULL
+                       AND pe2.exercise_id = ?
+                   )",
+                &[
+                    JsValue::from_str(exercise_id),
+                    JsValue::from_str(exercise_id),
+                ],
+            )
+            .await?;
+
+        let count = result
+            .dyn_ref::<js_sys::Array>()
+            .and_then(|a| if a.length() > 0 { Some(a.get(0)) } else { None })
+            .and_then(|row| {
+                js_sys::Reflect::get(&row, &JsValue::from_str("cnt"))
+                    .ok()
+                    .and_then(|v| v.as_f64())
+            })
+            .unwrap_or(0.0) as u32;
+
+        Ok(count)
     }
 
     /// Returns `{ completed_sets, plans_to_delete }` counts for the permanent-delete
