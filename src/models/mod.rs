@@ -3,6 +3,7 @@
 /// This module provides type-safe data structures for representing exercises,
 /// sets, and workout data, along with validation logic to ensure data integrity.
 pub mod exercise;
+pub mod muscle_group;
 pub mod set;
 pub mod settings;
 pub mod validation;
@@ -12,6 +13,10 @@ pub mod workout_plan;
 // Allow unused imports as these are re-exported for public use by consumers of this module
 #[allow(unused_imports)]
 pub use exercise::{ExerciseMetadata, SetTypeConfig};
+#[allow(unused_imports)]
+pub use muscle_group::{
+    ContributionTier, ExerciseMuscleGroup, MuscleGroup, validate_muscle_groups,
+};
 #[allow(unused_imports)]
 pub use set::{CompletedSet, HistorySet, SetType};
 #[allow(unused_imports)]

@@ -47,7 +47,7 @@ jobs:
       - name: Run fast Playwright tests
         run: |
           DX_LOG=$(mktemp)
-          FAST_PORT=$((4000 + (${{ github.run_id }} % 100)))
+          FAST_PORT=$((7000 + (${{ github.run_id }} % 1000)))
           dx serve --port "$FAST_PORT" > "$DX_LOG" 2>&1 &
           DX_PID=$!
           echo "Waiting for dx serve to build and serve WASM..."

@@ -1,7 +1,8 @@
 use crate::models::{
-    CompletedSet, ExerciseMetadata, HistorySet, PlanExercise, SetType, SetTypeConfig, WorkoutPlan,
-    WorkoutTemplate,
+    CompletedSet, ContributionTier, ExerciseMetadata, ExerciseMuscleGroup, HistorySet, MuscleGroup,
+    PlanExercise, SetType, SetTypeConfig, WorkoutPlan, WorkoutTemplate,
 };
+use std::str::FromStr;
 use thiserror::Error;
 #[cfg(test)]
 use uuid::Uuid;
@@ -67,7 +68,7 @@ extern "C" {
 }
 
 /// Current schema version. Bump this when the schema changes.
-const SCHEMA_VERSION: i64 = 9;
+const SCHEMA_VERSION: i64 = 10;
 
 #[derive(Clone, PartialEq)]
 pub struct Database {
@@ -273,6 +274,12 @@ impl Database {
         if current_version < 9 {
             log::debug!("[DB] Applying v9 migration: progress detection settings");
             self.apply_v9_migration().await?;
+        }
+
+        // ── v10 migration: exercise_muscle_groups join table ──────────────
+        if current_version < 10 {
+            log::debug!("[DB] Applying v10 migration: exercise_muscle_groups table");
+            self.apply_v10_migration().await?;
         }
 
         // Stamp the new version
@@ -2840,6 +2847,170 @@ impl Database {
     /// This gives the suggestion algorithm the per-rep PB it needs.
     ///
     /// Returns an empty `HashMap` when there are no qualifying sets.
+    /// v10 migration: create the `exercise_muscle_groups` join table and
+    /// back-fill existing exercises with a default Chest/Primary row.
+    async fn apply_v10_migration(&self) -> Result<(), DatabaseError> {
+        self.execute_internal(
+            r#"CREATE TABLE IF NOT EXISTS exercise_muscle_groups (
+                exercise_id TEXT NOT NULL,
+                muscle_group TEXT NOT NULL,
+                tier TEXT NOT NULL,
+                PRIMARY KEY (exercise_id, muscle_group),
+                FOREIGN KEY (exercise_id) REFERENCES exercises(uuid) ON DELETE CASCADE
+            )"#,
+            &[],
+        )
+        .await?;
+
+        // Back-fill: give every existing exercise a Chest/Primary row so that
+        // the invariant "every exercise has at least one muscle group" holds
+        // for pre-migration data.
+        let existing = self
+            .execute_internal("SELECT uuid FROM exercises WHERE deleted_at IS NULL", &[])
+            .await?;
+
+        if let Some(arr) = existing.dyn_ref::<js_sys::Array>() {
+            for i in 0..arr.length() {
+                let row = arr.get(i);
+                let uuid = js_sys::Reflect::get(&row, &JsValue::from_str("uuid"))
+                    .ok()
+                    .and_then(|v| v.as_string());
+                if let Some(uuid) = uuid {
+                    // Only insert if no row already exists (idempotent).
+                    let _ = self
+                        .execute_internal(
+                            "INSERT OR IGNORE INTO exercise_muscle_groups (exercise_id, muscle_group, tier) VALUES (?, ?, ?)",
+                            &[
+                                JsValue::from_str(&uuid),
+                                JsValue::from_str("Chest"),
+                                JsValue::from_str("Primary"),
+                            ],
+                        )
+                        .await;
+                }
+            }
+        }
+
+        log::debug!("[DB] v10 migration complete — exercise_muscle_groups table created");
+        Ok(())
+    }
+
+    /// Replaces all muscle-group associations for `exercise_id` with `groups`.
+    ///
+    /// Deletes all existing rows for the exercise and inserts the new ones in a
+    /// single transaction, so the table is never left in a partial state.
+    ///
+    /// # Errors
+    /// Returns `DatabaseError::ValidationError` if `groups` is empty — at least
+    /// one muscle group is required per exercise.
+    pub async fn set_muscle_groups(
+        &self,
+        exercise_id: &str,
+        groups: &[ExerciseMuscleGroup],
+    ) -> Result<(), DatabaseError> {
+        if groups.is_empty() {
+            return Err(DatabaseError::ValidationError(
+                "At least one muscle group is required for an exercise".to_string(),
+            ));
+        }
+
+        self.execute("BEGIN", &[]).await?;
+
+        let result = self.set_muscle_groups_inner(exercise_id, groups).await;
+
+        match result {
+            Ok(()) => {
+                self.execute("COMMIT", &[]).await?;
+                Ok(())
+            }
+            Err(e) => {
+                let _ = self.execute("ROLLBACK", &[]).await;
+                Err(e)
+            }
+        }
+    }
+
+    async fn set_muscle_groups_inner(
+        &self,
+        exercise_id: &str,
+        groups: &[ExerciseMuscleGroup],
+    ) -> Result<(), DatabaseError> {
+        // Remove all existing associations for this exercise.
+        self.execute(
+            "DELETE FROM exercise_muscle_groups WHERE exercise_id = ?",
+            &[JsValue::from_str(exercise_id)],
+        )
+        .await?;
+
+        // Insert the new associations.
+        for emg in groups {
+            self.execute(
+                "INSERT INTO exercise_muscle_groups (exercise_id, muscle_group, tier) VALUES (?, ?, ?)",
+                &[
+                    JsValue::from_str(exercise_id),
+                    JsValue::from_str(&emg.muscle_group.to_string()),
+                    JsValue::from_str(&emg.tier.to_string()),
+                ],
+            )
+            .await?;
+        }
+
+        Ok(())
+    }
+
+    /// Returns all muscle-group associations for the given `exercise_id`.
+    ///
+    /// Returns an empty `Vec` when no associations exist (e.g. for exercises
+    /// created before the v9 migration was applied).
+    pub async fn get_muscle_groups(
+        &self,
+        exercise_id: &str,
+    ) -> Result<Vec<ExerciseMuscleGroup>, DatabaseError> {
+        let result = self
+            .execute(
+                "SELECT exercise_id, muscle_group, tier FROM exercise_muscle_groups WHERE exercise_id = ?",
+                &[JsValue::from_str(exercise_id)],
+            )
+            .await?;
+
+        let array = match result.dyn_ref::<js_sys::Array>() {
+            Some(a) => a,
+            None => return Ok(vec![]),
+        };
+
+        let mut out = Vec::with_capacity(array.length() as usize);
+        for i in 0..array.length() {
+            let row = array.get(i);
+
+            let ex_id = js_sys::Reflect::get(&row, &JsValue::from_str("exercise_id"))
+                .ok()
+                .and_then(|v| v.as_string())
+                .ok_or_else(|| DatabaseError::QueryError("Missing exercise_id".to_string()))?;
+
+            let mg_str = js_sys::Reflect::get(&row, &JsValue::from_str("muscle_group"))
+                .ok()
+                .and_then(|v| v.as_string())
+                .ok_or_else(|| DatabaseError::QueryError("Missing muscle_group".to_string()))?;
+
+            let tier_str = js_sys::Reflect::get(&row, &JsValue::from_str("tier"))
+                .ok()
+                .and_then(|v| v.as_string())
+                .ok_or_else(|| DatabaseError::QueryError("Missing tier".to_string()))?;
+
+            let muscle_group = MuscleGroup::from_str(&mg_str).map_err(DatabaseError::QueryError)?;
+
+            let tier = ContributionTier::from_str(&tier_str).map_err(DatabaseError::QueryError)?;
+
+            out.push(ExerciseMuscleGroup {
+                exercise_id: ex_id,
+                muscle_group,
+                tier,
+            });
+        }
+
+        Ok(out)
+    }
+
     pub async fn get_max_weight_per_rep(
         &self,
         exercise_id: &str,
