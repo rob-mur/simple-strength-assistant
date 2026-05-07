@@ -2135,6 +2135,9 @@ details.collapse summary::-webkit-details-marker {
 .join > :where(*:not(:first-child)):is(.btn) {
   margin-inline-start: calc(var(--border-btn) * -1);
 }
+.join-item:focus {
+  isolation: isolate;
+}
 .link:focus {
   outline: 2px solid transparent;
   outline-offset: 2px;
