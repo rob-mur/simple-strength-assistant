@@ -1,3 +1,4 @@
+pub mod body_diagram;
 pub mod bottom_sheet;
 pub mod confirmation_dialog;
 pub mod data_management;
