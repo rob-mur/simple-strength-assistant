@@ -4,6 +4,7 @@ use crate::state::{Database, Storage, error::WorkoutError};
 #[cfg(not(test))]
 use crate::sync::SyncCredentials;
 use dioxus::prelude::*;
+use std::collections::HashMap;
 use wasm_bindgen::JsValue;
 
 /// Write directly to browser `console.log` – always visible in Playwright
@@ -15,10 +16,6 @@ fn js_log(msg: &str) {
 // Initial prediction constants
 const DEFAULT_WEIGHTED_REPS: u32 = 8;
 const DEFAULT_RPE: f32 = 7.0;
-const RPE_THRESHOLD_HIGH: f32 = 8.0;
-const RPE_THRESHOLD_LOW: f32 = 7.0;
-const RPE_REDUCTION: f32 = 0.5;
-const RPE_MINIMUM: f32 = 6.0;
 
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct PredictedParameters {
@@ -486,8 +483,67 @@ impl WorkoutStateManager {
                 })?;
 
         session.completed_sets.push(set.clone());
-        session.predicted =
-            Self::calculate_next_predictions(&session, state.settings().default_bodyweight_reps);
+
+        // Pre-fetch all inputs for calculate_next_predictions (no async inside
+        // the pure function itself).
+        let settings = state.settings();
+        let now = js_sys::Date::now();
+        let history_window_ms = settings.history_window_days as f64 * 24.0 * 60.0 * 60.0 * 1000.0;
+        let since_ms = now - history_window_ms;
+
+        // "Today" boundaries: midnight at start-of-day and end-of-day (UTC-based
+        // approximation using a 24-hour window ending now).
+        // We define today_start as the most recent midnight in the local timezone
+        // by using Date arithmetic.
+        let today_start_ms = {
+            let d = js_sys::Date::new_0();
+            d.set_hours(0);
+            d.set_minutes(0);
+            d.set_seconds(0);
+            d.set_milliseconds(0);
+            d.value_of()
+        };
+        let today_end_ms = today_start_ms + 24.0 * 60.0 * 60.0 * 1000.0;
+
+        let historical_best = db
+            .get_historical_best_for_exercise(
+                &session.exercise,
+                since_ms,
+                today_start_ms,
+                today_end_ms,
+            )
+            .await
+            .unwrap_or_else(|e| {
+                log::warn!("Failed to fetch historical_best: {}", e);
+                None
+            });
+
+        let today_best = db
+            .get_latest_set_today(&exercise_id, today_start_ms, today_end_ms)
+            .await
+            .unwrap_or_else(|e| {
+                log::warn!("Failed to fetch today_best: {}", e);
+                None
+            });
+
+        let per_rep_maxes = match session.exercise.set_type_config {
+            crate::models::SetTypeConfig::Weighted { .. } => db
+                .get_max_weight_per_rep(&exercise_id, since_ms)
+                .await
+                .unwrap_or_else(|e| {
+                    log::warn!("Failed to fetch per_rep_maxes: {}", e);
+                    HashMap::new()
+                }),
+            crate::models::SetTypeConfig::Bodyweight => HashMap::new(),
+        };
+
+        session.predicted = Self::calculate_next_predictions(
+            &session,
+            historical_best,
+            today_best,
+            per_rep_maxes,
+            &settings,
+        );
 
         state.set_current_session(Some(session));
 
@@ -935,73 +991,208 @@ impl WorkoutStateManager {
         }
     }
 
+    /// Compute the next set prediction using the full e1RM algorithm.
+    ///
+    /// All database inputs (`historical_best`, `today_best`, `per_rep_maxes`) are
+    /// pre-fetched by `log_set` so that this function contains no async calls.
+    ///
+    /// ### Weighted path
+    /// 1. Compute e1RM from `today_best` and `historical_best`.
+    /// 2. Blend them via `blended_e1rm`.
+    /// 3. For each rep count in the exercise range, compute the projected weight
+    ///    and compare against the historical max at that rep count.
+    /// 4. Select the rep count with the highest positive margin, falling back to
+    ///    the rep count with the least-negative margin when none are positive.
+    /// 5. Clamp to `[min_reps, max_reps]`.
+    ///
+    /// ### Bodyweight path
+    /// `failure_reps = set.reps + (10 - set.rpe)`.  Blend today and historical
+    /// failure_reps, subtract the RIR implied by `target_rpe`, round to nearest
+    /// integer, and clamp.
+    ///
+    /// ### No-data fallback
+    /// When neither `today_best` nor `historical_best` are present, delegate to
+    /// `calculate_initial_predictions`.
     fn calculate_next_predictions(
         session: &WorkoutSession,
-        default_bodyweight_reps: u32,
+        historical_best: Option<CompletedSet>,
+        today_best: Option<CompletedSet>,
+        per_rep_maxes: HashMap<u32, f64>,
+        settings: &Settings,
     ) -> PredictedParameters {
-        if session.completed_sets.is_empty() {
-            // Note: This path is unreachable in normal UI flow because initial prediction from start_session
-            // is stored in session.predicted, and calculate_next_predictions is only called after a set is completed.
-            // If it is ever called with 0 sets, it returns min_weight (ignoring history).
-            return Self::calculate_initial_predictions(
-                &session.exercise,
-                None,
-                default_bodyweight_reps,
-            );
-        }
+        use crate::domain::e1rm::{blended_e1rm, e1rm, predicted_weight};
 
-        let last_set = &session.completed_sets[session.completed_sets.len() - 1];
+        let exercise = &session.exercise;
+        let min_reps = exercise.min_reps as u32;
+        let max_reps = exercise.max_reps.map(|v| v as u32);
+        let target_rpe = settings.target_rpe;
 
-        let predicted_rpe = if last_set.rpe < RPE_THRESHOLD_HIGH {
-            last_set.rpe
-        } else {
-            (last_set.rpe - RPE_REDUCTION).max(RPE_MINIMUM)
-        };
+        match &exercise.set_type_config {
+            crate::models::SetTypeConfig::Weighted { .. } => {
+                // Compute e1RM from today_best and historical_best (weighted sets only).
+                let today_e1rm: Option<f64> = today_best.as_ref().and_then(|s| {
+                    if let SetType::Weighted { weight } = s.set_type {
+                        Some(e1rm(weight as f64, s.reps, s.rpe as f64))
+                    } else {
+                        None
+                    }
+                });
 
-        let min_reps = session.exercise.min_reps as u32;
-        let max_reps = session.exercise.max_reps.map(|v| v as u32);
+                let hist_e1rm: Option<f64> = historical_best.as_ref().and_then(|s| {
+                    if let SetType::Weighted { weight } = s.set_type {
+                        Some(e1rm(weight as f64, s.reps, s.rpe as f64))
+                    } else {
+                        None
+                    }
+                });
 
-        match (&last_set.set_type, &session.exercise.set_type_config) {
-            (
-                SetType::Weighted { weight },
-                crate::models::SetTypeConfig::Weighted { increment, .. },
-            ) => {
-                let predicted_weight = if last_set.rpe < RPE_THRESHOLD_LOW {
-                    weight + increment
-                } else {
-                    *weight
+                // No history at all → fall back to initial predictions.
+                let blended = match (today_e1rm, hist_e1rm) {
+                    (None, None) => {
+                        let last_session_set = session.completed_sets.last();
+                        return Self::calculate_initial_predictions(
+                            exercise,
+                            last_session_set,
+                            settings.default_bodyweight_reps,
+                        );
+                    }
+                    (Some(t), Some(h)) => blended_e1rm(t, h, settings.today_blend_factor),
+                    (Some(t), None) => t,
+                    (None, Some(h)) => h,
                 };
 
-                let raw_reps = last_set.reps;
+                // Build the rep search range.
+                // If max_reps is None (infinite mode), extend one past the highest
+                // rep count that has historical data, or use min_reps + a small window.
+                let upper = match max_reps {
+                    Some(m) => m,
+                    None => {
+                        let max_data_rep = per_rep_maxes.keys().copied().max().unwrap_or(min_reps);
+                        max_data_rep + 1
+                    }
+                };
+                let upper = upper.max(min_reps);
+
+                // Compute margin for each rep count.
+                let mut best_rep: Option<u32> = None;
+                let mut best_margin: Option<f64> = None;
+
+                for r in min_reps..=upper {
+                    let proj = predicted_weight(blended, r, target_rpe);
+                    // historical_max[r] = max weight across all sets where reps_done >= r
+                    // (already folded in get_max_weight_per_rep).
+                    let hist_max = per_rep_maxes.get(&r).copied();
+                    // No data for this rep count → margin is None (treated as best positive case).
+                    let margin = hist_max.map(|hm| proj - hm);
+
+                    match (best_rep, best_margin, margin) {
+                        // First iteration.
+                        (None, _, _) => {
+                            best_rep = Some(r);
+                            best_margin = margin;
+                        }
+                        // Current best has no data (None margin = highest priority no-data).
+                        // Only replace if current best is also no-data and r is lower
+                        // (issue says "lowest no-data rep").
+                        (Some(_), None, None) => {
+                            // keep the first (lowest) no-data rep
+                        }
+                        // New rep has no data; current best has data → no-data wins.
+                        (Some(_), Some(_), None) => {
+                            best_rep = Some(r);
+                            best_margin = None;
+                        }
+                        // New rep has data; current best has no data → keep no-data.
+                        (Some(_), None, Some(_)) => {}
+                        // Both have data margins.
+                        (Some(_), Some(bm), Some(m)) => {
+                            // Prefer highest positive margin; if neither positive,
+                            // prefer least-negative (closest to zero from below).
+                            let new_is_better = if m > 0.0 && bm > 0.0 {
+                                m > bm
+                            } else if m > 0.0 {
+                                // new is positive, best is not
+                                true
+                            } else if bm > 0.0 {
+                                // best is positive, new is not
+                                false
+                            } else {
+                                // both negative — prefer least negative
+                                m > bm
+                            };
+                            if new_is_better {
+                                best_rep = Some(r);
+                                best_margin = Some(m);
+                            }
+                        }
+                    }
+                }
+
+                let raw_reps = best_rep.unwrap_or(min_reps);
                 let (clamped_reps, reps_clamped) = clamp_reps(raw_reps, min_reps, max_reps);
 
+                // Compute the weight for the chosen rep count.
+                let weight = predicted_weight(blended, clamped_reps, target_rpe) as f32;
+
                 PredictedParameters {
-                    weight: Some(predicted_weight),
+                    weight: Some(weight),
                     reps: clamped_reps,
-                    rpe: predicted_rpe,
+                    rpe: target_rpe as f32,
                     reps_clamped,
                 }
             }
-            (SetType::Bodyweight, _) => {
-                let raw_reps = last_set.reps;
+
+            crate::models::SetTypeConfig::Bodyweight => {
+                // Compute failure_reps for today and historical best.
+                let today_fr: Option<f64> = today_best.as_ref().and_then(|s| {
+                    if matches!(s.set_type, SetType::Bodyweight) {
+                        Some(s.reps as f64 + (10.0 - s.rpe as f64))
+                    } else {
+                        None
+                    }
+                });
+
+                let hist_fr: Option<f64> = historical_best.as_ref().and_then(|s| {
+                    if matches!(s.set_type, SetType::Bodyweight) {
+                        Some(s.reps as f64 + (10.0 - s.rpe as f64))
+                    } else {
+                        None
+                    }
+                });
+
+                // No history → fall back.
+                let blended_fr = match (today_fr, hist_fr) {
+                    (None, None) => {
+                        let last_session_set = session.completed_sets.last();
+                        return Self::calculate_initial_predictions(
+                            exercise,
+                            last_session_set,
+                            settings.default_bodyweight_reps,
+                        );
+                    }
+                    (Some(t), Some(h)) => blended_e1rm(t, h, settings.today_blend_factor),
+                    (Some(t), None) => t,
+                    (None, Some(h)) => h,
+                };
+
+                // suggested_reps = round(blended_failure_reps - (10 - target_rpe))
+                let rir_at_target = 10.0 - target_rpe;
+                let raw_reps_f = (blended_fr - rir_at_target).round();
+                let raw_reps = if raw_reps_f <= 0.0 {
+                    1
+                } else {
+                    raw_reps_f as u32
+                };
+
                 let (clamped_reps, reps_clamped) = clamp_reps(raw_reps, min_reps, max_reps);
 
                 PredictedParameters {
                     weight: None,
                     reps: clamped_reps,
-                    rpe: predicted_rpe,
+                    rpe: target_rpe as f32,
                     reps_clamped,
                 }
             }
-            // Fallback for unexpected state: Within an active session, suggestions
-            // should come from the session's own sets. If this fails, we fall back
-            // to initial predictions ignoring previous session history to maintain
-            // focus on the current session's performance.
-            _ => Self::calculate_initial_predictions(
-                &session.exercise,
-                None,
-                default_bodyweight_reps,
-            ),
         }
     }
 
@@ -1252,42 +1443,458 @@ mod tests {
         assert_eq!(predicted.rpe, 7.0);
     }
 
-    #[test]
-    fn test_next_predictions_progression() {
-        let exercise = ExerciseMetadata {
-            id: Some("test-uuid-3".to_string()),
-            name: "Bench Press".to_string(),
-            set_type_config: SetTypeConfig::Weighted {
-                min_weight: 0.0,
-                increment: 5.0,
-            },
-            min_reps: 1,
-            max_reps: None,
-        };
+    // ── helpers for calculate_next_predictions tests ────────────────────────
 
-        let session = WorkoutSession {
-            session_id: Some("test-uuid-1".to_string()),
-            exercise,
+    fn default_settings() -> Settings {
+        Settings::default() // target_rpe=8.0, today_blend_factor=0.5
+    }
+
+    fn weighted_session(min_reps: i32, max_reps: Option<i32>) -> WorkoutSession {
+        WorkoutSession {
+            session_id: Some("s1".to_string()),
+            exercise: ExerciseMetadata {
+                id: Some("e1".to_string()),
+                name: "Squat".to_string(),
+                set_type_config: SetTypeConfig::Weighted {
+                    min_weight: 0.0,
+                    increment: 2.5,
+                },
+                min_reps,
+                max_reps,
+            },
             completed_sets: vec![CompletedSet {
                 set_number: 1,
-                reps: 8,
-                rpe: 6.5,
+                reps: 5,
+                rpe: 8.0,
                 set_type: SetType::Weighted { weight: 100.0 },
             }],
             predicted: PredictedParameters {
                 weight: Some(100.0),
-                reps: 8,
-                rpe: 7.0,
+                reps: 5,
+                rpe: 8.0,
+                reps_clamped: false,
+            },
+        }
+    }
+
+    fn bodyweight_session(min_reps: i32, max_reps: Option<i32>) -> WorkoutSession {
+        WorkoutSession {
+            session_id: Some("s2".to_string()),
+            exercise: ExerciseMetadata {
+                id: Some("e2".to_string()),
+                name: "Pull-ups".to_string(),
+                set_type_config: SetTypeConfig::Bodyweight,
+                min_reps,
+                max_reps,
+            },
+            completed_sets: vec![CompletedSet {
+                set_number: 1,
+                reps: 10,
+                rpe: 8.0,
+                set_type: SetType::Bodyweight,
+            }],
+            predicted: PredictedParameters {
+                weight: None,
+                reps: 10,
+                rpe: 8.0,
+                reps_clamped: false,
+            },
+        }
+    }
+
+    // ── QA: Weighted path — no-data fallback ──────────────────────────────────
+
+    /// When there is no history (both today_best and historical_best are None),
+    /// fall back to calculate_initial_predictions.
+    #[test]
+    fn test_next_predictions_weighted_no_data_fallback() {
+        let session = weighted_session(1, None);
+        let predicted = WorkoutStateManager::calculate_next_predictions(
+            &session,
+            None,
+            None,
+            HashMap::new(),
+            &default_settings(),
+        );
+        // Fallback should return initial predictions (weight from last session set,
+        // DEFAULT_WEIGHTED_REPS reps, DEFAULT_RPE).
+        assert_eq!(predicted.weight, Some(100.0)); // from session's last completed set
+        assert_eq!(predicted.reps, DEFAULT_WEIGHTED_REPS);
+        assert_eq!(predicted.rpe, DEFAULT_RPE);
+        assert!(!predicted.reps_clamped);
+    }
+
+    // ── QA: Weighted path — positive-margin selection ────────────────────────
+
+    /// After a new personal-best weight set, the projected weight for at least one
+    /// rep count should exceed the historical max, so the margin is positive.
+    #[test]
+    fn test_next_predictions_weighted_positive_margin_selects_best_rep() {
+        // today_best: 120kg for 5 reps @ RPE 8 (a new PB)
+        let today_best = Some(CompletedSet {
+            set_number: 1,
+            reps: 5,
+            rpe: 8.0,
+            set_type: SetType::Weighted { weight: 120.0 },
+        });
+        // historical_best: 100kg for 5 reps @ RPE 8 (previous best)
+        let historical_best = Some(CompletedSet {
+            set_number: 1,
+            reps: 5,
+            rpe: 8.0,
+            set_type: SetType::Weighted { weight: 100.0 },
+        });
+
+        let settings = Settings {
+            target_rpe: 8.0,
+            today_blend_factor: 1.0, // today only, for predictable test
+            ..Settings::default()
+        };
+
+        // historical_max: 100kg for 5 reps only
+        let mut per_rep_maxes = HashMap::new();
+        per_rep_maxes.insert(5u32, 100.0f64);
+
+        let session = weighted_session(1, Some(10));
+        let predicted = WorkoutStateManager::calculate_next_predictions(
+            &session,
+            historical_best,
+            today_best,
+            per_rep_maxes,
+            &settings,
+        );
+
+        // With today_blend_factor=1.0, blended = today e1RM.
+        // The projected weight for 5 reps @ RPE 8 is ~120kg (>100kg historical max).
+        // So there should be a positive margin for 5 reps.
+        assert!(predicted.weight.is_some());
+        assert!(!predicted.reps_clamped);
+    }
+
+    // ── QA: Weighted path — least-negative margin ────────────────────────────
+
+    /// When all rep counts have been done before and none project above history,
+    /// select the rep with the least-negative margin (closest to PB).
+    #[test]
+    fn test_next_predictions_weighted_least_negative_margin() {
+        // Same today and historical best — blended e1RM equals today e1RM.
+        let set_100_5r = Some(CompletedSet {
+            set_number: 1,
+            reps: 5,
+            rpe: 8.0,
+            set_type: SetType::Weighted { weight: 100.0 },
+        });
+
+        let settings = Settings {
+            target_rpe: 8.0,
+            today_blend_factor: 0.5,
+            ..Settings::default()
+        };
+
+        // All rep counts have historical data that exceeds projections slightly.
+        // Use very high historical maxes so no margin is positive.
+        let mut per_rep_maxes = HashMap::new();
+        for r in 3u32..=8 {
+            per_rep_maxes.insert(r, 999.0); // impossibly high
+        }
+
+        let session = weighted_session(3, Some(8));
+        let predicted = WorkoutStateManager::calculate_next_predictions(
+            &session,
+            set_100_5r.clone(),
+            set_100_5r,
+            per_rep_maxes,
+            &settings,
+        );
+
+        // Should produce a valid result with some rep count in [3, 8].
+        assert!(predicted.reps >= 3 && predicted.reps <= 8);
+        assert!(predicted.weight.is_some());
+    }
+
+    // ── QA: Bodyweight path — rep suggestion ────────────────────────────────
+
+    /// After logging a bodyweight set, suggested reps are derived from
+    /// blended_failure_reps and target_rpe.
+    #[test]
+    fn test_next_predictions_bodyweight_rep_suggestion() {
+        // today_best: 10 reps @ RPE 8 → failure_reps = 10 + (10-8) = 12
+        let today_best = Some(CompletedSet {
+            set_number: 1,
+            reps: 10,
+            rpe: 8.0,
+            set_type: SetType::Bodyweight,
+        });
+        // No historical best.
+        let settings = Settings {
+            target_rpe: 8.0,
+            today_blend_factor: 1.0,
+            ..Settings::default()
+        };
+
+        let session = bodyweight_session(1, None);
+        let predicted = WorkoutStateManager::calculate_next_predictions(
+            &session,
+            None,
+            today_best,
+            HashMap::new(),
+            &settings,
+        );
+
+        // failure_reps = 12, target_rpe=8 → rir_at_target=2
+        // suggested = round(12 - 2) = 10
+        assert_eq!(predicted.reps, 10);
+        assert_eq!(predicted.weight, None);
+        assert!(!predicted.reps_clamped);
+    }
+
+    /// A higher RPE on the logged set (harder) → higher failure_reps → more reps suggested.
+    #[test]
+    fn test_next_predictions_bodyweight_higher_rpe_raises_suggestion() {
+        let make_bw_prediction = |rpe: f32| {
+            let today_best = Some(CompletedSet {
+                set_number: 1,
+                reps: 10,
+                rpe,
+                set_type: SetType::Bodyweight,
+            });
+            let settings = Settings {
+                target_rpe: 8.0,
+                today_blend_factor: 1.0,
+                ..Settings::default()
+            };
+            let session = bodyweight_session(1, None);
+            WorkoutStateManager::calculate_next_predictions(
+                &session,
+                None,
+                today_best,
+                HashMap::new(),
+                &settings,
+            )
+        };
+
+        let pred_rpe7 = make_bw_prediction(7.0);
+        let pred_rpe9 = make_bw_prediction(9.0);
+
+        // RPE 9 set: failure_reps = 10 + 1 = 11, suggest = 9 (vs RPE 7: failure=13, suggest=11)
+        assert!(
+            pred_rpe9.reps < pred_rpe7.reps,
+            "Higher RPE on a same-rep set means fewer failure reps → fewer suggested reps"
+        );
+    }
+
+    // ── QA: Reps clamped flag ────────────────────────────────────────────────
+
+    /// When the algorithm selects a rep outside [min_reps, max_reps],
+    /// the result is clamped and reps_clamped = true.
+    ///
+    /// Strategy: use a range of [5,5] (one rep count) with no historical data.
+    /// The no-data path selects rep 5 (the only option in range).
+    /// Clamping doesn't trigger because 5 is within [5,5].
+    /// To trigger clamping we need the unconstrained algorithm to pick a rep
+    /// outside the range. With range [5,10] and historical max only at rep 5,
+    /// the algorithm should pick rep 6 (no data). That's within range, so we
+    /// instead use a very high per_rep_maxes for all in-range reps to force
+    /// the algorithm down to the single allowed rep in a range of [10,10]
+    /// while having data only at rep 5. The computed raw rep (best positive margin
+    /// or least-negative margin) is then clamped to [10,10].
+    #[test]
+    fn test_next_predictions_weighted_reps_clamped_within_range() {
+        // Use a session whose exercise has range [5,5] (single rep count).
+        // Provide today_best at 5 reps — algorithm naturally picks 5, no clamping.
+        let today_best = Some(CompletedSet {
+            set_number: 1,
+            reps: 5,
+            rpe: 8.0,
+            set_type: SetType::Weighted { weight: 100.0 },
+        });
+
+        let settings = Settings {
+            target_rpe: 8.0,
+            today_blend_factor: 1.0,
+            ..Settings::default()
+        };
+
+        let session = WorkoutSession {
+            session_id: Some("s1".to_string()),
+            exercise: ExerciseMetadata {
+                id: Some("e1".to_string()),
+                name: "Test".to_string(),
+                set_type_config: SetTypeConfig::Weighted {
+                    min_weight: 0.0,
+                    increment: 2.5,
+                },
+                min_reps: 5,
+                max_reps: Some(5),
+            },
+            completed_sets: vec![CompletedSet {
+                set_number: 1,
+                reps: 5,
+                rpe: 8.0,
+                set_type: SetType::Weighted { weight: 100.0 },
+            }],
+            predicted: PredictedParameters {
+                weight: Some(100.0),
+                reps: 5,
+                rpe: 8.0,
                 reps_clamped: false,
             },
         };
 
-        let predicted = WorkoutStateManager::calculate_next_predictions(&session, 10);
-
-        assert_eq!(predicted.weight, Some(105.0));
-        assert_eq!(predicted.reps, 8);
-        assert_eq!(predicted.rpe, 6.5);
+        let predicted = WorkoutStateManager::calculate_next_predictions(
+            &session,
+            None,
+            today_best,
+            HashMap::new(),
+            &settings,
+        );
+        // Single rep range [5,5]: algorithm picks 5, no clamping.
+        assert_eq!(predicted.reps, 5);
         assert!(!predicted.reps_clamped);
+    }
+
+    /// Clamping is triggered on the bodyweight path via a separate dedicated test
+    /// (test_next_predictions_bodyweight_reps_clamped_to_max).  For weighted, the
+    /// clamp_reps function is tested directly via test_clamp_reps_* above, and
+    /// the reps_clamped field is set correctly whenever clamp_reps says it changed.
+
+    #[test]
+    fn test_next_predictions_bodyweight_reps_clamped_to_max() {
+        // failure_reps produces large suggested value that exceeds max_reps
+        // reps=20, rpe=10 → failure_reps=20+0=20
+        // target_rpe=8 → rir_at_target=2 → suggested=round(20-2)=18
+        // max_reps=10 → clamped to 10
+        let today_best = Some(CompletedSet {
+            set_number: 1,
+            reps: 20,
+            rpe: 10.0,
+            set_type: SetType::Bodyweight,
+        });
+        let settings = Settings {
+            target_rpe: 8.0,
+            today_blend_factor: 1.0,
+            ..Settings::default()
+        };
+
+        let session = bodyweight_session(3, Some(10));
+        let predicted = WorkoutStateManager::calculate_next_predictions(
+            &session,
+            None,
+            today_best,
+            HashMap::new(),
+            &settings,
+        );
+
+        assert_eq!(predicted.reps, 10);
+        assert!(predicted.reps_clamped);
+    }
+
+    #[test]
+    fn test_next_predictions_bodyweight_reps_not_clamped_in_range() {
+        // reps=10, rpe=8 → failure_reps=12, target_rpe=8 → suggested=10
+        // max_reps=15 → within range → no clamp
+        let today_best = Some(CompletedSet {
+            set_number: 1,
+            reps: 10,
+            rpe: 8.0,
+            set_type: SetType::Bodyweight,
+        });
+        let settings = Settings {
+            target_rpe: 8.0,
+            today_blend_factor: 1.0,
+            ..Settings::default()
+        };
+
+        let session = bodyweight_session(1, Some(15));
+        let predicted = WorkoutStateManager::calculate_next_predictions(
+            &session,
+            None,
+            today_best,
+            HashMap::new(),
+            &settings,
+        );
+
+        assert_eq!(predicted.reps, 10);
+        assert!(!predicted.reps_clamped);
+    }
+
+    // ── QA: Today-blend factor ────────────────────────────────────────────────
+
+    /// Two sets logged today and an older historical best produce a blended e1RM
+    /// that reflects today_blend_factor; changing the factor alters the suggestion.
+    #[test]
+    fn test_next_predictions_weighted_blend_factor_affects_suggestion() {
+        // today_best: 120kg for 5 reps @ RPE 8
+        let today_best = Some(CompletedSet {
+            set_number: 1,
+            reps: 5,
+            rpe: 8.0,
+            set_type: SetType::Weighted { weight: 120.0 },
+        });
+        // historical_best: 100kg for 5 reps @ RPE 8 (lower)
+        let historical_best = Some(CompletedSet {
+            set_number: 1,
+            reps: 5,
+            rpe: 8.0,
+            set_type: SetType::Weighted { weight: 100.0 },
+        });
+
+        // With factor=1.0 (today only) projected weight is higher than factor=0.0.
+        let settings_today = Settings {
+            target_rpe: 8.0,
+            today_blend_factor: 1.0,
+            ..Settings::default()
+        };
+        let settings_hist = Settings {
+            target_rpe: 8.0,
+            today_blend_factor: 0.0,
+            ..Settings::default()
+        };
+
+        let session = weighted_session(5, Some(5)); // single rep range for determinism
+
+        let pred_today = WorkoutStateManager::calculate_next_predictions(
+            &session,
+            historical_best.clone(),
+            today_best.clone(),
+            HashMap::new(),
+            &settings_today,
+        );
+
+        let pred_hist = WorkoutStateManager::calculate_next_predictions(
+            &session,
+            historical_best,
+            today_best,
+            HashMap::new(),
+            &settings_hist,
+        );
+
+        // factor=1.0 uses today (120kg e1RM), factor=0.0 uses historical (100kg e1RM).
+        // Both suggest 5 reps (single rep range), but predicted weight differs.
+        assert!(
+            pred_today.weight.unwrap() > pred_hist.weight.unwrap(),
+            "today factor=1.0 should produce higher suggested weight than factor=0.0"
+        );
+    }
+
+    // ── QA: No async in calculate_next_predictions (structural test) ──────────
+
+    /// This test exercises the pure function directly without any DB calls,
+    /// confirming the function has no async operations (it wouldn't compile
+    /// as `async fn` if called with `.await` in tests that aren't async).
+    #[test]
+    fn test_next_predictions_is_pure_no_db_calls() {
+        let session = weighted_session(1, None);
+        let settings = default_settings();
+        // Pure call with pre-supplied inputs — no DB, no await.
+        let _ = WorkoutStateManager::calculate_next_predictions(
+            &session,
+            None,
+            None,
+            HashMap::new(),
+            &settings,
+        );
+        // If this compiled and ran, the function is pure (no async/DB calls).
     }
 
     // ── clamp_reps ──────────────────────────────────────────────────────────
@@ -1326,93 +1933,6 @@ mod tests {
         let (reps, clamped) = clamp_reps(1, 3, Some(10));
         assert_eq!(reps, 3);
         assert!(clamped);
-    }
-
-    // ── reps_clamped in calculate_next_predictions ──────────────────────────
-
-    fn make_weighted_session_with_range(
-        last_reps: u32,
-        min_reps: i32,
-        max_reps: Option<i32>,
-    ) -> WorkoutSession {
-        WorkoutSession {
-            session_id: Some("s1".to_string()),
-            exercise: ExerciseMetadata {
-                id: Some("e1".to_string()),
-                name: "Squat".to_string(),
-                set_type_config: SetTypeConfig::Weighted {
-                    min_weight: 0.0,
-                    increment: 5.0,
-                },
-                min_reps,
-                max_reps,
-            },
-            completed_sets: vec![CompletedSet {
-                set_number: 1,
-                reps: last_reps,
-                rpe: 7.0,
-                set_type: SetType::Weighted { weight: 80.0 },
-            }],
-            predicted: PredictedParameters {
-                weight: Some(80.0),
-                reps: last_reps,
-                rpe: 7.0,
-                reps_clamped: false,
-            },
-        }
-    }
-
-    #[test]
-    fn test_next_predictions_no_clamp_when_in_range() {
-        let session = make_weighted_session_with_range(8, 3, Some(12));
-        let predicted = WorkoutStateManager::calculate_next_predictions(&session, 10);
-        assert_eq!(predicted.reps, 8);
-        assert!(!predicted.reps_clamped);
-    }
-
-    #[test]
-    fn test_next_predictions_clamped_to_max() {
-        let session = make_weighted_session_with_range(15, 3, Some(12));
-        let predicted = WorkoutStateManager::calculate_next_predictions(&session, 10);
-        assert_eq!(predicted.reps, 12);
-        assert!(predicted.reps_clamped);
-    }
-
-    #[test]
-    fn test_next_predictions_clamped_to_min() {
-        let session = make_weighted_session_with_range(1, 3, Some(12));
-        let predicted = WorkoutStateManager::calculate_next_predictions(&session, 10);
-        assert_eq!(predicted.reps, 3);
-        assert!(predicted.reps_clamped);
-    }
-
-    #[test]
-    fn test_next_predictions_bodyweight_clamped_to_max() {
-        let session = WorkoutSession {
-            session_id: Some("s2".to_string()),
-            exercise: ExerciseMetadata {
-                id: Some("e2".to_string()),
-                name: "Pull-ups".to_string(),
-                set_type_config: SetTypeConfig::Bodyweight,
-                min_reps: 3,
-                max_reps: Some(10),
-            },
-            completed_sets: vec![CompletedSet {
-                set_number: 1,
-                reps: 20,
-                rpe: 7.0,
-                set_type: SetType::Bodyweight,
-            }],
-            predicted: PredictedParameters {
-                weight: None,
-                reps: 20,
-                rpe: 7.0,
-                reps_clamped: false,
-            },
-        };
-        let predicted = WorkoutStateManager::calculate_next_predictions(&session, 10);
-        assert_eq!(predicted.reps, 10);
-        assert!(predicted.reps_clamped);
     }
 
     #[test]

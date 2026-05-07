@@ -1470,14 +1470,13 @@ impl Database {
         )
         .await?;
 
-        // 4. Soft-delete the exercise itself.
+        // 4. Hard-delete the exercise row. CRR tombstones the deletion so it
+        //    replicates correctly. Soft-delete would leave the row in the
+        //    archived query (WHERE deleted_at IS NOT NULL), making it appear
+        //    in the archived exercise list even after permanent deletion.
         self.execute_internal(
-            "UPDATE exercises SET deleted_at = ?, updated_at = ? WHERE uuid = ?",
-            &[
-                JsValue::from_f64(now),
-                JsValue::from_f64(now),
-                JsValue::from_str(exercise_id),
-            ],
+            "DELETE FROM exercises WHERE uuid = ?",
+            &[JsValue::from_str(exercise_id)],
         )
         .await?;
 

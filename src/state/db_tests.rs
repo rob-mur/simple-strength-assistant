@@ -3278,7 +3278,7 @@ async fn test_permanent_delete_mixed_plans() {
 
 /// `permanent_delete_exercise` soft-deletes the `exercises` row itself.
 #[wasm_bindgen_test]
-async fn test_permanent_delete_soft_deletes_exercise_row() {
+async fn test_permanent_delete_hard_deletes_exercise_row() {
     use wasm_bindgen::JsCast;
 
     let mut db = Database::new();
@@ -3302,26 +3302,28 @@ async fn test_permanent_delete_soft_deletes_exercise_row() {
         "Exercise must not appear in active list"
     );
 
-    // Exercise must also not appear in archived list (deleted_at IS NOT NULL but the
-    // normal archived query also picks up deleted exercises — verify the raw row).
+    // Exercise row must be hard-deleted so it does not appear in the archived
+    // list (which queries WHERE deleted_at IS NOT NULL).
+    let after_archived = db
+        .get_archived_exercises()
+        .await
+        .expect("get_archived_exercises after");
+    assert_eq!(
+        after_archived.len(),
+        0,
+        "Exercise must not appear in archived list after permanent delete"
+    );
+
+    // Confirm the raw row is gone entirely.
     let raw = db
         .execute(
-            "SELECT deleted_at FROM exercises WHERE uuid = ?",
+            "SELECT uuid FROM exercises WHERE uuid = ?",
             &[JsValue::from_str(&eid)],
         )
         .await
         .expect("raw query");
     let arr = raw.dyn_ref::<js_sys::Array>().unwrap();
-    assert_eq!(
-        arr.length(),
-        1,
-        "Exercise row must still exist (soft-delete)"
-    );
-    let deleted_at = js_sys::Reflect::get(&arr.get(0), &JsValue::from_str("deleted_at")).unwrap();
-    assert!(
-        !deleted_at.is_null() && !deleted_at.is_undefined(),
-        "deleted_at must be set after permanent delete"
-    );
+    assert_eq!(arr.length(), 0, "Exercise row must be hard-deleted");
 }
 
 /// `preview_permanent_delete` returns the correct `completed_sets` count.
