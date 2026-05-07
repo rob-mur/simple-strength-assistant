@@ -1724,6 +1724,269 @@ async fn test_best_set_respects_since_date() {
     assert_eq!(best.reps, 5, "Should only see set within window");
 }
 
+// ── get_best_bodyweight_set_for_exercise / get_historical_best_for_exercise (#96) ─
+
+/// Helper: creates a fresh DB with a bodyweight exercise and returns (db, exercise_id, exercise).
+async fn setup_bodyweight_exercise_for_history()
+-> (Database, String, crate::models::ExerciseMetadata) {
+    let mut db = Database::new();
+    db.init(None).await.expect("DB init failed");
+
+    let exercise = crate::models::ExerciseMetadata {
+        id: None,
+        name: "Pull-up".to_string(),
+        set_type_config: SetTypeConfig::Bodyweight,
+        min_reps: 1,
+        max_reps: None,
+    };
+    let id = db
+        .save_exercise(&exercise)
+        .await
+        .expect("save_exercise failed");
+    let exercise = crate::models::ExerciseMetadata {
+        id: Some(id.clone()),
+        ..exercise
+    };
+    (db, id, exercise)
+}
+
+/// Helper: creates a fresh DB with a weighted exercise and returns (db, exercise_id, exercise).
+async fn setup_weighted_exercise_for_history_full()
+-> (Database, String, crate::models::ExerciseMetadata) {
+    let mut db = Database::new();
+    db.init(None).await.expect("DB init failed");
+
+    let exercise = crate::models::ExerciseMetadata {
+        id: None,
+        name: "Squat".to_string(),
+        set_type_config: SetTypeConfig::Weighted {
+            min_weight: 20.0,
+            increment: 2.5,
+        },
+        min_reps: 1,
+        max_reps: None,
+    };
+    let id = db
+        .save_exercise(&exercise)
+        .await
+        .expect("save_exercise failed");
+    let exercise = crate::models::ExerciseMetadata {
+        id: Some(id.clone()),
+        ..exercise
+    };
+    (db, id, exercise)
+}
+
+/// get_best_bodyweight_set_for_exercise returns the set with the highest failure_reps.
+#[wasm_bindgen_test]
+async fn test_best_bodyweight_set_returns_highest_failure_reps() {
+    let (db, eid, _) = setup_bodyweight_exercise_for_history().await;
+
+    let day = |d: i64| d as f64 * MS_PER_DAY;
+    let today_start = day(10);
+    let today_end = day(11);
+
+    // Set A: 8 reps @ RPE 8 → failure_reps = 8 + (10-8) = 10
+    let set_a = CompletedSet {
+        set_number: 1,
+        reps: 8,
+        rpe: 8.0,
+        set_type: SetType::Bodyweight,
+    };
+    db.log_set_at(&eid, &set_a, day(3) + 1000.0)
+        .await
+        .expect("log A");
+
+    // Set B: 10 reps @ RPE 9 → failure_reps = 10 + (10-9) = 11 (highest)
+    let set_b = CompletedSet {
+        set_number: 1,
+        reps: 10,
+        rpe: 9.0,
+        set_type: SetType::Bodyweight,
+    };
+    db.log_set_at(&eid, &set_b, day(5) + 1000.0)
+        .await
+        .expect("log B");
+
+    // Set C: 5 reps @ RPE 7 → failure_reps = 5 + (10-7) = 8 (lowest)
+    let set_c = CompletedSet {
+        set_number: 1,
+        reps: 5,
+        rpe: 7.0,
+        set_type: SetType::Bodyweight,
+    };
+    db.log_set_at(&eid, &set_c, day(7) + 1000.0)
+        .await
+        .expect("log C");
+
+    let best = db
+        .get_best_bodyweight_set_for_exercise(&eid, day(0), today_start, today_end)
+        .await
+        .expect("query failed");
+
+    assert!(best.is_some(), "Should find a best set");
+    let best = best.unwrap();
+    // Set B has highest failure_reps (11)
+    assert_eq!(best.reps, 10, "Expected set B (10 reps)");
+    assert_eq!(best.set_type, SetType::Bodyweight);
+}
+
+/// get_best_bodyweight_set_for_exercise returns one result when sets tie on failure_reps (no panic).
+#[wasm_bindgen_test]
+async fn test_best_bodyweight_set_tie_on_failure_reps_no_panic() {
+    let (db, eid, _) = setup_bodyweight_exercise_for_history().await;
+
+    let day = |d: i64| d as f64 * MS_PER_DAY;
+    let today_start = day(10);
+    let today_end = day(11);
+
+    // Both sets: failure_reps = 10 + (10-8) = 12 (tie)
+    for (day_offset, set_num) in [(3i64, 1u32), (5, 2)] {
+        let set = CompletedSet {
+            set_number: set_num,
+            reps: 10,
+            rpe: 8.0,
+            set_type: SetType::Bodyweight,
+        };
+        db.log_set_at(&eid, &set, day(day_offset) + 1000.0)
+            .await
+            .expect("log tie set");
+    }
+
+    let best = db
+        .get_best_bodyweight_set_for_exercise(&eid, day(0), today_start, today_end)
+        .await
+        .expect("query failed — must not panic on tie");
+
+    assert!(best.is_some(), "Should return one result on tie");
+}
+
+/// get_best_bodyweight_set_for_exercise returns None when window is empty.
+#[wasm_bindgen_test]
+async fn test_best_bodyweight_set_empty_history() {
+    let (db, eid, _) = setup_bodyweight_exercise_for_history().await;
+
+    let day = |d: i64| d as f64 * MS_PER_DAY;
+
+    let best = db
+        .get_best_bodyweight_set_for_exercise(&eid, day(0), day(10), day(11))
+        .await
+        .expect("query failed");
+
+    assert!(best.is_none(), "No sets → None");
+}
+
+/// get_historical_best_for_exercise dispatches to get_best_set_for_exercise for weighted exercises
+/// and returns the same result.
+#[wasm_bindgen_test]
+async fn test_historical_best_weighted_matches_direct_call() {
+    let (db, eid, exercise) = setup_weighted_exercise_for_history_full().await;
+
+    let day = |d: i64| d as f64 * MS_PER_DAY;
+    let today_start = day(10);
+    let today_end = day(11);
+
+    // 120kg x 3 @ RPE 9 on day 5
+    let set = CompletedSet {
+        set_number: 1,
+        reps: 3,
+        rpe: 9.0,
+        set_type: SetType::Weighted { weight: 120.0 },
+    };
+    db.log_set_at(&eid, &set, day(5) + 1000.0)
+        .await
+        .expect("log set");
+
+    let via_dispatch = db
+        .get_historical_best_for_exercise(&exercise, day(0), today_start, today_end)
+        .await
+        .expect("dispatch failed");
+
+    let direct = db
+        .get_best_set_for_exercise(&eid, day(0), today_start, today_end)
+        .await
+        .expect("direct failed");
+
+    assert_eq!(
+        via_dispatch.is_some(),
+        direct.is_some(),
+        "Both should agree on Some/None"
+    );
+    if let (Some(d), Some(r)) = (via_dispatch, direct) {
+        assert_eq!(d.reps, r.reps, "Same reps");
+        assert_eq!(d.set_type, r.set_type, "Same set_type");
+    }
+}
+
+/// get_historical_best_for_exercise dispatches to bodyweight path and ranks by failure_reps.
+#[wasm_bindgen_test]
+async fn test_historical_best_bodyweight_ranked_by_failure_reps() {
+    let (db, eid, exercise) = setup_bodyweight_exercise_for_history().await;
+
+    let day = |d: i64| d as f64 * MS_PER_DAY;
+    let today_start = day(10);
+    let today_end = day(11);
+
+    // Set A: 6 reps @ RPE 9 → failure_reps = 7
+    let set_a = CompletedSet {
+        set_number: 1,
+        reps: 6,
+        rpe: 9.0,
+        set_type: SetType::Bodyweight,
+    };
+    db.log_set_at(&eid, &set_a, day(3) + 1000.0)
+        .await
+        .expect("log A");
+
+    // Set B: 12 reps @ RPE 8 → failure_reps = 14 (best)
+    let set_b = CompletedSet {
+        set_number: 1,
+        reps: 12,
+        rpe: 8.0,
+        set_type: SetType::Bodyweight,
+    };
+    db.log_set_at(&eid, &set_b, day(5) + 1000.0)
+        .await
+        .expect("log B");
+
+    let best = db
+        .get_historical_best_for_exercise(&exercise, day(0), today_start, today_end)
+        .await
+        .expect("query failed");
+
+    assert!(best.is_some(), "Should find a best set");
+    let best = best.unwrap();
+    assert_eq!(best.reps, 12, "Set B has highest failure_reps");
+    assert_eq!(best.set_type, SetType::Bodyweight);
+}
+
+/// get_historical_best_for_exercise returns None for both types when no sets in window.
+#[wasm_bindgen_test]
+async fn test_historical_best_returns_none_empty_window_weighted() {
+    let (db, _, exercise) = setup_weighted_exercise_for_history_full().await;
+    let day = |d: i64| d as f64 * MS_PER_DAY;
+
+    let best = db
+        .get_historical_best_for_exercise(&exercise, day(0), day(10), day(11))
+        .await
+        .expect("query failed");
+
+    assert!(best.is_none(), "Weighted + no sets → None");
+}
+
+#[wasm_bindgen_test]
+async fn test_historical_best_returns_none_empty_window_bodyweight() {
+    let (db, _, exercise) = setup_bodyweight_exercise_for_history().await;
+    let day = |d: i64| d as f64 * MS_PER_DAY;
+
+    let best = db
+        .get_historical_best_for_exercise(&exercise, day(0), day(10), day(11))
+        .await
+        .expect("query failed");
+
+    assert!(best.is_none(), "Bodyweight + no sets → None");
+}
+
 /// get_latest_set_today returns the most recently logged set today.
 #[wasm_bindgen_test]
 async fn test_latest_set_today_returns_most_recent() {

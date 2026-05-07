@@ -1738,6 +1738,104 @@ impl Database {
         Ok(best.map(|(set, _)| set))
     }
 
+    /// Returns the best bodyweight set for the given exercise within the history
+    /// window `[since_ms, now)`, **excluding** sets whose `recorded_at` falls in
+    /// `[exclude_start_ms, exclude_end_ms)`.
+    ///
+    /// "Best" is defined as the highest `failure_reps = reps + (10 - rpe)`,
+    /// which models the RIR (Reps In Reserve) concept: RPE 10 = 0 RIR,
+    /// RPE 9 = 1 RIR, etc.
+    ///
+    /// When multiple sets tie on `failure_reps`, the first encountered is returned.
+    pub async fn get_best_bodyweight_set_for_exercise(
+        &self,
+        exercise_id: &str,
+        since_ms: f64,
+        exclude_start_ms: f64,
+        exclude_end_ms: f64,
+    ) -> Result<Option<CompletedSet>, DatabaseError> {
+        let sql = r#"
+            SELECT set_number, reps, rpe, weight, is_bodyweight
+            FROM completed_sets
+            WHERE exercise_id = ?
+              AND deleted_at IS NULL
+              AND recorded_at >= ?
+              AND (recorded_at < ? OR recorded_at >= ?)
+              AND is_bodyweight = 1
+        "#;
+
+        let params = vec![
+            JsValue::from_str(exercise_id),
+            JsValue::from_f64(since_ms),
+            JsValue::from_f64(exclude_start_ms),
+            JsValue::from_f64(exclude_end_ms),
+        ];
+
+        let result = self.execute(sql, &params).await?;
+
+        let array = result
+            .dyn_ref::<js_sys::Array>()
+            .ok_or_else(|| DatabaseError::QueryError("Expected array result".to_string()))?;
+
+        let mut best: Option<(CompletedSet, f64)> = None;
+
+        for i in 0..array.length() {
+            let row = array.get(i);
+            let completed = self.parse_completed_set_row(&row)?;
+
+            // failure_reps = reps + (10 - rpe): higher is better (more reps in reserve)
+            let failure_reps = completed.reps as f64 + (10.0 - completed.rpe as f64);
+            match &best {
+                Some((_, best_fr)) if failure_reps <= *best_fr => {}
+                _ => best = Some((completed, failure_reps)),
+            }
+        }
+
+        Ok(best.map(|(set, _)| set))
+    }
+
+    /// Unified entry point to retrieve the historical best set for any exercise type.
+    ///
+    /// Dispatches internally based on `exercise.set_type_config`:
+    /// - `Weighted` → `get_best_set_for_exercise` (ranked by e1RM)
+    /// - `Bodyweight` → `get_best_bodyweight_set_for_exercise` (ranked by failure_reps)
+    ///
+    /// Call sites in `log_set` and similar should prefer this over calling the
+    /// type-specific functions directly.
+    pub async fn get_historical_best_for_exercise(
+        &self,
+        exercise: &ExerciseMetadata,
+        since_ms: f64,
+        exclude_start_ms: f64,
+        exclude_end_ms: f64,
+    ) -> Result<Option<CompletedSet>, DatabaseError> {
+        let exercise_id = exercise
+            .id
+            .as_deref()
+            .ok_or_else(|| DatabaseError::QueryError("Exercise has no id".to_string()))?;
+
+        match exercise.set_type_config {
+            SetTypeConfig::Weighted { .. } => {
+                self.get_best_set_for_exercise(
+                    exercise_id,
+                    since_ms,
+                    exclude_start_ms,
+                    exclude_end_ms,
+                )
+                .await
+            }
+            SetTypeConfig::Bodyweight => {
+                self.get_best_bodyweight_set_for_exercise(
+                    exercise_id,
+                    since_ms,
+                    exclude_start_ms,
+                    exclude_end_ms,
+                )
+                .await
+            }
+        }
+    }
+
     /// Returns the most recently logged set for the given exercise on "today",
     /// defined as the half-open interval `[today_start_ms, today_end_ms)`.
     ///
