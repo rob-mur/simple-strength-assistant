@@ -1,5 +1,6 @@
 use crate::models::{CompletedSet, ExerciseMetadata, SetType, SetTypeConfig};
 use crate::state::Database;
+use wasm_bindgen::JsValue;
 use wasm_bindgen_test::*;
 
 wasm_bindgen_test_configure!(run_in_browser);
@@ -2265,4 +2266,451 @@ async fn test_preview_archive_returns_zero() {
         .await
         .expect("preview_archive failed");
     assert_eq!(count, 0, "preview_archive must return 0 in this slice");
+}
+
+// ── Issue #195: permanent_delete_exercise / preview_permanent_delete ──────────
+
+/// Helper: create a standard weighted exercise.
+async fn make_exercise(db: &mut Database, name: &str) -> String {
+    let ex = ExerciseMetadata {
+        id: None,
+        name: name.to_string(),
+        set_type_config: SetTypeConfig::Weighted {
+            min_weight: 0.0,
+            increment: 5.0,
+        },
+        min_reps: 1,
+        max_reps: None,
+    };
+    db.save_exercise(&ex).await.expect("save_exercise failed")
+}
+
+/// `permanent_delete_exercise` soft-deletes all `completed_sets` for the exercise.
+#[wasm_bindgen_test]
+async fn test_permanent_delete_cascades_to_completed_sets() {
+    use wasm_bindgen::JsCast;
+
+    let mut db = Database::new();
+    db.init(None).await.expect("Database init failed");
+
+    let eid = make_exercise(&mut db, "Bench Press").await;
+
+    // Log 3 sets.
+    for i in 1u32..=3 {
+        db.log_set(
+            &eid,
+            &CompletedSet {
+                set_number: i,
+                reps: 5,
+                rpe: 7.0,
+                set_type: SetType::Weighted { weight: 100.0 },
+            },
+        )
+        .await
+        .expect("log_set failed");
+    }
+
+    // Sanity: visible before delete.
+    let before = db
+        .get_sets_for_exercise(&eid, 100, 0)
+        .await
+        .expect("sets before");
+    assert_eq!(before.len(), 3);
+
+    db.permanent_delete_exercise(&eid)
+        .await
+        .expect("permanent_delete_exercise failed");
+
+    // Sets must no longer appear in normal queries.
+    let after = db
+        .get_sets_for_exercise(&eid, 100, 0)
+        .await
+        .expect("sets after");
+    assert_eq!(after.len(), 0, "Sets must be soft-deleted");
+
+    // Rows must still exist (soft-delete, not hard-delete).
+    let raw = db
+        .execute(
+            "SELECT count(*) as cnt FROM completed_sets WHERE exercise_id = ? AND deleted_at IS NOT NULL",
+            &[JsValue::from_str(&eid)],
+        )
+        .await
+        .expect("raw count failed");
+    let arr = raw.dyn_ref::<js_sys::Array>().unwrap();
+    let cnt = js_sys::Reflect::get(&arr.get(0), &JsValue::from_str("cnt"))
+        .unwrap()
+        .as_f64()
+        .unwrap_or(0.0) as u32;
+    assert_eq!(cnt, 3, "3 soft-deleted rows must exist in the raw table");
+}
+
+/// `permanent_delete_exercise` soft-deletes slots in completed plans.
+/// (Archive does NOT do this — permanent delete is more aggressive.)
+#[wasm_bindgen_test]
+async fn test_permanent_delete_cascades_through_completed_plan_slots() {
+    use wasm_bindgen::JsCast;
+
+    let mut db = Database::new();
+    db.init(None).await.expect("Database init failed");
+
+    let eid = make_exercise(&mut db, "Squat").await;
+
+    // Create a plan, start it, then end it (completed plan).
+    let plan_id = db.create_plan().await.expect("create_plan");
+    db.add_exercise_to_plan(&plan_id, &eid, 3)
+        .await
+        .expect("add_exercise");
+    db.start_plan(&plan_id).await.expect("start_plan");
+    db.end_plan(&plan_id).await.expect("end_plan");
+
+    // Verify slot exists before delete.
+    let slots_before = db
+        .execute(
+            "SELECT count(*) as cnt FROM workout_plan_exercises WHERE exercise_id = ? AND deleted_at IS NULL",
+            &[JsValue::from_str(&eid)],
+        )
+        .await
+        .expect("slots before");
+    let arr = slots_before.dyn_ref::<js_sys::Array>().unwrap();
+    let cnt_before = js_sys::Reflect::get(&arr.get(0), &JsValue::from_str("cnt"))
+        .unwrap()
+        .as_f64()
+        .unwrap_or(0.0) as u32;
+    assert_eq!(cnt_before, 1, "Slot should exist before permanent delete");
+
+    db.permanent_delete_exercise(&eid)
+        .await
+        .expect("permanent_delete_exercise failed");
+
+    // Slot must now be soft-deleted.
+    let slots_after = db
+        .execute(
+            "SELECT count(*) as cnt FROM workout_plan_exercises WHERE exercise_id = ? AND deleted_at IS NOT NULL",
+            &[JsValue::from_str(&eid)],
+        )
+        .await
+        .expect("slots after");
+    let arr2 = slots_after.dyn_ref::<js_sys::Array>().unwrap();
+    let cnt_after = js_sys::Reflect::get(&arr2.get(0), &JsValue::from_str("cnt"))
+        .unwrap()
+        .as_f64()
+        .unwrap_or(0.0) as u32;
+    assert_eq!(cnt_after, 1, "Slot must be soft-deleted");
+}
+
+/// Plans that become entirely empty after the cascade are soft-deleted.
+/// Tests all plan states: future (no started_at), active (started_at set, no ended_at),
+/// and completed (both started_at and ended_at set).
+#[wasm_bindgen_test]
+async fn test_permanent_delete_soft_deletes_empty_plans_all_states() {
+    use wasm_bindgen::JsCast;
+
+    let mut db = Database::new();
+    db.init(None).await.expect("Database init failed");
+
+    let eid = make_exercise(&mut db, "Deadlift").await;
+
+    // Future plan (never started).
+    let future_plan = db.create_plan().await.expect("create future plan");
+    db.add_exercise_to_plan(&future_plan, &eid, 3)
+        .await
+        .expect("add to future");
+
+    // Active plan (started but not ended).
+    let active_plan = db.create_plan().await.expect("create active plan");
+    db.add_exercise_to_plan(&active_plan, &eid, 3)
+        .await
+        .expect("add to active");
+    db.start_plan(&active_plan)
+        .await
+        .expect("start active plan");
+
+    // Completed plan (started + ended).
+    let completed_plan = db.create_plan().await.expect("create completed plan");
+    db.add_exercise_to_plan(&completed_plan, &eid, 3)
+        .await
+        .expect("add to completed");
+    db.start_plan(&completed_plan)
+        .await
+        .expect("start completed plan");
+    db.end_plan(&completed_plan)
+        .await
+        .expect("end completed plan");
+
+    db.permanent_delete_exercise(&eid)
+        .await
+        .expect("permanent_delete_exercise failed");
+
+    // All 3 plans must be soft-deleted.
+    let result = db
+        .execute(
+            "SELECT count(*) as cnt FROM workout_plans WHERE deleted_at IS NOT NULL AND id IN (?, ?, ?)",
+            &[
+                JsValue::from_str(&future_plan),
+                JsValue::from_str(&active_plan),
+                JsValue::from_str(&completed_plan),
+            ],
+        )
+        .await
+        .expect("count deleted plans");
+    let arr = result.dyn_ref::<js_sys::Array>().unwrap();
+    let cnt = js_sys::Reflect::get(&arr.get(0), &JsValue::from_str("cnt"))
+        .unwrap()
+        .as_f64()
+        .unwrap_or(0.0) as u32;
+    assert_eq!(
+        cnt, 3,
+        "All 3 plans must be soft-deleted after exercise removal"
+    );
+}
+
+/// A plan that still has another exercise is NOT soft-deleted — only its slot for
+/// the deleted exercise is removed.
+#[wasm_bindgen_test]
+async fn test_permanent_delete_does_not_delete_plan_with_other_exercises() {
+    use wasm_bindgen::JsCast;
+
+    let mut db = Database::new();
+    db.init(None).await.expect("Database init failed");
+
+    let eid_a = make_exercise(&mut db, "Exercise A").await;
+    let eid_b = make_exercise(&mut db, "Exercise B").await;
+
+    // Plan has both A and B.
+    let plan_id = db.create_plan().await.expect("create_plan");
+    db.add_exercise_to_plan(&plan_id, &eid_a, 3)
+        .await
+        .expect("add A");
+    db.add_exercise_to_plan(&plan_id, &eid_b, 3)
+        .await
+        .expect("add B");
+
+    // Permanently delete only exercise A.
+    db.permanent_delete_exercise(&eid_a)
+        .await
+        .expect("permanent_delete_exercise failed");
+
+    // Plan must still exist (not soft-deleted).
+    let result = db
+        .execute(
+            "SELECT deleted_at FROM workout_plans WHERE id = ?",
+            &[JsValue::from_str(&plan_id)],
+        )
+        .await
+        .expect("query plan");
+    let arr = result.dyn_ref::<js_sys::Array>().unwrap();
+    assert_eq!(arr.length(), 1, "Plan row must still exist");
+    let deleted_at = js_sys::Reflect::get(&arr.get(0), &JsValue::from_str("deleted_at")).unwrap();
+    assert!(
+        deleted_at.is_null() || deleted_at.is_undefined(),
+        "Plan must NOT be soft-deleted when it still has another exercise"
+    );
+
+    // B's slot must still be live.
+    let b_slots = db
+        .execute(
+            "SELECT count(*) as cnt FROM workout_plan_exercises WHERE exercise_id = ? AND deleted_at IS NULL",
+            &[JsValue::from_str(&eid_b)],
+        )
+        .await
+        .expect("b slots");
+    let b_arr = b_slots.dyn_ref::<js_sys::Array>().unwrap();
+    let b_cnt = js_sys::Reflect::get(&b_arr.get(0), &JsValue::from_str("cnt"))
+        .unwrap()
+        .as_f64()
+        .unwrap_or(0.0) as u32;
+    assert_eq!(b_cnt, 1, "Exercise B's slot must remain live");
+}
+
+/// Exercise referenced by mixed past/future plans: correct partial-slot handling.
+/// Plan X has only exercise A → deleted. Plan Y has A+B → survives.
+#[wasm_bindgen_test]
+async fn test_permanent_delete_mixed_plans() {
+    use wasm_bindgen::JsCast;
+
+    let mut db = Database::new();
+    db.init(None).await.expect("Database init failed");
+
+    let eid_a = make_exercise(&mut db, "Curl").await;
+    let eid_b = make_exercise(&mut db, "Press").await;
+
+    // Plan X: only A.
+    let plan_x = db.create_plan().await.expect("create plan X");
+    db.add_exercise_to_plan(&plan_x, &eid_a, 2)
+        .await
+        .expect("add A to X");
+
+    // Plan Y: A and B.
+    let plan_y = db.create_plan().await.expect("create plan Y");
+    db.add_exercise_to_plan(&plan_y, &eid_a, 2)
+        .await
+        .expect("add A to Y");
+    db.add_exercise_to_plan(&plan_y, &eid_b, 2)
+        .await
+        .expect("add B to Y");
+
+    db.permanent_delete_exercise(&eid_a)
+        .await
+        .expect("permanent_delete_exercise failed");
+
+    // Plan X must be soft-deleted (it's now empty).
+    let x_result = db
+        .execute(
+            "SELECT deleted_at FROM workout_plans WHERE id = ?",
+            &[JsValue::from_str(&plan_x)],
+        )
+        .await
+        .expect("query plan X");
+    let x_arr = x_result.dyn_ref::<js_sys::Array>().unwrap();
+    let x_deleted = js_sys::Reflect::get(&x_arr.get(0), &JsValue::from_str("deleted_at")).unwrap();
+    assert!(
+        !x_deleted.is_null() && !x_deleted.is_undefined(),
+        "Plan X (now empty) must be soft-deleted"
+    );
+
+    // Plan Y must NOT be soft-deleted (it still has B).
+    let y_result = db
+        .execute(
+            "SELECT deleted_at FROM workout_plans WHERE id = ?",
+            &[JsValue::from_str(&plan_y)],
+        )
+        .await
+        .expect("query plan Y");
+    let y_arr = y_result.dyn_ref::<js_sys::Array>().unwrap();
+    let y_deleted = js_sys::Reflect::get(&y_arr.get(0), &JsValue::from_str("deleted_at")).unwrap();
+    assert!(
+        y_deleted.is_null() || y_deleted.is_undefined(),
+        "Plan Y must NOT be soft-deleted (it still has exercise B)"
+    );
+}
+
+/// `permanent_delete_exercise` soft-deletes the `exercises` row itself.
+#[wasm_bindgen_test]
+async fn test_permanent_delete_soft_deletes_exercise_row() {
+    use wasm_bindgen::JsCast;
+
+    let mut db = Database::new();
+    db.init(None).await.expect("Database init failed");
+
+    let eid = make_exercise(&mut db, "Overhead Press").await;
+
+    // Exercise must be visible before delete.
+    let before = db.get_exercises().await.expect("get_exercises before");
+    assert_eq!(before.len(), 1);
+
+    db.permanent_delete_exercise(&eid)
+        .await
+        .expect("permanent_delete_exercise failed");
+
+    // Exercise must disappear from active list.
+    let after_active = db.get_exercises().await.expect("get_exercises after");
+    assert_eq!(
+        after_active.len(),
+        0,
+        "Exercise must not appear in active list"
+    );
+
+    // Exercise must also not appear in archived list (deleted_at IS NOT NULL but the
+    // normal archived query also picks up deleted exercises — verify the raw row).
+    let raw = db
+        .execute(
+            "SELECT deleted_at FROM exercises WHERE uuid = ?",
+            &[JsValue::from_str(&eid)],
+        )
+        .await
+        .expect("raw query");
+    let arr = raw.dyn_ref::<js_sys::Array>().unwrap();
+    assert_eq!(
+        arr.length(),
+        1,
+        "Exercise row must still exist (soft-delete)"
+    );
+    let deleted_at = js_sys::Reflect::get(&arr.get(0), &JsValue::from_str("deleted_at")).unwrap();
+    assert!(
+        !deleted_at.is_null() && !deleted_at.is_undefined(),
+        "deleted_at must be set after permanent delete"
+    );
+}
+
+/// `preview_permanent_delete` returns the correct `completed_sets` count.
+#[wasm_bindgen_test]
+async fn test_preview_permanent_delete_set_count() {
+    let mut db = Database::new();
+    db.init(None).await.expect("Database init failed");
+
+    let eid = make_exercise(&mut db, "Squat").await;
+
+    // Log 4 sets.
+    for i in 1u32..=4 {
+        db.log_set(
+            &eid,
+            &CompletedSet {
+                set_number: i,
+                reps: 5,
+                rpe: 7.0,
+                set_type: SetType::Weighted { weight: 80.0 },
+            },
+        )
+        .await
+        .expect("log_set");
+    }
+
+    let (sets_cnt, _) = db
+        .preview_permanent_delete(&eid)
+        .await
+        .expect("preview_permanent_delete failed");
+    assert_eq!(
+        sets_cnt, 4,
+        "preview must return correct completed_sets count"
+    );
+}
+
+/// `preview_permanent_delete` returns the correct `plans_to_delete` count.
+#[wasm_bindgen_test]
+async fn test_preview_permanent_delete_plans_count() {
+    let mut db = Database::new();
+    db.init(None).await.expect("Database init failed");
+
+    let eid_a = make_exercise(&mut db, "Lunge").await;
+    let eid_b = make_exercise(&mut db, "Step-up").await;
+
+    // Plan 1: only eid_a → would be deleted.
+    let plan1 = db.create_plan().await.expect("plan1");
+    db.add_exercise_to_plan(&plan1, &eid_a, 2)
+        .await
+        .expect("add a to plan1");
+
+    // Plan 2: eid_a + eid_b → would NOT be deleted (still has B).
+    let plan2 = db.create_plan().await.expect("plan2");
+    db.add_exercise_to_plan(&plan2, &eid_a, 2)
+        .await
+        .expect("add a to plan2");
+    db.add_exercise_to_plan(&plan2, &eid_b, 2)
+        .await
+        .expect("add b to plan2");
+
+    let (_, plans_cnt) = db
+        .preview_permanent_delete(&eid_a)
+        .await
+        .expect("preview_permanent_delete failed");
+    assert_eq!(
+        plans_cnt, 1,
+        "Only plan1 (which would become empty) should be counted"
+    );
+}
+
+/// Zero-history exercise: `preview_permanent_delete` returns (0, 0), no errors.
+#[wasm_bindgen_test]
+async fn test_preview_permanent_delete_zero_history() {
+    let mut db = Database::new();
+    db.init(None).await.expect("Database init failed");
+
+    let eid = make_exercise(&mut db, "Plank").await;
+
+    let (sets_cnt, plans_cnt) = db
+        .preview_permanent_delete(&eid)
+        .await
+        .expect("preview_permanent_delete failed");
+    assert_eq!(sets_cnt, 0, "Zero sets expected for clean exercise");
+    assert_eq!(plans_cnt, 0, "Zero plans expected for clean exercise");
 }

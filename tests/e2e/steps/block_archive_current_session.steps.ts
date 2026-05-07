@@ -48,10 +48,6 @@ When(
   },
 );
 
-Then("the archive dialog is not shown", async ({ page }) => {
-  await expect(page.getByTestId("confirmation-dialog")).not.toBeVisible();
-});
-
 Then(
   "the archive button is enabled for the non-session exercise",
   async ({ page }) => {

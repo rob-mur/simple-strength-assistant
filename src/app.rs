@@ -325,6 +325,9 @@ fn LibraryExercise(exercise_id: String) -> Element {
     let navigator = use_navigator();
     let mut show_edit_form = use_signal(|| false);
     let mut show_archive_dialog = use_signal(|| false);
+    // (completed_sets_count, plans_to_delete_count) for permanent-delete dialog
+    let mut perm_delete_counts: Signal<Option<(u32, u32)>> = use_signal(|| None);
+    let mut show_permanent_delete_dialog = use_signal(|| false);
 
     // Look in active exercises first; fall back to archived exercises.
     let active_exercises = workout_state.exercises();
@@ -404,32 +407,128 @@ fn LibraryExercise(exercise_id: String) -> Element {
     let exercise_id_for_archive = exercise_id.clone();
     let exercise_id_for_unarchive = exercise_id.clone();
     let archive_blocked = is_archive_blocked(&exercise_id, &workout_state.current_session());
+    // Three clones needed: one for the archive-dialog escalation link, one for
+    // the permanent-delete confirm button, one for the archived-detail trash icon.
+    // Dioxus requires each move closure to own its captured values independently.
+    let exercise_id_for_perm_delete = exercise_id.clone();
+    let exercise_id_for_perm_delete2 = exercise_id.clone();
+    let exercise_id_for_perm_delete3 = exercise_id.clone();
 
     rsx! {
         div {
             class: "max-w-md mx-auto",
             "data-testid": "exercise-detail-view",
 
-            // Archive dialog (active exercises only)
+            // Archive dialog (active exercises only) — rendered as custom inline dialog
+            // so we can add the "Delete permanently →" escalation link.
             if show_archive_dialog() {
-                ConfirmationDialog {
-                    title: format!("Archive {}?", exercise_name),
-                    body: "Hidden from library, removed from upcoming plans. 0 future plans will be deleted.".to_string(),
-                    confirm_label: "Archive".to_string(),
-                    cancel_label: "Cancel".to_string(),
-                    variant: ConfirmVariant::Default,
-                    on_cancel: move |_| show_archive_dialog.set(false),
-                    on_confirm: move |_| {
-                        let state = workout_state;
-                        let eid = exercise_id_for_archive.clone();
-                        show_archive_dialog.set(false);
-                        spawn(async move {
-                            if let Err(e) = WorkoutStateManager::archive_exercise(&state, &eid).await {
-                                WorkoutStateManager::handle_error(&state, e);
-                            } else {
-                                navigator.push(Route::LibraryTab);
+                div {
+                    class: "fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4",
+                    "data-testid": "confirmation-dialog-backdrop",
+                    onclick: move |_| show_archive_dialog.set(false),
+
+                    div {
+                        class: "bg-base-100 rounded-2xl shadow-xl max-w-sm w-full p-6",
+                        "data-testid": "confirmation-dialog",
+                        onclick: move |e| e.stop_propagation(),
+
+                        h3 {
+                            class: "text-lg font-bold mb-2",
+                            "data-testid": "confirmation-dialog-title",
+                            "Archive {exercise_name}?"
+                        }
+
+                        p {
+                            class: "text-base-content/70 mb-6",
+                            "data-testid": "confirmation-dialog-body",
+                            "Hidden from library, removed from upcoming plans. 0 future plans will be deleted."
+                        }
+
+                        // Button row: Cancel (leftmost), then Archive
+                        div {
+                            class: "flex gap-3 justify-end",
+                            button {
+                                class: "btn btn-ghost",
+                                "data-testid": "confirmation-dialog-cancel",
+                                onclick: move |_| show_archive_dialog.set(false),
+                                "Cancel"
                             }
-                        });
+                            button {
+                                class: "btn btn-primary",
+                                "data-testid": "confirmation-dialog-confirm",
+                                onclick: move |_| {
+                                    let state = workout_state;
+                                    let eid = exercise_id_for_archive.clone();
+                                    show_archive_dialog.set(false);
+                                    spawn(async move {
+                                        if let Err(e) = WorkoutStateManager::archive_exercise(&state, &eid).await {
+                                            WorkoutStateManager::handle_error(&state, e);
+                                        } else {
+                                            navigator.push(Route::LibraryTab);
+                                        }
+                                    });
+                                },
+                                "Archive"
+                            }
+                        }
+
+                        // Escalation link to permanent-delete
+                        div {
+                            class: "mt-4 text-center",
+                            button {
+                                class: "text-sm text-error/70 hover:text-error underline bg-transparent border-0 cursor-pointer",
+                                "data-testid": "permanent-delete-link",
+                                onclick: move |_| {
+                                    let eid = exercise_id_for_perm_delete.clone();
+                                    let state = workout_state;
+                                    spawn(async move {
+                                        match WorkoutStateManager::preview_permanent_delete(&state, &eid).await {
+                                            Ok(counts) => {
+                                                perm_delete_counts.set(Some(counts));
+                                                show_archive_dialog.set(false);
+                                                show_permanent_delete_dialog.set(true);
+                                            }
+                                            Err(e) => WorkoutStateManager::handle_error(&state, e),
+                                        }
+                                    });
+                                },
+                                "Delete permanently →"
+                            }
+                        }
+                    }
+                }
+            }
+
+            // Permanent-delete confirm dialog
+            if show_permanent_delete_dialog() {
+                {
+                    let (sets_count, plans_count) = perm_delete_counts().unwrap_or((0, 0));
+                    let ex_name_pd = exercise_name.clone();
+                    rsx! {
+                        ConfirmationDialog {
+                            title: format!("Permanently delete {}?", ex_name_pd),
+                            body: format!(
+                                "{} completed sets and {} workouts will be erased. Cannot be undone.",
+                                sets_count,
+                                plans_count
+                            ),
+                            confirm_label: "Delete forever".to_string(),
+                            cancel_label: "Cancel".to_string(),
+                            variant: ConfirmVariant::Danger,
+                            on_cancel: move |_| show_permanent_delete_dialog.set(false),
+                            on_confirm: move |_| {
+                                let state = workout_state;
+                                let eid = exercise_id_for_perm_delete2.clone();
+                                show_permanent_delete_dialog.set(false);
+                                spawn(async move {
+                                    if let Err(e) = WorkoutStateManager::permanent_delete_exercise(&state, &eid).await {
+                                        WorkoutStateManager::handle_error(&state, e);
+                                    } else {
+                                        navigator.push(Route::LibraryTab);
+                                    }
+                                });
+                            }
+                        }
                     }
                 }
             }
@@ -485,7 +584,7 @@ fn LibraryExercise(exercise_id: String) -> Element {
                     }
 
                     if is_archived {
-                        // Archived: show Unarchive button instead of START/trash
+                        // Archived: show Unarchive button + trash icon for permanent delete
                         button {
                             class: "btn btn-primary btn-sm px-4 font-bold shadow-sm",
                             "data-testid": "unarchive-button",
@@ -502,9 +601,40 @@ fn LibraryExercise(exercise_id: String) -> Element {
                             },
                             "Unarchive"
                         }
+                        // Trash icon: on archived exercise → go straight to permanent-delete dialog
+                        button {
+                            class: "btn btn-ghost btn-sm btn-circle",
+                            "data-testid": "permanent-delete-button",
+                            onclick: move |_| {
+                                let eid = exercise_id_for_perm_delete3.clone();
+                                let state = workout_state;
+                                spawn(async move {
+                                    match WorkoutStateManager::preview_permanent_delete(&state, &eid).await {
+                                        Ok(counts) => {
+                                            perm_delete_counts.set(Some(counts));
+                                            show_archive_dialog.set(false);
+                                            show_permanent_delete_dialog.set(true);
+                                        }
+                                        Err(e) => WorkoutStateManager::handle_error(&state, e),
+                                    }
+                                });
+                            },
+                            svg {
+                                xmlns: "http://www.w3.org/2000/svg",
+                                fill: "none",
+                                view_box: "0 0 24 24",
+                                stroke_width: "2",
+                                stroke: "currentColor",
+                                class: "w-5 h-5",
+                                path {
+                                    stroke_linecap: "round",
+                                    stroke_linejoin: "round",
+                                    d: "m14.74 9-.346 9m-4.788 0L9.26 9m9.968-3.21c.342.052.682.107 1.022.166m-1.022-.165L18.16 19.673a2.25 2.25 0 0 1-2.244 2.077H8.084a2.25 2.25 0 0 1-2.244-2.077L4.772 5.79m14.456 0a48.108 48.108 0 0 0-3.478-.397m-12 .562c.34-.059.68-.114 1.022-.165m0 0a48.11 48.11 0 0 1 3.478-.397m7.5 0v-.916c0-1.18-.91-2.164-2.09-2.201a51.964 51.964 0 0 0-3.32 0c-1.18.037-2.09 1.022-2.09 2.201v.916m7.5 0a48.667 48.667 0 0 0-7.5 0"
+                                }
+                            }
+                        }
                     } else if archive_blocked {
                         // Active exercise currently being recorded: trash is disabled.
-                        // Long-press shows a tooltip explaining why.
                         div {
                             class: "tooltip tooltip-left",
                             "data-tip": "In current set — finish first",
@@ -530,7 +660,6 @@ fn LibraryExercise(exercise_id: String) -> Element {
                                 }
                             }
                         }
-                        // START button still shown (but exercise is active — user may want to navigate back)
                         button {
                             class: "btn btn-primary btn-sm px-4 font-bold shadow-sm",
                             "data-testid": "start-button",

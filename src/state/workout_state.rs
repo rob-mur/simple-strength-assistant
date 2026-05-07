@@ -581,6 +581,31 @@ impl WorkoutStateManager {
             .map_err(WorkoutError::Database)
     }
 
+    /// Returns `(completed_sets, plans_to_delete)` counts for the permanent-delete
+    /// preview dialog.
+    pub async fn preview_permanent_delete(
+        state: &WorkoutState,
+        exercise_id: &str,
+    ) -> Result<(u32, u32), WorkoutError> {
+        let db = state.database().ok_or(WorkoutError::NotInitialized)?;
+        db.preview_permanent_delete(exercise_id)
+            .await
+            .map_err(WorkoutError::Database)
+    }
+
+    /// Permanently soft-deletes the exercise and all associated data (completed
+    /// sets, plan slots, now-empty plans), then refreshes the active exercise list.
+    pub async fn permanent_delete_exercise(
+        state: &WorkoutState,
+        exercise_id: &str,
+    ) -> Result<(), WorkoutError> {
+        let db = state.database().ok_or(WorkoutError::NotInitialized)?;
+        db.permanent_delete_exercise(exercise_id)
+            .await
+            .map_err(WorkoutError::Database)?;
+        Self::sync_exercises(state).await
+    }
+
     /// Load settings from the database into app state.
     pub async fn load_settings(state: &WorkoutState) -> Result<(), WorkoutError> {
         let db = state.database().ok_or(WorkoutError::NotInitialized)?;

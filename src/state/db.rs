@@ -1182,6 +1182,167 @@ impl Database {
         Ok(0)
     }
 
+    /// Returns `{ completed_sets, plans_to_delete }` counts for the permanent-delete
+    /// preview dialog.  `completed_sets` counts non-deleted sets for this exercise.
+    /// `plans_to_delete` counts plans (regardless of timestamp state) whose every
+    /// non-deleted slot belongs to this exercise (i.e. plans that would become empty
+    /// after the delete cascade).
+    pub async fn preview_permanent_delete(
+        &self,
+        exercise_id: &str,
+    ) -> Result<(u32, u32), DatabaseError> {
+        if !self.initialized {
+            return Err(DatabaseError::NotInitialized);
+        }
+
+        // Count live completed_sets for this exercise.
+        let sets_result = self
+            .execute(
+                "SELECT count(*) as cnt FROM completed_sets WHERE exercise_id = ? AND deleted_at IS NULL",
+                &[JsValue::from_str(exercise_id)],
+            )
+            .await?;
+        let sets_count = Self::extract_count(&sets_result)?;
+
+        // Count plans that would become empty:
+        // A plan becomes empty when ALL its non-deleted slots reference this exercise.
+        // We want plans where every live slot has exercise_id = our exercise_id.
+        // Equivalent: plans that have at least one live slot for our exercise
+        // AND have zero live slots for any other exercise.
+        let plans_result = self
+            .execute(
+                "SELECT count(*) as cnt FROM workout_plans p
+                 WHERE p.deleted_at IS NULL
+                   AND EXISTS (
+                       SELECT 1 FROM workout_plan_exercises s
+                       WHERE s.plan_id = p.id AND s.exercise_id = ? AND s.deleted_at IS NULL
+                   )
+                   AND NOT EXISTS (
+                       SELECT 1 FROM workout_plan_exercises s2
+                       WHERE s2.plan_id = p.id AND s2.exercise_id != ? AND s2.deleted_at IS NULL
+                   )",
+                &[
+                    JsValue::from_str(exercise_id),
+                    JsValue::from_str(exercise_id),
+                ],
+            )
+            .await?;
+        let plans_count = Self::extract_count(&plans_result)?;
+
+        Ok((sets_count, plans_count))
+    }
+
+    /// Permanently soft-deletes an exercise and all associated data:
+    ///   1. All `completed_sets` referencing this exercise.
+    ///   2. All `workout_plan_exercises` slots referencing this exercise (across all
+    ///      plan states: future, active, and completed).
+    ///   3. Any `workout_plans` that become entirely empty (all remaining slots are
+    ///      soft-deleted) — regardless of their timestamp state.
+    ///   4. The `exercises` row itself.
+    pub async fn permanent_delete_exercise(&self, exercise_id: &str) -> Result<(), DatabaseError> {
+        if !self.initialized {
+            return Err(DatabaseError::NotInitialized);
+        }
+
+        let now = js_sys::Date::now();
+
+        self.execute_internal("BEGIN", &[]).await?;
+
+        let result = self.permanent_delete_exercise_inner(exercise_id, now).await;
+
+        if result.is_err() {
+            // Best-effort rollback; ignore secondary error.
+            let _ = self.execute_internal("ROLLBACK", &[]).await;
+            return result;
+        }
+
+        self.execute_internal("COMMIT", &[]).await?;
+        Ok(())
+    }
+
+    async fn permanent_delete_exercise_inner(
+        &self,
+        exercise_id: &str,
+        now: f64,
+    ) -> Result<(), DatabaseError> {
+        // 1. Soft-delete all completed_sets for this exercise.
+        self.execute_internal(
+            "UPDATE completed_sets SET deleted_at = ?, updated_at = ? WHERE exercise_id = ? AND deleted_at IS NULL",
+            &[
+                JsValue::from_f64(now),
+                JsValue::from_f64(now),
+                JsValue::from_str(exercise_id),
+            ],
+        )
+        .await?;
+
+        // 2. Soft-delete all workout_plan_exercises slots for this exercise
+        //    (future, active, AND completed plans).
+        self.execute_internal(
+            "UPDATE workout_plan_exercises SET deleted_at = ?, updated_at = ? WHERE exercise_id = ? AND deleted_at IS NULL",
+            &[
+                JsValue::from_f64(now),
+                JsValue::from_f64(now),
+                JsValue::from_str(exercise_id),
+            ],
+        )
+        .await?;
+
+        // 3. Soft-delete plans that are now entirely empty (all remaining non-deleted slots
+        //    are gone — either pre-existing deleted or just soft-deleted above).
+        //    A plan is empty when it has no live (deleted_at IS NULL) slots at all.
+        //    We only act on plans that had at least one slot for this exercise (to avoid
+        //    touching plans that were already empty for other reasons, though soft-deleting
+        //    them is also acceptable since they're already essentially zombie records).
+        self.execute_internal(
+            "UPDATE workout_plans SET deleted_at = ?, updated_at = ?
+             WHERE deleted_at IS NULL
+               AND id IN (
+                   SELECT DISTINCT plan_id FROM workout_plan_exercises
+                   WHERE exercise_id = ?
+               )
+               AND NOT EXISTS (
+                   SELECT 1 FROM workout_plan_exercises s
+                   WHERE s.plan_id = workout_plans.id AND s.deleted_at IS NULL
+               )",
+            &[
+                JsValue::from_f64(now),
+                JsValue::from_f64(now),
+                JsValue::from_str(exercise_id),
+            ],
+        )
+        .await?;
+
+        // 4. Soft-delete the exercise itself.
+        self.execute_internal(
+            "UPDATE exercises SET deleted_at = ?, updated_at = ? WHERE uuid = ?",
+            &[
+                JsValue::from_f64(now),
+                JsValue::from_f64(now),
+                JsValue::from_str(exercise_id),
+            ],
+        )
+        .await?;
+
+        Ok(())
+    }
+
+    /// Extracts a `count(*) as cnt` value from a JS query result array.
+    fn extract_count(result: &JsValue) -> Result<u32, DatabaseError> {
+        let array = result
+            .dyn_ref::<js_sys::Array>()
+            .ok_or_else(|| DatabaseError::QueryError("Expected array result".to_string()))?;
+        if array.length() == 0 {
+            return Ok(0);
+        }
+        let row = array.get(0);
+        let cnt = js_sys::Reflect::get(&row, &JsValue::from_str("cnt"))
+            .unwrap_or(JsValue::from_f64(0.0))
+            .as_f64()
+            .unwrap_or(0.0) as u32;
+        Ok(cnt)
+    }
+
     pub async fn get_exercises(&self) -> Result<Vec<ExerciseMetadata>, DatabaseError> {
         let sql = "SELECT uuid, name, is_weighted, min_weight, increment, min_reps, max_reps FROM exercises WHERE deleted_at IS NULL ORDER BY name";
         self.fetch_exercises_with_sql(sql).await

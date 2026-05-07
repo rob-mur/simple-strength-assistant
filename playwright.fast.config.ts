@@ -72,5 +72,19 @@ export default defineConfig({
         },
       },
     },
+    {
+      name: "mobile-permanent-delete",
+      testMatch: /permanent_delete/,
+      use: {
+        viewport: { width: 375, height: 667 },
+        userAgent: devices["Desktop Chrome"].userAgent,
+        launchOptions: {
+          headless: true,
+          ...(process.env.CHROMIUM_EXECUTABLE_PATH && {
+            executablePath: process.env.CHROMIUM_EXECUTABLE_PATH,
+          }),
+        },
+      },
+    },
   ],
 });
