@@ -25,6 +25,9 @@ pub struct PredictedParameters {
     pub weight: Option<f32>,
     pub reps: u32,
     pub rpe: f32,
+    /// True when the predicted rep count was clamped to the exercise's
+    /// configured `[min_reps, max_reps]` range.
+    pub reps_clamped: bool,
 }
 
 #[derive(Clone, Debug, PartialEq)]
@@ -254,6 +257,17 @@ pub fn is_archive_blocked(exercise_id: &str, current_session: &Option<WorkoutSes
         Some(session) => session.exercise.id.as_deref() == Some(exercise_id),
         None => false,
     }
+}
+
+/// Clamp `raw_reps` to `[min_reps, max_reps]` and return the clamped value plus
+/// a flag indicating whether clamping actually occurred.
+fn clamp_reps(raw_reps: u32, min_reps: u32, max_reps: Option<u32>) -> (u32, bool) {
+    let clamped = match max_reps {
+        Some(max) => raw_reps.clamp(min_reps, max),
+        None => raw_reps.max(min_reps),
+    };
+    let was_clamped = clamped != raw_reps;
+    (clamped, was_clamped)
 }
 
 pub struct WorkoutStateManager;
@@ -909,12 +923,14 @@ impl WorkoutStateManager {
                     weight: Some(weight),
                     reps: DEFAULT_WEIGHTED_REPS,
                     rpe: DEFAULT_RPE,
+                    reps_clamped: false,
                 }
             }
             crate::models::SetTypeConfig::Bodyweight => PredictedParameters {
                 weight: None,
                 reps: default_bodyweight_reps,
                 rpe: DEFAULT_RPE,
+                reps_clamped: false,
             },
         }
     }
@@ -942,6 +958,9 @@ impl WorkoutStateManager {
             (last_set.rpe - RPE_REDUCTION).max(RPE_MINIMUM)
         };
 
+        let min_reps = session.exercise.min_reps as u32;
+        let max_reps = session.exercise.max_reps.map(|v| v as u32);
+
         match (&last_set.set_type, &session.exercise.set_type_config) {
             (
                 SetType::Weighted { weight },
@@ -953,17 +972,27 @@ impl WorkoutStateManager {
                     *weight
                 };
 
+                let raw_reps = last_set.reps;
+                let (clamped_reps, reps_clamped) = clamp_reps(raw_reps, min_reps, max_reps);
+
                 PredictedParameters {
                     weight: Some(predicted_weight),
-                    reps: last_set.reps,
+                    reps: clamped_reps,
                     rpe: predicted_rpe,
+                    reps_clamped,
                 }
             }
-            (SetType::Bodyweight, _) => PredictedParameters {
-                weight: None,
-                reps: last_set.reps,
-                rpe: predicted_rpe,
-            },
+            (SetType::Bodyweight, _) => {
+                let raw_reps = last_set.reps;
+                let (clamped_reps, reps_clamped) = clamp_reps(raw_reps, min_reps, max_reps);
+
+                PredictedParameters {
+                    weight: None,
+                    reps: clamped_reps,
+                    rpe: predicted_rpe,
+                    reps_clamped,
+                }
+            }
             // Fallback for unexpected state: Within an active session, suggestions
             // should come from the session's own sets. If this fails, we fall back
             // to initial predictions ignoring previous session history to maintain
@@ -1110,6 +1139,7 @@ mod tests {
                 weight: None,
                 reps: 10,
                 rpe: 7.0,
+                reps_clamped: false,
             },
         }
     }
@@ -1248,6 +1278,7 @@ mod tests {
                 weight: Some(100.0),
                 reps: 8,
                 rpe: 7.0,
+                reps_clamped: false,
             },
         };
 
@@ -1256,5 +1287,144 @@ mod tests {
         assert_eq!(predicted.weight, Some(105.0));
         assert_eq!(predicted.reps, 8);
         assert_eq!(predicted.rpe, 6.5);
+        assert!(!predicted.reps_clamped);
+    }
+
+    // ── clamp_reps ──────────────────────────────────────────────────────────
+
+    #[test]
+    fn test_clamp_reps_no_max_within_range() {
+        let (reps, clamped) = clamp_reps(10, 1, None);
+        assert_eq!(reps, 10);
+        assert!(!clamped);
+    }
+
+    #[test]
+    fn test_clamp_reps_no_max_below_min() {
+        // raw_reps < min_reps → clamp to min
+        let (reps, clamped) = clamp_reps(0, 3, None);
+        assert_eq!(reps, 3);
+        assert!(clamped);
+    }
+
+    #[test]
+    fn test_clamp_reps_with_max_within_range() {
+        let (reps, clamped) = clamp_reps(6, 3, Some(10));
+        assert_eq!(reps, 6);
+        assert!(!clamped);
+    }
+
+    #[test]
+    fn test_clamp_reps_clamped_to_max() {
+        let (reps, clamped) = clamp_reps(15, 3, Some(10));
+        assert_eq!(reps, 10);
+        assert!(clamped);
+    }
+
+    #[test]
+    fn test_clamp_reps_clamped_to_min() {
+        let (reps, clamped) = clamp_reps(1, 3, Some(10));
+        assert_eq!(reps, 3);
+        assert!(clamped);
+    }
+
+    // ── reps_clamped in calculate_next_predictions ──────────────────────────
+
+    fn make_weighted_session_with_range(
+        last_reps: u32,
+        min_reps: i32,
+        max_reps: Option<i32>,
+    ) -> WorkoutSession {
+        WorkoutSession {
+            session_id: Some("s1".to_string()),
+            exercise: ExerciseMetadata {
+                id: Some("e1".to_string()),
+                name: "Squat".to_string(),
+                set_type_config: SetTypeConfig::Weighted {
+                    min_weight: 0.0,
+                    increment: 5.0,
+                },
+                min_reps,
+                max_reps,
+            },
+            completed_sets: vec![CompletedSet {
+                set_number: 1,
+                reps: last_reps,
+                rpe: 7.0,
+                set_type: SetType::Weighted { weight: 80.0 },
+            }],
+            predicted: PredictedParameters {
+                weight: Some(80.0),
+                reps: last_reps,
+                rpe: 7.0,
+                reps_clamped: false,
+            },
+        }
+    }
+
+    #[test]
+    fn test_next_predictions_no_clamp_when_in_range() {
+        let session = make_weighted_session_with_range(8, 3, Some(12));
+        let predicted = WorkoutStateManager::calculate_next_predictions(&session, 10);
+        assert_eq!(predicted.reps, 8);
+        assert!(!predicted.reps_clamped);
+    }
+
+    #[test]
+    fn test_next_predictions_clamped_to_max() {
+        let session = make_weighted_session_with_range(15, 3, Some(12));
+        let predicted = WorkoutStateManager::calculate_next_predictions(&session, 10);
+        assert_eq!(predicted.reps, 12);
+        assert!(predicted.reps_clamped);
+    }
+
+    #[test]
+    fn test_next_predictions_clamped_to_min() {
+        let session = make_weighted_session_with_range(1, 3, Some(12));
+        let predicted = WorkoutStateManager::calculate_next_predictions(&session, 10);
+        assert_eq!(predicted.reps, 3);
+        assert!(predicted.reps_clamped);
+    }
+
+    #[test]
+    fn test_next_predictions_bodyweight_clamped_to_max() {
+        let session = WorkoutSession {
+            session_id: Some("s2".to_string()),
+            exercise: ExerciseMetadata {
+                id: Some("e2".to_string()),
+                name: "Pull-ups".to_string(),
+                set_type_config: SetTypeConfig::Bodyweight,
+                min_reps: 3,
+                max_reps: Some(10),
+            },
+            completed_sets: vec![CompletedSet {
+                set_number: 1,
+                reps: 20,
+                rpe: 7.0,
+                set_type: SetType::Bodyweight,
+            }],
+            predicted: PredictedParameters {
+                weight: None,
+                reps: 20,
+                rpe: 7.0,
+                reps_clamped: false,
+            },
+        };
+        let predicted = WorkoutStateManager::calculate_next_predictions(&session, 10);
+        assert_eq!(predicted.reps, 10);
+        assert!(predicted.reps_clamped);
+    }
+
+    #[test]
+    fn test_initial_predictions_reps_clamped_false() {
+        let exercise = ExerciseMetadata {
+            id: None,
+            name: "Test".to_string(),
+            set_type_config: SetTypeConfig::Bodyweight,
+            min_reps: 3,
+            max_reps: Some(10),
+        };
+        let predicted = WorkoutStateManager::calculate_initial_predictions(&exercise, None, 10);
+        assert!(!predicted.reps_clamped);
     }
 }

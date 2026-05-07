@@ -1439,6 +1439,13 @@ pub fn ActiveSession(state: WorkoutState, session: crate::state::WorkoutSession)
                                         "data-testid": "reps-readout",
                                         "{reps_input}"
                                     }
+                                    if session_for_display.predicted.reps_clamped {
+                                        span {
+                                            class: "badge badge-warning badge-sm",
+                                            "data-testid": "reps-clamped-badge",
+                                            "clamped"
+                                        }
+                                    }
                                 }
                                 button {
                                     "data-testid": "reps-step-up",

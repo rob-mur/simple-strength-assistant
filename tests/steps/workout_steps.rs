@@ -87,6 +87,7 @@ async fn step_click_start(world: &mut WorkoutWorld) {
             weight: Some(0.0),
             reps: 8,
             rpe: 7.0,
+            reps_clamped: false,
         },
     });
     world.active_tab = Tab::Workout;
@@ -188,6 +189,7 @@ async fn step_active_session_with_sets(world: &mut WorkoutWorld, exercise_name: 
             weight: Some(100.0),
             reps: 8,
             rpe: 7.0,
+            reps_clamped: false,
         },
     });
     world.has_active_plan = true;
@@ -213,6 +215,7 @@ async fn step_switch_exercise(world: &mut WorkoutWorld, exercise_name: String) {
             weight: Some(0.0),
             reps: 8,
             rpe: 7.0,
+            reps_clamped: false,
         },
     });
     world.active_tab = Tab::Workout;
@@ -330,6 +333,7 @@ async fn step_start_plan(world: &mut WorkoutWorld) {
                 weight: Some(0.0),
                 reps: 8,
                 rpe: 7.0,
+                reps_clamped: false,
             },
         });
     }
@@ -386,6 +390,7 @@ async fn step_start_exercise_from_library(world: &mut WorkoutWorld, exercise_nam
             weight: Some(0.0),
             reps: 8,
             rpe: 7.0,
+            reps_clamped: false,
         },
     });
     world.active_tab = Tab::Workout;
@@ -595,6 +600,7 @@ async fn step_started_plan_with_sets(
             weight: Some(80.0),
             reps: 5,
             rpe: 7.0,
+            reps_clamped: false,
         },
     });
     world.has_active_plan = true;
