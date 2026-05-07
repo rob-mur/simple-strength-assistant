@@ -546,6 +546,77 @@ pub fn SettingsView(state: WorkoutState) -> Element {
                 }
             }
 
+            // ── Progress Detection card ───────────────────────────────────────
+            div {
+                class: "card bg-base-100 shadow-xl mb-6",
+                div {
+                    class: "card-body",
+                    h3 { class: "card-title text-base font-bold mb-4", "Progress Detection" }
+
+                    div {
+                        class: "form-control mb-6",
+                        label {
+                            class: "label",
+                            span { class: "label-text font-semibold", "Min Sessions for Regression" }
+                        }
+                        input {
+                            r#type: "number",
+                            min: "1",
+                            value: "{settings.min_sessions_for_regression}",
+                            class: "input input-bordered w-full",
+                            "data-testid": "min-sessions-for-regression-input",
+                            oninput: move |evt| {
+                                if let Ok(val) = evt.value().parse::<i64>()
+                                    && val >= 1
+                                {
+                                    let mut s = settings;
+                                    s.min_sessions_for_regression = val;
+                                    persist(s);
+                                }
+                            }
+                        }
+                        label {
+                            class: "label",
+                            span {
+                                class: "label-text-alt opacity-60",
+                                "Minimum number of training sessions before a progress state is emitted"
+                            }
+                        }
+                    }
+
+                    div {
+                        class: "form-control mb-2",
+                        label {
+                            class: "label",
+                            span { class: "label-text font-semibold", "Training Window (weeks)" }
+                        }
+                        input {
+                            r#type: "number",
+                            min: "1",
+                            value: "{settings.training_window_weeks}",
+                            class: "input input-bordered w-full",
+                            "data-testid": "training-window-weeks-input",
+                            oninput: move |evt| {
+                                if let Ok(val) = evt.value().parse::<i64>()
+                                    && val >= 1
+                                {
+                                    let mut s = settings;
+                                    s.training_window_weeks = val;
+                                    persist(s);
+                                }
+                            }
+                        }
+                        label {
+                            class: "label",
+                            span {
+                                class: "label-text-alt opacity-60",
+                                "Rolling lookback window in weeks for progress detection"
+                            }
+                        }
+                    }
+                }
+            }
+
             // ── Data management card (existing) ─────────────────────────────
             div {
                 class: "card bg-base-100 shadow-xl mb-6",

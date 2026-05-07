@@ -67,7 +67,7 @@ extern "C" {
 }
 
 /// Current schema version. Bump this when the schema changes.
-const SCHEMA_VERSION: i64 = 8;
+const SCHEMA_VERSION: i64 = 9;
 
 #[derive(Clone, PartialEq)]
 pub struct Database {
@@ -267,6 +267,12 @@ impl Database {
         if current_version < 8 {
             log::debug!("[DB] Applying v8 migration: default_bodyweight_reps");
             self.apply_v8_migration().await?;
+        }
+
+        // ── v9 migration: progress detection settings ──────────────────────
+        if current_version < 9 {
+            log::debug!("[DB] Applying v9 migration: progress detection settings");
+            self.apply_v9_migration().await?;
         }
 
         // Stamp the new version
@@ -709,6 +715,21 @@ impl Database {
         .await?;
 
         log::debug!("[DB] v8 migration complete — default_bodyweight_reps added");
+        Ok(())
+    }
+
+    /// Adds `min_sessions_for_regression` and `training_window_weeks` columns to settings table.
+    async fn apply_v9_migration(&self) -> Result<(), DatabaseError> {
+        self.add_column_if_missing(
+            "ALTER TABLE settings ADD COLUMN min_sessions_for_regression INTEGER NOT NULL DEFAULT 3",
+        )
+        .await?;
+        self.add_column_if_missing(
+            "ALTER TABLE settings ADD COLUMN training_window_weeks INTEGER NOT NULL DEFAULT 12",
+        )
+        .await?;
+
+        log::debug!("[DB] v9 migration complete — progress detection settings added");
         Ok(())
     }
 
@@ -1580,7 +1601,7 @@ impl Database {
         // Ensure the settings row exists (idempotent).
         self.seed_settings().await?;
 
-        let sql = "SELECT target_rpe, history_window_days, today_blend_factor, default_planned_sets, default_bodyweight_reps FROM settings WHERE id = 1";
+        let sql = "SELECT target_rpe, history_window_days, today_blend_factor, default_planned_sets, default_bodyweight_reps, min_sessions_for_regression, training_window_weeks FROM settings WHERE id = 1";
         let result = self.execute(sql, &[]).await?;
 
         let array = result
@@ -1616,12 +1637,26 @@ impl Database {
                 .and_then(|v| v.as_f64())
                 .unwrap_or(10.0) as u32;
 
+        let min_sessions_for_regression =
+            js_sys::Reflect::get(&row, &JsValue::from_str("min_sessions_for_regression"))
+                .ok()
+                .and_then(|v| v.as_f64())
+                .unwrap_or(3.0) as i64;
+
+        let training_window_weeks =
+            js_sys::Reflect::get(&row, &JsValue::from_str("training_window_weeks"))
+                .ok()
+                .and_then(|v| v.as_f64())
+                .unwrap_or(12.0) as i64;
+
         Ok(crate::models::Settings {
             target_rpe,
             history_window_days,
             today_blend_factor,
             default_planned_sets,
             default_bodyweight_reps,
+            min_sessions_for_regression,
+            training_window_weeks,
         })
     }
 
@@ -1630,7 +1665,7 @@ impl Database {
         &self,
         settings: &crate::models::Settings,
     ) -> Result<(), DatabaseError> {
-        let sql = "UPDATE settings SET target_rpe = ?, history_window_days = ?, today_blend_factor = ?, default_planned_sets = ?, default_bodyweight_reps = ? WHERE id = 1";
+        let sql = "UPDATE settings SET target_rpe = ?, history_window_days = ?, today_blend_factor = ?, default_planned_sets = ?, default_bodyweight_reps = ?, min_sessions_for_regression = ?, training_window_weeks = ? WHERE id = 1";
         self.execute(
             sql,
             &[
@@ -1639,6 +1674,8 @@ impl Database {
                 JsValue::from_f64(settings.today_blend_factor),
                 JsValue::from_f64(settings.default_planned_sets as f64),
                 JsValue::from_f64(settings.default_bodyweight_reps as f64),
+                JsValue::from_f64(settings.min_sessions_for_regression as f64),
+                JsValue::from_f64(settings.training_window_weeks as f64),
             ],
         )
         .await?;
