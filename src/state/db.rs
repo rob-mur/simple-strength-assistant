@@ -3070,6 +3070,75 @@ impl Database {
 
         Ok(folded)
     }
+
+    /// Returns one (date, max_e1RM) pair per training session for the given exercise,
+    /// covering the rolling window of `training_window_weeks` weeks ending now.
+    ///
+    /// - Sets are grouped by UTC calendar date (`recorded_at` → date); same date = same session.
+    /// - Per session the highest e1RM value across all weighted sets is kept.
+    /// - Returns pairs sorted oldest-first, suitable for passing directly to `e1rm_trend`.
+    /// - Bodyweight sets are excluded (no meaningful e1RM without an external load).
+    pub async fn get_e1rm_session_history(
+        &self,
+        exercise_id: &str,
+        training_window_weeks: u32,
+    ) -> Result<Vec<(chrono::NaiveDate, f64)>, DatabaseError> {
+        let now_ms = js_sys::Date::now();
+        let window_ms = (training_window_weeks as f64) * 7.0 * 24.0 * 3600.0 * 1000.0;
+        let since_ms = now_ms - window_ms;
+
+        let sql = r#"
+            SELECT reps, rpe, weight, recorded_at
+            FROM completed_sets
+            WHERE exercise_id = ?
+              AND recorded_at >= ?
+              AND deleted_at IS NULL
+              AND is_bodyweight = 0
+            ORDER BY recorded_at ASC
+        "#;
+
+        let params = vec![JsValue::from_str(exercise_id), JsValue::from_f64(since_ms)];
+
+        let result = self.execute(sql, &params).await?;
+
+        let array = result
+            .dyn_ref::<js_sys::Array>()
+            .ok_or_else(|| DatabaseError::QueryError("Expected array result".to_string()))?;
+
+        // Group sets by UTC calendar date, keeping per-session max e1RM.
+        let mut sessions: std::collections::BTreeMap<chrono::NaiveDate, f64> =
+            std::collections::BTreeMap::new();
+
+        for i in 0..array.length() {
+            let row = array.get(i);
+
+            let reps = js_sys::Reflect::get(&row, &JsValue::from_str("reps"))?
+                .as_f64()
+                .ok_or_else(|| DatabaseError::QueryError("reps missing".to_string()))?
+                as u32;
+            let rpe = js_sys::Reflect::get(&row, &JsValue::from_str("rpe"))?
+                .as_f64()
+                .ok_or_else(|| DatabaseError::QueryError("rpe missing".to_string()))?;
+            let weight = js_sys::Reflect::get(&row, &JsValue::from_str("weight"))?
+                .as_f64()
+                .ok_or_else(|| DatabaseError::QueryError("weight missing".to_string()))?;
+            let recorded_at_ms = js_sys::Reflect::get(&row, &JsValue::from_str("recorded_at"))?
+                .as_f64()
+                .ok_or_else(|| DatabaseError::QueryError("recorded_at missing".to_string()))?;
+
+            let date = chrono::DateTime::from_timestamp_millis(recorded_at_ms as i64)
+                .ok_or_else(|| DatabaseError::QueryError("invalid timestamp".to_string()))?
+                .date_naive();
+
+            let set_e1rm = crate::domain::e1rm::e1rm(weight, reps, rpe);
+            let entry = sessions.entry(date).or_insert(f64::NEG_INFINITY);
+            if set_e1rm > *entry {
+                *entry = set_e1rm;
+            }
+        }
+
+        Ok(sessions.into_iter().collect())
+    }
 }
 
 impl Default for Database {

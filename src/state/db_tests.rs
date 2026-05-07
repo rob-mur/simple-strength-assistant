@@ -3895,3 +3895,279 @@ async fn test_get_max_weight_per_rep_excludes_bodyweight_sets() {
         map
     );
 }
+
+// ── get_e1rm_session_history tests ──────────────────────────────────────────
+
+/// Empty result when there are no sets for the exercise.
+#[wasm_bindgen_test]
+async fn test_e1rm_session_history_empty_when_no_sets() {
+    let mut db = Database::new();
+    db.init(None).await.expect("DB init");
+
+    let ex = ExerciseMetadata {
+        id: None,
+        name: "Bench Press".to_string(),
+        set_type_config: SetTypeConfig::Weighted {
+            min_weight: 0.0,
+            increment: 2.5,
+        },
+        min_reps: 1,
+        max_reps: None,
+    };
+    let eid = db.save_exercise(&ex).await.expect("save exercise");
+
+    let history = db
+        .get_e1rm_session_history(&eid, 12)
+        .await
+        .expect("get_e1rm_session_history");
+
+    assert!(
+        history.is_empty(),
+        "Expected empty history for exercise with no sets, got {:?}",
+        history
+    );
+}
+
+/// Sets on different days produce one entry per day, each with the max e1RM for that day.
+#[wasm_bindgen_test]
+async fn test_e1rm_session_history_one_entry_per_day() {
+    use crate::domain::e1rm::e1rm as compute_e1rm;
+
+    let mut db = Database::new();
+    db.init(None).await.expect("DB init");
+
+    let ex = ExerciseMetadata {
+        id: None,
+        name: "Squat".to_string(),
+        set_type_config: SetTypeConfig::Weighted {
+            min_weight: 0.0,
+            increment: 2.5,
+        },
+        min_reps: 1,
+        max_reps: None,
+    };
+    let eid = db.save_exercise(&ex).await.expect("save exercise");
+
+    // Day 1: 2 sets on 2024-01-01 UTC (ms = 1704067200000)
+    let day1_ms = 1_704_067_200_000.0_f64; // 2024-01-01 00:00:00 UTC
+    db.log_set_at(
+        &eid,
+        &CompletedSet {
+            set_number: 1,
+            reps: 5,
+            rpe: 8.0,
+            set_type: SetType::Weighted { weight: 100.0 },
+        },
+        day1_ms,
+    )
+    .await
+    .expect("log day1 set1");
+
+    db.log_set_at(
+        &eid,
+        &CompletedSet {
+            set_number: 2,
+            reps: 5,
+            rpe: 8.0,
+            set_type: SetType::Weighted { weight: 90.0 },
+        },
+        day1_ms + 300_000.0, // 5 min later, still day 1
+    )
+    .await
+    .expect("log day1 set2");
+
+    // Day 2: 1 set on 2024-01-02 UTC (ms = 1704153600000)
+    let day2_ms = 1_704_153_600_000.0_f64; // 2024-01-02 00:00:00 UTC
+    db.log_set_at(
+        &eid,
+        &CompletedSet {
+            set_number: 1,
+            reps: 3,
+            rpe: 9.0,
+            set_type: SetType::Weighted { weight: 110.0 },
+        },
+        day2_ms,
+    )
+    .await
+    .expect("log day2 set");
+
+    // Use a 52-week window so both days are included.
+    let history = db
+        .get_e1rm_session_history(&eid, 52)
+        .await
+        .expect("get_e1rm_session_history");
+
+    assert_eq!(history.len(), 2, "Expected one entry per session day");
+
+    // Day 1 entry: max e1RM of the two sets (100kg @ 5r RPE8 vs 90kg @ 5r RPE8)
+    let (d1, e1) = history[0];
+    let expected_d1 = chrono::NaiveDate::from_ymd_opt(2024, 1, 1).unwrap();
+    assert_eq!(d1, expected_d1, "First entry should be 2024-01-01");
+    let expected_e1 = compute_e1rm(100.0, 5, 8.0);
+    assert!(
+        (e1 - expected_e1).abs() < 1e-6,
+        "Day1 e1RM should be from the heavier set: expected {expected_e1}, got {e1}"
+    );
+
+    // Day 2 entry
+    let (d2, e2) = history[1];
+    let expected_d2 = chrono::NaiveDate::from_ymd_opt(2024, 1, 2).unwrap();
+    assert_eq!(d2, expected_d2, "Second entry should be 2024-01-02");
+    let expected_e2 = compute_e1rm(110.0, 3, 9.0);
+    assert!(
+        (e2 - expected_e2).abs() < 1e-6,
+        "Day2 e1RM expected {expected_e2}, got {e2}"
+    );
+}
+
+/// Sets outside the training window are excluded.
+#[wasm_bindgen_test]
+async fn test_e1rm_session_history_excludes_sets_outside_window() {
+    let mut db = Database::new();
+    db.init(None).await.expect("DB init");
+
+    let ex = ExerciseMetadata {
+        id: None,
+        name: "Deadlift".to_string(),
+        set_type_config: SetTypeConfig::Weighted {
+            min_weight: 0.0,
+            increment: 5.0,
+        },
+        min_reps: 1,
+        max_reps: None,
+    };
+    let eid = db.save_exercise(&ex).await.expect("save exercise");
+
+    let now_ms = js_sys::Date::now();
+    // A set recorded 2 weeks ago (inside a 12-week window).
+    let recent_ms = now_ms - 14.0 * 24.0 * 3600.0 * 1000.0;
+    // A set recorded 20 weeks ago (outside a 12-week window).
+    let old_ms = now_ms - 20.0 * 7.0 * 24.0 * 3600.0 * 1000.0;
+
+    db.log_set_at(
+        &eid,
+        &CompletedSet {
+            set_number: 1,
+            reps: 5,
+            rpe: 8.0,
+            set_type: SetType::Weighted { weight: 120.0 },
+        },
+        recent_ms,
+    )
+    .await
+    .expect("log recent set");
+
+    db.log_set_at(
+        &eid,
+        &CompletedSet {
+            set_number: 1,
+            reps: 5,
+            rpe: 8.0,
+            set_type: SetType::Weighted { weight: 100.0 },
+        },
+        old_ms,
+    )
+    .await
+    .expect("log old set");
+
+    let history = db
+        .get_e1rm_session_history(&eid, 12)
+        .await
+        .expect("get_e1rm_session_history");
+
+    assert_eq!(
+        history.len(),
+        1,
+        "Only the recent set should be within the 12-week window"
+    );
+}
+
+/// Bodyweight sets are excluded from the session history.
+#[wasm_bindgen_test]
+async fn test_e1rm_session_history_excludes_bodyweight_sets() {
+    let mut db = Database::new();
+    db.init(None).await.expect("DB init");
+
+    let ex = ExerciseMetadata {
+        id: None,
+        name: "Pull-up".to_string(),
+        set_type_config: SetTypeConfig::Bodyweight,
+        min_reps: 1,
+        max_reps: None,
+    };
+    let eid = db.save_exercise(&ex).await.expect("save exercise");
+
+    let now_ms = js_sys::Date::now();
+
+    db.log_set_at(
+        &eid,
+        &CompletedSet {
+            set_number: 1,
+            reps: 10,
+            rpe: 7.0,
+            set_type: SetType::Bodyweight,
+        },
+        now_ms - 1_000.0,
+    )
+    .await
+    .expect("log bodyweight set");
+
+    let history = db
+        .get_e1rm_session_history(&eid, 12)
+        .await
+        .expect("get_e1rm_session_history");
+
+    assert!(
+        history.is_empty(),
+        "Bodyweight sets must be excluded from e1RM session history"
+    );
+}
+
+/// Results are sorted oldest-first, ready for e1rm_trend input.
+#[wasm_bindgen_test]
+async fn test_e1rm_session_history_sorted_oldest_first() {
+    let mut db = Database::new();
+    db.init(None).await.expect("DB init");
+
+    let ex = ExerciseMetadata {
+        id: None,
+        name: "OHP".to_string(),
+        set_type_config: SetTypeConfig::Weighted {
+            min_weight: 0.0,
+            increment: 2.5,
+        },
+        min_reps: 1,
+        max_reps: None,
+    };
+    let eid = db.save_exercise(&ex).await.expect("save exercise");
+
+    // Three distinct days in ascending order.
+    let base_ms = 1_704_067_200_000.0_f64; // 2024-01-01 UTC
+    for i in 0..3_u32 {
+        db.log_set_at(
+            &eid,
+            &CompletedSet {
+                set_number: 1,
+                reps: 5,
+                rpe: 8.0,
+                set_type: SetType::Weighted {
+                    weight: 60.0 + i as f32 * 5.0,
+                },
+            },
+            base_ms + (i as f64) * 86_400_000.0,
+        )
+        .await
+        .expect("log set");
+    }
+
+    let history = db
+        .get_e1rm_session_history(&eid, 52)
+        .await
+        .expect("get_e1rm_session_history");
+
+    assert_eq!(history.len(), 3);
+    assert!(
+        history[0].0 < history[1].0 && history[1].0 < history[2].0,
+        "History must be sorted oldest-first"
+    );
+}
