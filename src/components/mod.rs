@@ -9,6 +9,7 @@ pub mod exercise_form;
 pub mod exercise_tab_strip;
 pub mod history_view;
 pub mod library_view;
+pub mod muscle_group_tier_cards;
 pub mod pairing;
 pub mod plan_builder;
 pub mod rpe_slider;
