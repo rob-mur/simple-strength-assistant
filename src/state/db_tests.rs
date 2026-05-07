@@ -1,5 +1,5 @@
 use crate::models::{CompletedSet, ExerciseMetadata, SetType, SetTypeConfig};
-use crate::state::Database;
+use crate::state::{Database, DatabaseError};
 use wasm_bindgen::JsValue;
 use wasm_bindgen_test::*;
 
@@ -3142,4 +3142,224 @@ async fn test_preview_permanent_delete_zero_history() {
         .expect("preview_permanent_delete failed");
     assert_eq!(sets_cnt, 0, "Zero sets expected for clean exercise");
     assert_eq!(plans_cnt, 0, "Zero plans expected for clean exercise");
+}
+
+// ── Issue #204: rename / delete templates ────────────────────────────────────
+
+use crate::models::PlanExercise;
+
+/// Helper: build a single-exercise template named `tname` with one bodyweight
+/// exercise named `ename`. Returns (template_id, exercise_id).
+async fn make_simple_template(db: &mut Database, tname: &str, ename: &str) -> (String, String) {
+    let ex = ExerciseMetadata {
+        id: None,
+        name: ename.to_string(),
+        set_type_config: SetTypeConfig::Bodyweight,
+        min_reps: 1,
+        max_reps: None,
+    };
+    let eid = db.save_exercise(&ex).await.expect("save_exercise failed");
+    let plan_ex = PlanExercise {
+        id: String::new(),
+        exercise: ExerciseMetadata {
+            id: Some(eid.clone()),
+            name: ename.to_string(),
+            set_type_config: SetTypeConfig::Bodyweight,
+            min_reps: 1,
+            max_reps: None,
+        },
+        planned_sets: 3,
+        position: 0,
+    };
+    let tid = db
+        .save_template(tname, &[plan_ex])
+        .await
+        .expect("save_template failed");
+    (tid, eid)
+}
+
+/// `rename_template` updates the name and `updated_at`; id and exercises unchanged.
+#[wasm_bindgen_test]
+async fn test_rename_template_updates_name() {
+    let mut db = Database::new();
+    db.init(None).await.expect("Database init failed");
+
+    let (tid, _eid) = make_simple_template(&mut db, "leg dy", "Squat").await;
+
+    db.rename_template(&tid, "leg day")
+        .await
+        .expect("rename_template failed");
+
+    let templates = db.list_templates().await.expect("list_templates failed");
+    assert_eq!(templates.len(), 1);
+    assert_eq!(templates[0].id, tid, "id must be unchanged after rename");
+    assert_eq!(templates[0].name, "leg day", "name must reflect rename");
+    assert_eq!(
+        templates[0].exercises.len(),
+        1,
+        "exercises must be unchanged after rename"
+    );
+}
+
+/// `rename_template` trims surrounding whitespace before persisting.
+#[wasm_bindgen_test]
+async fn test_rename_template_trims_whitespace() {
+    let mut db = Database::new();
+    db.init(None).await.expect("Database init failed");
+
+    let (tid, _eid) = make_simple_template(&mut db, "old", "Squat").await;
+
+    db.rename_template(&tid, "  push day  ")
+        .await
+        .expect("rename_template failed");
+
+    let templates = db.list_templates().await.expect("list_templates failed");
+    assert_eq!(templates[0].name, "push day");
+}
+
+/// `rename_template` rejects an empty name and leaves the row unchanged.
+#[wasm_bindgen_test]
+async fn test_rename_template_rejects_empty_name() {
+    let mut db = Database::new();
+    db.init(None).await.expect("Database init failed");
+
+    let (tid, _eid) = make_simple_template(&mut db, "leg day", "Squat").await;
+
+    let err = db
+        .rename_template(&tid, "")
+        .await
+        .expect_err("rename_template must reject empty name");
+    assert!(
+        matches!(err, DatabaseError::ValidationError(_)),
+        "expected ValidationError, got {:?}",
+        err
+    );
+
+    let templates = db.list_templates().await.expect("list_templates");
+    assert_eq!(
+        templates[0].name, "leg day",
+        "name must remain unchanged after rejected rename"
+    );
+}
+
+/// `rename_template` rejects a whitespace-only name and leaves the row unchanged.
+#[wasm_bindgen_test]
+async fn test_rename_template_rejects_whitespace_only_name() {
+    let mut db = Database::new();
+    db.init(None).await.expect("Database init failed");
+
+    let (tid, _eid) = make_simple_template(&mut db, "leg day", "Squat").await;
+
+    let err = db
+        .rename_template(&tid, "   \t  ")
+        .await
+        .expect_err("rename_template must reject whitespace-only name");
+    assert!(
+        matches!(err, DatabaseError::ValidationError(_)),
+        "expected ValidationError, got {:?}",
+        err
+    );
+
+    let templates = db.list_templates().await.expect("list_templates");
+    assert_eq!(templates[0].name, "leg day");
+}
+
+/// `delete_template` soft-deletes the template; it must not appear in `list_templates`.
+#[wasm_bindgen_test]
+async fn test_delete_template_removes_from_list() {
+    use wasm_bindgen::JsCast;
+
+    let mut db = Database::new();
+    db.init(None).await.expect("Database init failed");
+
+    let (tid, _eid) = make_simple_template(&mut db, "stale routine", "Squat").await;
+
+    let before = db.list_templates().await.expect("list_templates");
+    assert_eq!(before.len(), 1);
+
+    db.delete_template(&tid)
+        .await
+        .expect("delete_template failed");
+
+    let after = db
+        .list_templates()
+        .await
+        .expect("list_templates after delete");
+    assert_eq!(
+        after.len(),
+        0,
+        "template must not appear in list_templates after delete"
+    );
+
+    // Raw row must still exist (soft-delete) with deleted_at set.
+    let raw = db
+        .execute(
+            "SELECT deleted_at FROM workout_templates WHERE id = ?",
+            &[wasm_bindgen::JsValue::from_str(&tid)],
+        )
+        .await
+        .expect("raw query");
+    let arr = raw.dyn_ref::<js_sys::Array>().expect("expected array");
+    assert_eq!(arr.length(), 1, "template row must still exist");
+    let deleted_at =
+        js_sys::Reflect::get(&arr.get(0), &wasm_bindgen::JsValue::from_str("deleted_at"))
+            .expect("get deleted_at");
+    assert!(
+        !deleted_at.is_null() && !deleted_at.is_undefined(),
+        "deleted_at must be set on the template row"
+    );
+
+    // Template-exercise rows must also be soft-deleted (cascade).
+    let raw_te = db
+        .execute(
+            "SELECT deleted_at FROM workout_template_exercises WHERE template_id = ?",
+            &[wasm_bindgen::JsValue::from_str(&tid)],
+        )
+        .await
+        .expect("raw te query");
+    let arr_te = raw_te.dyn_ref::<js_sys::Array>().expect("expected array");
+    assert_eq!(arr_te.length(), 1, "template-exercise row must still exist");
+    let te_deleted_at = js_sys::Reflect::get(
+        &arr_te.get(0),
+        &wasm_bindgen::JsValue::from_str("deleted_at"),
+    )
+    .expect("get deleted_at on te");
+    assert!(
+        !te_deleted_at.is_null() && !te_deleted_at.is_undefined(),
+        "deleted_at must be set on the template_exercises row"
+    );
+}
+
+/// Deleting a template does not affect any plan previously loaded from it.
+/// `load_template_into_plan` copies rows into `workout_plan_exercises`, so the plan
+/// is independent of subsequent template mutations.
+#[wasm_bindgen_test]
+async fn test_delete_template_does_not_affect_loaded_plan() {
+    let mut db = Database::new();
+    db.init(None).await.expect("Database init failed");
+
+    let (tid, _eid) = make_simple_template(&mut db, "leg day", "Squat").await;
+
+    // Load template into a plan.
+    let plan_id = db.create_plan().await.expect("create_plan failed");
+    db.load_template_into_plan(&plan_id, &tid)
+        .await
+        .expect("load_template_into_plan failed");
+
+    let plan_before = db.get_plan(&plan_id).await.expect("get_plan");
+    let exercises_before = plan_before.as_ref().map(|p| p.exercises.len()).unwrap_or(0);
+    assert_eq!(exercises_before, 1, "plan must contain the loaded exercise");
+
+    // Delete the template.
+    db.delete_template(&tid)
+        .await
+        .expect("delete_template failed");
+
+    // Plan must be unaffected.
+    let plan_after = db.get_plan(&plan_id).await.expect("get_plan after delete");
+    let exercises_after = plan_after.as_ref().map(|p| p.exercises.len()).unwrap_or(0);
+    assert_eq!(
+        exercises_after, 1,
+        "plan exercises must remain after the template is deleted"
+    );
 }

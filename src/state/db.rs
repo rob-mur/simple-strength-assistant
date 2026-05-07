@@ -24,6 +24,9 @@ pub enum DatabaseError {
 
     #[error("JavaScript error: {0}")]
     JsError(String),
+
+    #[error("Validation error: {0}")]
+    ValidationError(String),
 }
 
 impl From<JsValue> for DatabaseError {
@@ -2610,6 +2613,62 @@ impl Database {
             .await?;
         }
 
+        Ok(())
+    }
+
+    /// Renames a template by id. The new name is trimmed of surrounding
+    /// whitespace; an empty/whitespace-only name is rejected with
+    /// `DatabaseError::ValidationError` and the row is left unchanged.
+    pub async fn rename_template(
+        &self,
+        template_id: &str,
+        new_name: &str,
+    ) -> Result<(), DatabaseError> {
+        let trimmed = new_name.trim();
+        if trimmed.is_empty() {
+            return Err(DatabaseError::ValidationError(
+                "Template name must not be empty".to_string(),
+            ));
+        }
+        let now = js_sys::Date::now();
+        self.execute(
+            "UPDATE workout_templates SET name = ?, updated_at = ? WHERE id = ?",
+            &[
+                JsValue::from_str(trimmed),
+                JsValue::from_f64(now),
+                JsValue::from_str(template_id),
+            ],
+        )
+        .await?;
+        Ok(())
+    }
+
+    /// Soft-deletes a template by id. Sets `deleted_at` on the template row and
+    /// on its `workout_template_exercises` rows. Plans that were previously
+    /// loaded from this template are unaffected (they hold independent copies
+    /// in `workout_plan_exercises`).
+    pub async fn delete_template(&self, template_id: &str) -> Result<(), DatabaseError> {
+        let now = js_sys::Date::now();
+        self.execute(
+            "UPDATE workout_template_exercises SET deleted_at = ?, updated_at = ?
+             WHERE template_id = ? AND deleted_at IS NULL",
+            &[
+                JsValue::from_f64(now),
+                JsValue::from_f64(now),
+                JsValue::from_str(template_id),
+            ],
+        )
+        .await?;
+        self.execute(
+            "UPDATE workout_templates SET deleted_at = ?, updated_at = ?
+             WHERE id = ? AND deleted_at IS NULL",
+            &[
+                JsValue::from_f64(now),
+                JsValue::from_f64(now),
+                JsValue::from_str(template_id),
+            ],
+        )
+        .await?;
         Ok(())
     }
 }

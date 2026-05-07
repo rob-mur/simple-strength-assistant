@@ -1,3 +1,4 @@
+use crate::components::confirmation_dialog::{ConfirmVariant, ConfirmationDialog};
 use crate::models::{ExerciseMetadata, SetTypeConfig, WorkoutTemplate};
 use crate::state::{WorkoutState, WorkoutStateManager};
 use dioxus::prelude::*;
@@ -388,8 +389,18 @@ fn SaveTemplateModal(state: WorkoutState, on_close: EventHandler<()>) -> Element
 #[component]
 fn LoadTemplateModal(state: WorkoutState, on_close: EventHandler<()>) -> Element {
     let mut templates = use_signal(Vec::<WorkoutTemplate>::new);
+    // Id of the template currently being renamed inline (None when no row in edit mode).
+    let mut rename_id = use_signal(|| Option::<String>::None);
+    let mut rename_value = use_signal(String::new);
+    let mut rename_error = use_signal(|| Option::<String>::None);
+    // Id of the template pending delete confirmation.
+    let mut delete_id = use_signal(|| Option::<String>::None);
+    let mut delete_name = use_signal(String::new);
+    let mut refresh_tick = use_signal(|| 0u32);
 
     use_effect(move || {
+        // Re-read on every refresh tick.
+        let _ = refresh_tick();
         spawn(async move {
             if let Some(db) = state.database() {
                 match db.list_templates().await {
@@ -434,39 +445,139 @@ fn LoadTemplateModal(state: WorkoutState, on_close: EventHandler<()>) -> Element
                                     let tid = template.id.clone();
                                     let tname = template.name.clone();
                                     let exercise_count = template.exercises.len();
+                                    let is_renaming = rename_id().as_deref() == Some(tid.as_str());
                                     rsx! {
-                                        button {
+                                        div {
                                             key: "{tid}",
-                                            class: "w-full text-left p-3 rounded-lg hover:bg-base-200 transition-colors",
+                                            class: "p-3 rounded-lg hover:bg-base-200 transition-colors flex items-center gap-2",
                                             "data-testid": "template-item",
-                                            onclick: move |_| {
-                                                let tid = tid.clone();
-                                                let on_close = on_close;
-                                                spawn(async move {
-                                                    if let Some(db) = state.database() {
-                                                        // Ensure plan exists
-                                                        let plan_id = if let Some(plan) = state.current_plan() {
-                                                            plan.id.clone()
-                                                        } else if let Ok(id) = WorkoutStateManager::create_plan(&state).await {
-                                                            id
-                                                        } else {
-                                                            on_close.call(());
-                                                            return;
-                                                        };
-                                                        if let Err(e) = db.load_template_into_plan(&plan_id, &tid).await {
-                                                            log::warn!("Failed to load template: {}", e);
-                                                        }
-                                                        // Refresh plan state
-                                                        let _ = WorkoutStateManager::resume_active_plan(&state).await;
+
+                                            if is_renaming {
+                                                // Inline rename editor.
+                                                div {
+                                                    class: "flex-1",
+                                                    input {
+                                                        r#type: "text",
+                                                        class: "input input-bordered input-sm w-full",
+                                                        "data-testid": "template-rename-input",
+                                                        value: "{rename_value}",
+                                                        oninput: move |evt| {
+                                                            rename_value.set(evt.value());
+                                                            rename_error.set(None);
+                                                        },
+                                                        onclick: move |evt| evt.stop_propagation(),
                                                     }
-                                                    on_close.call(());
-                                                });
-                                            },
-                                            div {
-                                                span { class: "font-bold", "{tname}" }
-                                                span {
-                                                    class: "text-sm text-base-content/50 ml-2",
-                                                    "{exercise_count} exercises"
+                                                    if let Some(msg) = rename_error() {
+                                                        p {
+                                                            class: "text-error text-xs mt-1",
+                                                            "data-testid": "template-rename-error",
+                                                            "{msg}"
+                                                        }
+                                                    }
+                                                }
+                                                button {
+                                                    class: "btn btn-primary btn-sm",
+                                                    "data-testid": "template-rename-save",
+                                                    disabled: rename_value().trim().is_empty(),
+                                                    onclick: move |evt| {
+                                                        evt.stop_propagation();
+                                                        let tid = tid.clone();
+                                                        let new_name = rename_value();
+                                                        spawn(async move {
+                                                            match WorkoutStateManager::rename_template(&state, &tid, &new_name).await {
+                                                                Ok(()) => {
+                                                                    rename_id.set(None);
+                                                                    rename_value.set(String::new());
+                                                                    rename_error.set(None);
+                                                                    refresh_tick.with_mut(|t| *t = t.wrapping_add(1));
+                                                                }
+                                                                Err(e) => {
+                                                                    log::warn!("Failed to rename template: {}", e);
+                                                                    rename_error.set(Some("Name cannot be empty".to_string()));
+                                                                }
+                                                            }
+                                                        });
+                                                    },
+                                                    "Save"
+                                                }
+                                                button {
+                                                    class: "btn btn-ghost btn-sm",
+                                                    "data-testid": "template-rename-cancel",
+                                                    onclick: move |evt| {
+                                                        evt.stop_propagation();
+                                                        rename_id.set(None);
+                                                        rename_value.set(String::new());
+                                                        rename_error.set(None);
+                                                    },
+                                                    "Cancel"
+                                                }
+                                            } else {
+                                                // Body: tap-to-load.
+                                                div {
+                                                    class: "flex-1 cursor-pointer min-w-0",
+                                                    "data-testid": "template-load-body",
+                                                    onclick: {
+                                                        let tid_load = tid.clone();
+                                                        move |_| {
+                                                            let tid = tid_load.clone();
+                                                            let on_close = on_close;
+                                                            spawn(async move {
+                                                                if let Some(db) = state.database() {
+                                                                    let plan_id = if let Some(plan) = state.current_plan() {
+                                                                        plan.id.clone()
+                                                                    } else if let Ok(id) = WorkoutStateManager::create_plan(&state).await {
+                                                                        id
+                                                                    } else {
+                                                                        on_close.call(());
+                                                                        return;
+                                                                    };
+                                                                    if let Err(e) = db.load_template_into_plan(&plan_id, &tid).await {
+                                                                        log::warn!("Failed to load template: {}", e);
+                                                                    }
+                                                                    let _ = WorkoutStateManager::resume_active_plan(&state).await;
+                                                                }
+                                                                on_close.call(());
+                                                            });
+                                                        }
+                                                    },
+                                                    span { class: "font-bold", "{tname}" }
+                                                    span {
+                                                        class: "text-sm text-base-content/50 ml-2",
+                                                        "{exercise_count} exercises"
+                                                    }
+                                                }
+                                                // Per-row rename action.
+                                                button {
+                                                    class: "btn btn-ghost btn-sm btn-circle",
+                                                    "data-testid": "template-rename-button",
+                                                    aria_label: "Rename template",
+                                                    onclick: {
+                                                        let tid_r = tid.clone();
+                                                        let tname_r = tname.clone();
+                                                        move |evt: Event<MouseData>| {
+                                                            evt.stop_propagation();
+                                                            rename_id.set(Some(tid_r.clone()));
+                                                            rename_value.set(tname_r.clone());
+                                                            rename_error.set(None);
+                                                        }
+                                                    },
+                                                    "✎"
+                                                }
+                                                // Per-row delete action.
+                                                button {
+                                                    class: "btn btn-ghost btn-sm btn-circle text-error",
+                                                    "data-testid": "template-delete-button",
+                                                    aria_label: "Delete template",
+                                                    onclick: {
+                                                        let tid_d = tid.clone();
+                                                        let tname_d = tname.clone();
+                                                        move |evt: Event<MouseData>| {
+                                                            evt.stop_propagation();
+                                                            delete_id.set(Some(tid_d.clone()));
+                                                            delete_name.set(tname_d.clone());
+                                                        }
+                                                    },
+                                                    "🗑"
                                                 }
                                             }
                                         }
@@ -474,6 +585,32 @@ fn LoadTemplateModal(state: WorkoutState, on_close: EventHandler<()>) -> Element
                                 }
                             }
                         }
+                    }
+                }
+            }
+
+            // Delete-confirm dialog.
+            if let Some(did) = delete_id() {
+                ConfirmationDialog {
+                    title: format!("Delete template \"{}\"?", delete_name()),
+                    body: "This template will be removed. Plans previously loaded from it are unaffected.".to_string(),
+                    confirm_label: "Delete".to_string(),
+                    cancel_label: "Cancel".to_string(),
+                    variant: ConfirmVariant::Danger,
+                    on_cancel: move |_| {
+                        delete_id.set(None);
+                        delete_name.set(String::new());
+                    },
+                    on_confirm: move |_| {
+                        let tid = did.clone();
+                        delete_id.set(None);
+                        delete_name.set(String::new());
+                        spawn(async move {
+                            if let Err(e) = WorkoutStateManager::delete_template(&state, &tid).await {
+                                log::warn!("Failed to delete template: {}", e);
+                            }
+                            refresh_tick.with_mut(|t| *t = t.wrapping_add(1));
+                        });
                     }
                 }
             }
