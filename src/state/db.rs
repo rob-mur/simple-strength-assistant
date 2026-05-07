@@ -2671,6 +2671,75 @@ impl Database {
         .await?;
         Ok(())
     }
+
+    /// Returns the maximum weight recorded per rep count for the given exercise
+    /// within the history window `[since_ms, ∞)`, restricted to weighted sets.
+    ///
+    /// The raw SQL result is `MAX(weight) GROUP BY reps`.  After collecting that
+    /// map a fold step propagates higher-rep maxima downward so that
+    /// `historical_max[r]` = max weight across all sets where `reps_done >= r`.
+    /// This gives the suggestion algorithm the per-rep PB it needs.
+    ///
+    /// Returns an empty `HashMap` when there are no qualifying sets.
+    pub async fn get_max_weight_per_rep(
+        &self,
+        exercise_id: &str,
+        since_ms: f64,
+    ) -> Result<std::collections::HashMap<u32, f64>, DatabaseError> {
+        let sql = r#"
+            SELECT reps, MAX(weight) AS max_weight
+            FROM completed_sets
+            WHERE exercise_id = ?
+              AND recorded_at >= ?
+              AND deleted_at IS NULL
+              AND is_bodyweight = 0
+            GROUP BY reps
+        "#;
+
+        let params = vec![JsValue::from_str(exercise_id), JsValue::from_f64(since_ms)];
+
+        let result = self.execute(sql, &params).await?;
+
+        let array = result
+            .dyn_ref::<js_sys::Array>()
+            .ok_or_else(|| DatabaseError::QueryError("Expected array result".to_string()))?;
+
+        // Build raw per-rep max from SQL result.
+        let mut raw: std::collections::HashMap<u32, f64> = std::collections::HashMap::new();
+        for i in 0..array.length() {
+            let row = array.get(i);
+            let reps = js_sys::Reflect::get(&row, &JsValue::from_str("reps"))?
+                .as_f64()
+                .ok_or_else(|| DatabaseError::QueryError("Failed to get reps".to_string()))?
+                as u32;
+            let max_weight = js_sys::Reflect::get(&row, &JsValue::from_str("max_weight"))?
+                .as_f64()
+                .ok_or_else(|| DatabaseError::QueryError("Failed to get max_weight".to_string()))?;
+            raw.insert(reps, max_weight);
+        }
+
+        if raw.is_empty() {
+            return Ok(raw);
+        }
+
+        // Fold: historical_max[r] = max weight where reps_done >= r.
+        // Collect all unique rep counts, then for every rep count r compute
+        // the maximum weight across all keys k where k >= r.
+        let mut all_reps: Vec<u32> = raw.keys().copied().collect();
+        all_reps.sort_unstable();
+
+        let mut folded: std::collections::HashMap<u32, f64> = std::collections::HashMap::new();
+        for &r in &all_reps {
+            let best = raw
+                .iter()
+                .filter(|(k, _)| **k >= r)
+                .map(|(_, w)| *w)
+                .fold(f64::NEG_INFINITY, f64::max);
+            folded.insert(r, best);
+        }
+
+        Ok(folded)
+    }
 }
 
 impl Default for Database {

@@ -3363,3 +3363,270 @@ async fn test_delete_template_does_not_affect_loaded_plan() {
         "plan exercises must remain after the template is deleted"
     );
 }
+
+// ── Issue #95: get_max_weight_per_rep ─────────────────────────────────────────
+
+/// Helper: create a weighted exercise and return its id.
+async fn make_weighted_exercise(db: &Database, name: &str) -> String {
+    let ex = ExerciseMetadata {
+        id: None,
+        name: name.to_string(),
+        set_type_config: SetTypeConfig::Weighted {
+            min_weight: 0.0,
+            increment: 5.0,
+        },
+        min_reps: 1,
+        max_reps: None,
+    };
+    db.save_exercise(&ex).await.expect("save_exercise failed")
+}
+
+/// Single rep count → map with one entry, key = that rep count, value = weight.
+#[wasm_bindgen_test]
+async fn test_get_max_weight_per_rep_single_rep_count() {
+    let mut db = Database::new();
+    db.init(None).await.expect("DB init failed");
+    let eid = make_weighted_exercise(&db, "Bench Press").await;
+
+    let since_ms = 0.0_f64;
+    db.log_set_at(
+        &eid,
+        &CompletedSet {
+            set_number: 1,
+            reps: 5,
+            rpe: 7.0,
+            set_type: SetType::Weighted { weight: 100.0 },
+        },
+        1_000_000.0,
+    )
+    .await
+    .expect("log_set_at failed");
+
+    let map = db
+        .get_max_weight_per_rep(&eid, since_ms)
+        .await
+        .expect("get_max_weight_per_rep failed");
+
+    assert_eq!(map.len(), 1, "Expected exactly one entry");
+    assert_eq!(map.get(&5), Some(&100.0), "Key 5 must map to weight 100.0");
+}
+
+/// Multiple distinct rep counts → correct max per rep count; duplicate rep
+/// entries return only the max.
+#[wasm_bindgen_test]
+async fn test_get_max_weight_per_rep_multiple_rep_counts() {
+    let mut db = Database::new();
+    db.init(None).await.expect("DB init failed");
+    let eid = make_weighted_exercise(&db, "Squat").await;
+
+    let since_ms = 0.0_f64;
+    // Three entries at 5 reps; max is 110.
+    for &(i, w) in [(1u32, 100.0_f32), (2, 105.0), (3, 110.0)].iter() {
+        db.log_set_at(
+            &eid,
+            &CompletedSet {
+                set_number: i,
+                reps: 5,
+                rpe: 7.0,
+                set_type: SetType::Weighted { weight: w },
+            },
+            1_000_000.0 * (i as f64),
+        )
+        .await
+        .expect("log_set_at failed");
+    }
+    // One entry at 3 reps.
+    db.log_set_at(
+        &eid,
+        &CompletedSet {
+            set_number: 4,
+            reps: 3,
+            rpe: 8.0,
+            set_type: SetType::Weighted { weight: 130.0 },
+        },
+        4_000_000.0,
+    )
+    .await
+    .expect("log_set_at failed");
+
+    let map = db
+        .get_max_weight_per_rep(&eid, since_ms)
+        .await
+        .expect("get_max_weight_per_rep failed");
+
+    // Raw max: reps=5 → 110, reps=3 → 130.
+    // After fold: reps=3 → max(w where reps>=3) = max(130, 110) = 130.
+    //             reps=5 → max(w where reps>=5) = 110.
+    assert_eq!(
+        map.get(&3),
+        Some(&130.0),
+        "reps=3 should map to 130.0 (direct max)"
+    );
+    assert_eq!(
+        map.get(&5),
+        Some(&110.0),
+        "reps=5 should map to 110.0 (max of 100/105/110)"
+    );
+}
+
+/// Empty history → empty HashMap.
+#[wasm_bindgen_test]
+async fn test_get_max_weight_per_rep_empty_history() {
+    let mut db = Database::new();
+    db.init(None).await.expect("DB init failed");
+    let eid = make_weighted_exercise(&db, "Deadlift").await;
+
+    let map = db
+        .get_max_weight_per_rep(&eid, 0.0)
+        .await
+        .expect("get_max_weight_per_rep failed");
+
+    assert!(map.is_empty(), "No sets → empty map");
+}
+
+/// since_ms boundary: set exactly at since_ms included; set 1 ms before excluded.
+#[wasm_bindgen_test]
+async fn test_get_max_weight_per_rep_since_ms_boundary() {
+    let mut db = Database::new();
+    db.init(None).await.expect("DB init failed");
+    let eid = make_weighted_exercise(&db, "Overhead Press").await;
+
+    let since_ms = 10_000_000.0_f64;
+
+    // Set exactly at since_ms → must be included.
+    db.log_set_at(
+        &eid,
+        &CompletedSet {
+            set_number: 1,
+            reps: 5,
+            rpe: 7.0,
+            set_type: SetType::Weighted { weight: 80.0 },
+        },
+        since_ms,
+    )
+    .await
+    .expect("log at boundary failed");
+
+    // Set 1 ms before since_ms → must be excluded.
+    db.log_set_at(
+        &eid,
+        &CompletedSet {
+            set_number: 2,
+            reps: 5,
+            rpe: 7.0,
+            set_type: SetType::Weighted { weight: 999.0 },
+        },
+        since_ms - 1.0,
+    )
+    .await
+    .expect("log before boundary failed");
+
+    let map = db
+        .get_max_weight_per_rep(&eid, since_ms)
+        .await
+        .expect("get_max_weight_per_rep failed");
+
+    // Only the boundary set (80.0) should be included.
+    assert_eq!(
+        map.get(&5),
+        Some(&80.0),
+        "Set at exactly since_ms must be included (got {:?})",
+        map.get(&5)
+    );
+}
+
+/// Fold step: historical_max[r] = max weight where reps_done >= r.
+/// A heavy 8-rep set must propagate its weight down to all lower rep counts.
+#[wasm_bindgen_test]
+async fn test_get_max_weight_per_rep_fold_propagation() {
+    let mut db = Database::new();
+    db.init(None).await.expect("DB init failed");
+    let eid = make_weighted_exercise(&db, "Romanian Deadlift").await;
+
+    let since_ms = 0.0_f64;
+
+    // 8 reps @ 60 kg  → heavy per-rep weight for a lighter rep scheme
+    db.log_set_at(
+        &eid,
+        &CompletedSet {
+            set_number: 1,
+            reps: 8,
+            rpe: 7.0,
+            set_type: SetType::Weighted { weight: 60.0 },
+        },
+        1_000_000.0,
+    )
+    .await
+    .expect("log 8-rep set failed");
+
+    // 3 reps @ 50 kg
+    db.log_set_at(
+        &eid,
+        &CompletedSet {
+            set_number: 2,
+            reps: 3,
+            rpe: 8.0,
+            set_type: SetType::Weighted { weight: 50.0 },
+        },
+        2_000_000.0,
+    )
+    .await
+    .expect("log 3-rep set failed");
+
+    let map = db
+        .get_max_weight_per_rep(&eid, since_ms)
+        .await
+        .expect("get_max_weight_per_rep failed");
+
+    // historical_max[3] = max(w | reps >= 3) = max(60.0 @ reps=8, 50.0 @ reps=3) = 60.0
+    assert_eq!(
+        map.get(&3),
+        Some(&60.0),
+        "reps=3 must pick up the heavier 8-rep set via fold (got {:?})",
+        map.get(&3)
+    );
+    // historical_max[8] = max(w | reps >= 8) = 60.0
+    assert_eq!(map.get(&8), Some(&60.0), "reps=8 direct max must be 60.0");
+}
+
+/// Bodyweight sets are excluded even when they carry an implicit weight.
+#[wasm_bindgen_test]
+async fn test_get_max_weight_per_rep_excludes_bodyweight_sets() {
+    let mut db = Database::new();
+    db.init(None).await.expect("DB init failed");
+
+    // Create a bodyweight exercise.
+    let bw_ex = ExerciseMetadata {
+        id: None,
+        name: "Pull-up".to_string(),
+        set_type_config: SetTypeConfig::Bodyweight,
+        min_reps: 1,
+        max_reps: None,
+    };
+    let bw_eid = db.save_exercise(&bw_ex).await.expect("save bw exercise");
+
+    // Log a bodyweight set (is_bodyweight = 1).
+    db.log_set_at(
+        &bw_eid,
+        &CompletedSet {
+            set_number: 1,
+            reps: 10,
+            rpe: 7.0,
+            set_type: SetType::Bodyweight,
+        },
+        1_000_000.0,
+    )
+    .await
+    .expect("log bodyweight set failed");
+
+    let map = db
+        .get_max_weight_per_rep(&bw_eid, 0.0)
+        .await
+        .expect("get_max_weight_per_rep failed");
+
+    assert!(
+        map.is_empty(),
+        "Bodyweight sets must be excluded; map must be empty (got {:?})",
+        map
+    );
+}
