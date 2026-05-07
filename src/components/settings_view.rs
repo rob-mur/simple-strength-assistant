@@ -483,7 +483,7 @@ pub fn SettingsView(state: WorkoutState) -> Element {
                     h3 { class: "card-title text-base font-bold mb-4", "Workout Planning" }
 
                     div {
-                        class: "form-control mb-2",
+                        class: "form-control mb-6",
                         label {
                             class: "label",
                             span { class: "label-text font-semibold", "Default Planned Sets" }
@@ -509,6 +509,37 @@ pub fn SettingsView(state: WorkoutState) -> Element {
                             span {
                                 class: "label-text-alt opacity-60",
                                 "Number of sets pre-filled when adding an exercise to a plan"
+                            }
+                        }
+                    }
+
+                    div {
+                        class: "form-control mb-2",
+                        label {
+                            class: "label",
+                            span { class: "label-text font-semibold", "Default Bodyweight Reps" }
+                        }
+                        input {
+                            r#type: "number",
+                            min: "1",
+                            value: "{settings.default_bodyweight_reps}",
+                            class: "input input-bordered w-full",
+                            "data-testid": "default-bodyweight-reps-input",
+                            oninput: move |evt| {
+                                if let Ok(val) = evt.value().parse::<u32>()
+                                    && val >= 1
+                                {
+                                    let mut s = settings;
+                                    s.default_bodyweight_reps = val;
+                                    persist(s);
+                                }
+                            }
+                        }
+                        label {
+                            class: "label",
+                            span {
+                                class: "label-text-alt opacity-60",
+                                "Rep count suggested when starting a bodyweight exercise with no history"
                             }
                         }
                     }

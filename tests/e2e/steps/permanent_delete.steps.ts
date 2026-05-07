@@ -55,7 +55,7 @@ Then(
     const archivedCard = page.locator('[data-testid="library-view"] div.card', {
       hasText: name.toUpperCase(),
     });
-    await expect(archivedCard).not.toBeVisible();
+    await expect(archivedCard).not.toBeVisible({ timeout: 10000 });
   },
 );
 

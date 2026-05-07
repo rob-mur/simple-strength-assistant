@@ -11,6 +11,8 @@ pub struct Settings {
     pub today_blend_factor: f64,
     /// Default number of planned sets when adding an exercise to a plan (default: 3)
     pub default_planned_sets: u32,
+    /// Default rep count suggested for bodyweight exercises (default: 10)
+    pub default_bodyweight_reps: u32,
 }
 
 impl Default for Settings {
@@ -20,6 +22,7 @@ impl Default for Settings {
             history_window_days: 30,
             today_blend_factor: 0.5,
             default_planned_sets: 3,
+            default_bodyweight_reps: 10,
         }
     }
 }
@@ -35,6 +38,7 @@ mod tests {
         assert_eq!(s.history_window_days, 30);
         assert_eq!(s.today_blend_factor, 0.5);
         assert_eq!(s.default_planned_sets, 3);
+        assert_eq!(s.default_bodyweight_reps, 10);
     }
 
     #[test]
@@ -44,6 +48,7 @@ mod tests {
             history_window_days: 14,
             today_blend_factor: 0.3,
             default_planned_sets: 5,
+            default_bodyweight_reps: 15,
         };
         let json = serde_json::to_string(&original).expect("serialize");
         let deserialized: Settings = serde_json::from_str(&json).expect("deserialize");

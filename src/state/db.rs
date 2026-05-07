@@ -67,7 +67,7 @@ extern "C" {
 }
 
 /// Current schema version. Bump this when the schema changes.
-const SCHEMA_VERSION: i64 = 7;
+const SCHEMA_VERSION: i64 = 8;
 
 #[derive(Clone, PartialEq)]
 pub struct Database {
@@ -261,6 +261,12 @@ impl Database {
         if current_version < 7 {
             log::debug!("[DB] Applying v7 migration: workout plans and templates tables");
             self.apply_v7_migration().await?;
+        }
+
+        // ── v8 migration: default_bodyweight_reps ─────────────────────────
+        if current_version < 8 {
+            log::debug!("[DB] Applying v8 migration: default_bodyweight_reps");
+            self.apply_v8_migration().await?;
         }
 
         // Stamp the new version
@@ -692,6 +698,17 @@ impl Database {
         .await?;
 
         log::debug!("[DB] v7 migration complete — workout plans and templates tables created");
+        Ok(())
+    }
+
+    /// Adds `default_bodyweight_reps` column to settings table.
+    async fn apply_v8_migration(&self) -> Result<(), DatabaseError> {
+        self.add_column_if_missing(
+            "ALTER TABLE settings ADD COLUMN default_bodyweight_reps INTEGER NOT NULL DEFAULT 10",
+        )
+        .await?;
+
+        log::debug!("[DB] v8 migration complete — default_bodyweight_reps added");
         Ok(())
     }
 
@@ -1564,7 +1581,7 @@ impl Database {
         // Ensure the settings row exists (idempotent).
         self.seed_settings().await?;
 
-        let sql = "SELECT target_rpe, history_window_days, today_blend_factor, default_planned_sets FROM settings WHERE id = 1";
+        let sql = "SELECT target_rpe, history_window_days, today_blend_factor, default_planned_sets, default_bodyweight_reps FROM settings WHERE id = 1";
         let result = self.execute(sql, &[]).await?;
 
         let array = result
@@ -1594,11 +1611,18 @@ impl Database {
                 .and_then(|v| v.as_f64())
                 .unwrap_or(3.0) as u32;
 
+        let default_bodyweight_reps =
+            js_sys::Reflect::get(&row, &JsValue::from_str("default_bodyweight_reps"))
+                .ok()
+                .and_then(|v| v.as_f64())
+                .unwrap_or(10.0) as u32;
+
         Ok(crate::models::Settings {
             target_rpe,
             history_window_days,
             today_blend_factor,
             default_planned_sets,
+            default_bodyweight_reps,
         })
     }
 
@@ -1607,7 +1631,7 @@ impl Database {
         &self,
         settings: &crate::models::Settings,
     ) -> Result<(), DatabaseError> {
-        let sql = "UPDATE settings SET target_rpe = ?, history_window_days = ?, today_blend_factor = ?, default_planned_sets = ? WHERE id = 1";
+        let sql = "UPDATE settings SET target_rpe = ?, history_window_days = ?, today_blend_factor = ?, default_planned_sets = ?, default_bodyweight_reps = ? WHERE id = 1";
         self.execute(
             sql,
             &[
@@ -1615,6 +1639,7 @@ impl Database {
                 JsValue::from_f64(settings.history_window_days as f64),
                 JsValue::from_f64(settings.today_blend_factor),
                 JsValue::from_f64(settings.default_planned_sets as f64),
+                JsValue::from_f64(settings.default_bodyweight_reps as f64),
             ],
         )
         .await?;

@@ -14,7 +14,6 @@ fn js_log(msg: &str) {
 
 // Initial prediction constants
 const DEFAULT_WEIGHTED_REPS: u32 = 8;
-const DEFAULT_BODYWEIGHT_REPS: u32 = 10;
 const DEFAULT_RPE: f32 = 7.0;
 const RPE_THRESHOLD_HIGH: f32 = 8.0;
 const RPE_THRESHOLD_LOW: f32 = 7.0;
@@ -430,7 +429,11 @@ impl WorkoutStateManager {
             log::warn!("Failed to sync exercises after saving: {}", e);
         }
 
-        let predicted = Self::calculate_initial_predictions(&exercise, last_set.as_ref());
+        let predicted = Self::calculate_initial_predictions(
+            &exercise,
+            last_set.as_ref(),
+            state.settings().default_bodyweight_reps,
+        );
 
         // Use exercise_id as session_id so the UI can detect a new session started
         let session = WorkoutSession {
@@ -469,7 +472,8 @@ impl WorkoutStateManager {
                 })?;
 
         session.completed_sets.push(set.clone());
-        session.predicted = Self::calculate_next_predictions(&session);
+        session.predicted =
+            Self::calculate_next_predictions(&session, state.settings().default_bodyweight_reps);
 
         state.set_current_session(Some(session));
 
@@ -887,6 +891,7 @@ impl WorkoutStateManager {
     fn calculate_initial_predictions(
         exercise: &ExerciseMetadata,
         last_set: Option<&CompletedSet>,
+        default_bodyweight_reps: u32,
     ) -> PredictedParameters {
         match &exercise.set_type_config {
             crate::models::SetTypeConfig::Weighted { min_weight, .. } => {
@@ -908,18 +913,25 @@ impl WorkoutStateManager {
             }
             crate::models::SetTypeConfig::Bodyweight => PredictedParameters {
                 weight: None,
-                reps: DEFAULT_BODYWEIGHT_REPS,
+                reps: default_bodyweight_reps,
                 rpe: DEFAULT_RPE,
             },
         }
     }
 
-    fn calculate_next_predictions(session: &WorkoutSession) -> PredictedParameters {
+    fn calculate_next_predictions(
+        session: &WorkoutSession,
+        default_bodyweight_reps: u32,
+    ) -> PredictedParameters {
         if session.completed_sets.is_empty() {
             // Note: This path is unreachable in normal UI flow because initial prediction from start_session
             // is stored in session.predicted, and calculate_next_predictions is only called after a set is completed.
             // If it is ever called with 0 sets, it returns min_weight (ignoring history).
-            return Self::calculate_initial_predictions(&session.exercise, None);
+            return Self::calculate_initial_predictions(
+                &session.exercise,
+                None,
+                default_bodyweight_reps,
+            );
         }
 
         let last_set = &session.completed_sets[session.completed_sets.len() - 1];
@@ -956,7 +968,11 @@ impl WorkoutStateManager {
             // should come from the session's own sets. If this fails, we fall back
             // to initial predictions ignoring previous session history to maintain
             // focus on the current session's performance.
-            _ => Self::calculate_initial_predictions(&session.exercise, None),
+            _ => Self::calculate_initial_predictions(
+                &session.exercise,
+                None,
+                default_bodyweight_reps,
+            ),
         }
     }
 
@@ -1137,7 +1153,7 @@ mod tests {
             max_reps: None,
         };
 
-        let predicted = WorkoutStateManager::calculate_initial_predictions(&exercise, None);
+        let predicted = WorkoutStateManager::calculate_initial_predictions(&exercise, None, 10);
 
         assert_eq!(predicted.weight, Some(0.0));
         assert_eq!(predicted.reps, 8);
@@ -1165,7 +1181,7 @@ mod tests {
         };
 
         let predicted =
-            WorkoutStateManager::calculate_initial_predictions(&exercise, Some(&last_set));
+            WorkoutStateManager::calculate_initial_predictions(&exercise, Some(&last_set), 10);
 
         assert_eq!(predicted.weight, Some(100.0));
         assert_eq!(predicted.reps, 8);
@@ -1182,10 +1198,27 @@ mod tests {
             max_reps: None,
         };
 
-        let predicted = WorkoutStateManager::calculate_initial_predictions(&exercise, None);
+        let predicted = WorkoutStateManager::calculate_initial_predictions(&exercise, None, 10);
 
         assert_eq!(predicted.weight, None);
         assert_eq!(predicted.reps, 10);
+        assert_eq!(predicted.rpe, 7.0);
+    }
+
+    #[test]
+    fn test_initial_predictions_bodyweight_custom_reps() {
+        let exercise = ExerciseMetadata {
+            id: Some("test-uuid-2".to_string()),
+            name: "Pull-ups".to_string(),
+            set_type_config: SetTypeConfig::Bodyweight,
+            min_reps: 1,
+            max_reps: None,
+        };
+
+        let predicted = WorkoutStateManager::calculate_initial_predictions(&exercise, None, 15);
+
+        assert_eq!(predicted.weight, None);
+        assert_eq!(predicted.reps, 15);
         assert_eq!(predicted.rpe, 7.0);
     }
 
@@ -1218,7 +1251,7 @@ mod tests {
             },
         };
 
-        let predicted = WorkoutStateManager::calculate_next_predictions(&session);
+        let predicted = WorkoutStateManager::calculate_next_predictions(&session, 10);
 
         assert_eq!(predicted.weight, Some(105.0));
         assert_eq!(predicted.reps, 8);
