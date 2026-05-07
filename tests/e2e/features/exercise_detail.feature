@@ -51,3 +51,19 @@ Feature: Exercise Detail View
     When the user taps on the "Deadlift" card
     And the user taps the back button in the detail view
     Then the user should be on the Library tab
+
+  @fast
+  Scenario: Library card has no inline edit control
+    Given I have a fresh context and clear storage
+    And I create a new database
+    And the database contains "Bench Press" as a weighted exercise
+    And the user is on the Library tab
+    Then the library card for "Bench Press" has no edit button
+
+  @fast
+  Scenario: Library card displays a chevron navigation affordance
+    Given I have a fresh context and clear storage
+    And I create a new database
+    And the database contains "Bench Press" as a weighted exercise
+    And the user is on the Library tab
+    Then the library card for "Bench Press" displays a chevron

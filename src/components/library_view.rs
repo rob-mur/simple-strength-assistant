@@ -7,13 +7,6 @@ use dioxus::prelude::*;
 #[derive(Clone, PartialEq)]
 pub struct TestSearchQuery(pub String);
 
-#[derive(Clone, PartialEq)]
-pub enum FormState {
-    Closed,
-    New,
-    Edit(ExerciseMetadata),
-}
-
 #[component]
 pub fn LibraryView() -> Element {
     let workout_state = consume_context::<WorkoutState>();
@@ -21,7 +14,7 @@ pub fn LibraryView() -> Element {
     // Allow injecting a search query context for easier unit testing
     let test_query = try_consume_context::<TestSearchQuery>();
     let mut search_query = use_signal(|| test_query.map(|t| t.0).unwrap_or_default());
-    let mut show_form = use_signal(|| FormState::Closed);
+    let mut show_new_form = use_signal(|| false);
     let mut show_archived = use_signal(|| false);
     // Holds archived exercises fetched on demand when the toggle is ON.
     let mut archived_exercises: Signal<Vec<ExerciseMetadata>> = use_signal(Vec::new);
@@ -54,34 +47,26 @@ pub fn LibraryView() -> Element {
             .collect::<Vec<_>>()
     });
 
-    match show_form() {
-        FormState::New | FormState::Edit(_) => {
-            let initial_exercise = if let FormState::Edit(e) = show_form() {
-                Some(e)
-            } else {
-                None
-            };
-            return rsx! {
-                div {
-                    class: "max-w-2xl mx-auto p-4",
-                    ExerciseForm {
-                        initial_exercise,
-                        on_cancel: move |_| show_form.set(FormState::Closed),
-                        on_save: move |exercise| {
-                            spawn(async move {
-                                if let Err(e) = WorkoutStateManager::save_exercise(&workout_state, exercise).await {
-                                    WorkoutStateManager::handle_error(&workout_state, e);
-                                }
-                                // Ordering dependency: show_form.set(FormState::Closed) only executes after
-                                // sync_exercises completes inside save_exercise, avoiding stale ID async races.
-                                show_form.set(FormState::Closed);
-                            });
-                        }
+    if show_new_form() {
+        return rsx! {
+            div {
+                class: "max-w-2xl mx-auto p-4",
+                ExerciseForm {
+                    initial_exercise: None,
+                    on_cancel: move |_| show_new_form.set(false),
+                    on_save: move |exercise| {
+                        spawn(async move {
+                            if let Err(e) = WorkoutStateManager::save_exercise(&workout_state, exercise).await {
+                                WorkoutStateManager::handle_error(&workout_state, e);
+                            }
+                            // Ordering dependency: show_new_form.set(false) only executes after
+                            // sync_exercises completes inside save_exercise, avoiding stale ID async races.
+                            show_new_form.set(false);
+                        });
                     }
                 }
-            };
-        }
-        FormState::Closed => {}
+            }
+        };
     }
 
     // Determine empty-state copy based on toggle
@@ -176,7 +161,7 @@ pub fn LibraryView() -> Element {
                         }
                         button {
                             class: "btn btn-primary mt-6",
-                            onclick: move |_| show_form.set(FormState::New),
+                            onclick: move |_| show_new_form.set(true),
                             "Add First Exercise"
                         }
                     }
@@ -201,9 +186,20 @@ pub fn LibraryView() -> Element {
                         div {
                             key: "{exercise.id.clone().unwrap_or_default()}",
                             class: "card bg-base-100 shadow-md hover:shadow-lg transition-all border border-base-200 cursor-pointer",
+                            role: "link",
+                            tabindex: "0",
+                            "aria-label": "View {exercise.name} details",
                             onclick: {
                                 let id = exercise.id.clone().unwrap_or_default();
                                 move |_| { navigator.push(Route::LibraryExercise { exercise_id: id.clone() }); }
+                            },
+                            onkeydown: {
+                                let id = exercise.id.clone().unwrap_or_default();
+                                move |evt: KeyboardEvent| {
+                                    if evt.key() == Key::Enter {
+                                        navigator.push(Route::LibraryExercise { exercise_id: id.clone() });
+                                    }
+                                }
                             },
                             div {
                                 class: "card-body p-4",
@@ -236,35 +232,11 @@ pub fn LibraryView() -> Element {
                                             }
                                         }
                                     }
-                                    // Action buttons: only show edit/start when viewing active (non-archived) exercises
-                                    if !show_archived() {
-                                        div {
-                                            class: "flex gap-2",
-                                            button {
-                                                class: "btn btn-ghost btn-sm btn-circle",
-                                                onclick: {
-                                                    let e = exercise.clone();
-                                                    // Note: e must be cloned again here because the onclick handler is an FnMut
-                                                    // and FormState::Edit takes ownership of the value.
-                                                    move |evt| {
-                                                        evt.stop_propagation();
-                                                        show_form.set(FormState::Edit(e.clone()));
-                                                    }
-                                                },
-                                                svg {
-                                                    xmlns: "http://www.w3.org/2000/svg",
-                                                    fill: "none",
-                                                    view_box: "0 0 24 24",
-                                                    stroke_width: "2",
-                                                    stroke: "currentColor",
-                                                    class: "w-4 h-4",
-                                                    path {
-                                                        stroke_linecap: "round",
-                                                        stroke_linejoin: "round",
-                                                        d: "m16.862 4.487 1.687-1.688a1.875 1.875 0 1 1 2.652 2.652L10.582 16.07a4.5 4.5 0 0 1-1.897 1.13L6 18l.8-2.685a4.5 4.5 0 0 1 1.13-1.897l8.932-8.931Zm0 0L19.5 7.125M18 14v4.75A2.25 2.25 0 0 1 15.75 21H5.25A2.25 2.25 0 0 1 3 18.75V8.25A2.25 2.25 0 0 1 5.25 6H10"
-                                                    }
-                                                }
-                                            }
+                                    div {
+                                        class: "flex gap-2 items-center",
+                                        // Action buttons: only for active (non-archived) exercises.
+                                        // Edit is accessible exclusively from the detail view.
+                                        if !show_archived() {
                                             if workout_state.current_plan().is_some() {
                                                 {
                                                     let eid = exercise.id.clone().unwrap_or_default();
@@ -318,6 +290,24 @@ pub fn LibraryView() -> Element {
                                                 }
                                             }
                                         }
+                                        span {
+                                            "data-testid": "card-nav-chevron",
+                                            "aria-hidden": "true",
+                                            class: "text-base-content/30",
+                                            svg {
+                                                xmlns: "http://www.w3.org/2000/svg",
+                                                fill: "none",
+                                                view_box: "0 0 24 24",
+                                                stroke_width: "2",
+                                                stroke: "currentColor",
+                                                class: "w-4 h-4",
+                                                path {
+                                                    stroke_linecap: "round",
+                                                    stroke_linejoin: "round",
+                                                    d: "m8.25 4.5 7.5 7.5-7.5 7.5"
+                                                }
+                                            }
+                                        }
                                     }
                                 }
                             }
@@ -333,7 +323,7 @@ pub fn LibraryView() -> Element {
                     class: "btn btn-primary btn-circle shadow-lg fixed bottom-20 right-4 z-[60]",
                     "data-testid": "add-exercise-fab",
                     "aria-label": "Add Exercise",
-                    onclick: move |_| show_form.set(FormState::New),
+                    onclick: move |_| show_new_form.set(true),
                     svg {
                         xmlns: "http://www.w3.org/2000/svg",
                         fill: "none",

@@ -142,3 +142,22 @@ When("the user taps the back button in the detail view", async ({ page }) => {
 Then("the user should be on the Library tab", async ({ page }) => {
   await expect(page.getByTestId("library-view")).toBeVisible();
 });
+
+Then(
+  "the library card for {string} has no edit button",
+  async ({ page }, name: string) => {
+    const card = page.locator("div.card", { hasText: name.toUpperCase() });
+    await expect(card).toBeVisible();
+    // The card must not contain the pencil/edit icon — edit is detail-view only
+    await expect(card.locator('path[d^="m16.862"]')).not.toBeAttached();
+  },
+);
+
+Then(
+  "the library card for {string} displays a chevron",
+  async ({ page }, name: string) => {
+    const card = page.locator("div.card", { hasText: name.toUpperCase() });
+    await expect(card).toBeVisible();
+    await expect(card.getByTestId("card-nav-chevron")).toBeVisible();
+  },
+);
