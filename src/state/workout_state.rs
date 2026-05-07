@@ -606,6 +606,39 @@ impl WorkoutStateManager {
         Self::sync_exercises(state).await
     }
 
+    /// Renames a template by id. Validates the new name (empty/whitespace-only
+    /// is rejected). Auto-saves the database file on success.
+    pub async fn rename_template(
+        state: &WorkoutState,
+        template_id: &str,
+        new_name: &str,
+    ) -> Result<(), WorkoutError> {
+        let db = state.database().ok_or(WorkoutError::NotInitialized)?;
+        db.rename_template(template_id, new_name)
+            .await
+            .map_err(WorkoutError::Database)?;
+        if let Err(e) = Self::save_database(state).await {
+            log::warn!("Auto-save after rename_template failed: {}", e);
+        }
+        Ok(())
+    }
+
+    /// Soft-deletes a template by id. Auto-saves the database file on success.
+    /// Plans previously loaded from this template are unaffected.
+    pub async fn delete_template(
+        state: &WorkoutState,
+        template_id: &str,
+    ) -> Result<(), WorkoutError> {
+        let db = state.database().ok_or(WorkoutError::NotInitialized)?;
+        db.delete_template(template_id)
+            .await
+            .map_err(WorkoutError::Database)?;
+        if let Err(e) = Self::save_database(state).await {
+            log::warn!("Auto-save after delete_template failed: {}", e);
+        }
+        Ok(())
+    }
+
     /// Load settings from the database into app state.
     pub async fn load_settings(state: &WorkoutState) -> Result<(), WorkoutError> {
         let db = state.database().ok_or(WorkoutError::NotInitialized)?;
