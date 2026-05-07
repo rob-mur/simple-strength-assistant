@@ -4525,3 +4525,238 @@ async fn test_muscle_group_volume_rolling_7d_excludes_older_sets() {
         vol.rolling_training_period
     );
 }
+
+// ── get_progress_state tests ─────────────────────────────────────────────────
+
+/// No sets → InsufficientData (below min_sessions_for_regression).
+#[wasm_bindgen_test]
+async fn test_progress_state_no_sets_returns_insufficient() {
+    use crate::models::{ProgressState, Settings};
+
+    let mut db = crate::state::Database::new();
+    db.init(None).await.expect("DB init");
+
+    let ex = ExerciseMetadata {
+        id: None,
+        name: "Deadlift".to_string(),
+        set_type_config: SetTypeConfig::Weighted {
+            min_weight: 0.0,
+            increment: 2.5,
+        },
+        min_reps: 1,
+        max_reps: None,
+    };
+    let eid = db.save_exercise(&ex).await.expect("save exercise");
+
+    let settings = Settings::default();
+    let state = db
+        .get_progress_state(&eid, &settings)
+        .await
+        .expect("get_progress_state");
+
+    assert_eq!(state, ProgressState::InsufficientData);
+}
+
+/// Fewer sessions than min_sessions_for_regression → InsufficientData.
+#[wasm_bindgen_test]
+async fn test_progress_state_below_min_sessions_returns_insufficient() {
+    use crate::models::{ProgressState, Settings};
+
+    let mut db = crate::state::Database::new();
+    db.init(None).await.expect("DB init");
+
+    let ex = ExerciseMetadata {
+        id: None,
+        name: "OHP".to_string(),
+        set_type_config: SetTypeConfig::Weighted {
+            min_weight: 0.0,
+            increment: 2.5,
+        },
+        min_reps: 1,
+        max_reps: None,
+    };
+    let eid = db.save_exercise(&ex).await.expect("save exercise");
+
+    let now_ms = js_sys::Date::now();
+    // Log 2 sets on different days — default min is 3.
+    for i in 0..2_u32 {
+        db.log_set_at(
+            &eid,
+            &CompletedSet {
+                set_number: 1,
+                reps: 5,
+                rpe: 8.0,
+                set_type: SetType::Weighted { weight: 100.0 },
+            },
+            now_ms - (i as f64 + 1.0) * 7.0 * 86_400_000.0,
+        )
+        .await
+        .expect("log set");
+    }
+
+    let settings = Settings::default(); // min_sessions_for_regression = 3
+    let state = db
+        .get_progress_state(&eid, &settings)
+        .await
+        .expect("get_progress_state");
+
+    assert_eq!(state, ProgressState::InsufficientData);
+}
+
+/// Positive e1RM trend → Progressing with positive slope.
+#[wasm_bindgen_test]
+async fn test_progress_state_positive_slope_returns_progressing() {
+    use crate::models::{ProgressState, Settings};
+
+    let mut db = crate::state::Database::new();
+    db.init(None).await.expect("DB init");
+
+    let ex = ExerciseMetadata {
+        id: None,
+        name: "Squat".to_string(),
+        set_type_config: SetTypeConfig::Weighted {
+            min_weight: 0.0,
+            increment: 2.5,
+        },
+        min_reps: 1,
+        max_reps: None,
+    };
+    let eid = db.save_exercise(&ex).await.expect("save exercise");
+
+    let now_ms = js_sys::Date::now();
+    // 3 sessions spaced 7 days apart (oldest first), weights strictly increasing.
+    let weights = [80.0_f64, 90.0, 100.0];
+    for (i, &weight) in weights.iter().enumerate() {
+        let offset_days = (weights.len() - 1 - i) as f64;
+        db.log_set_at(
+            &eid,
+            &CompletedSet {
+                set_number: 1,
+                reps: 5,
+                rpe: 8.0,
+                set_type: SetType::Weighted { weight },
+            },
+            now_ms - offset_days * 7.0 * 86_400_000.0,
+        )
+        .await
+        .expect("log set");
+    }
+
+    let settings = Settings::default();
+    let state = db
+        .get_progress_state(&eid, &settings)
+        .await
+        .expect("get_progress_state");
+
+    match state {
+        ProgressState::Progressing { slope } => {
+            assert!(slope > 0.0, "slope should be positive, got {slope}");
+        }
+        other => panic!("expected Progressing, got {other:?}"),
+    }
+}
+
+/// Negative e1RM trend → Stalled with non-positive slope.
+#[wasm_bindgen_test]
+async fn test_progress_state_negative_slope_returns_stalled() {
+    use crate::models::{ProgressState, Settings};
+
+    let mut db = crate::state::Database::new();
+    db.init(None).await.expect("DB init");
+
+    let ex = ExerciseMetadata {
+        id: None,
+        name: "Bench".to_string(),
+        set_type_config: SetTypeConfig::Weighted {
+            min_weight: 0.0,
+            increment: 2.5,
+        },
+        min_reps: 1,
+        max_reps: None,
+    };
+    let eid = db.save_exercise(&ex).await.expect("save exercise");
+
+    let now_ms = js_sys::Date::now();
+    // 3 sessions, weights strictly decreasing → negative slope.
+    let weights = [100.0_f64, 90.0, 80.0];
+    for (i, &weight) in weights.iter().enumerate() {
+        let offset_days = (weights.len() - 1 - i) as f64;
+        db.log_set_at(
+            &eid,
+            &CompletedSet {
+                set_number: 1,
+                reps: 5,
+                rpe: 8.0,
+                set_type: SetType::Weighted { weight },
+            },
+            now_ms - offset_days * 7.0 * 86_400_000.0,
+        )
+        .await
+        .expect("log set");
+    }
+
+    let settings = Settings::default();
+    let state = db
+        .get_progress_state(&eid, &settings)
+        .await
+        .expect("get_progress_state");
+
+    match state {
+        ProgressState::Stalled { slope } => {
+            assert!(slope <= 0.0, "slope should be <= 0.0, got {slope}");
+        }
+        other => panic!("expected Stalled, got {other:?}"),
+    }
+}
+
+/// Flat e1RM (zero slope) → Stalled.
+#[wasm_bindgen_test]
+async fn test_progress_state_flat_returns_stalled() {
+    use crate::models::{ProgressState, Settings};
+
+    let mut db = crate::state::Database::new();
+    db.init(None).await.expect("DB init");
+
+    let ex = ExerciseMetadata {
+        id: None,
+        name: "Row".to_string(),
+        set_type_config: SetTypeConfig::Weighted {
+            min_weight: 0.0,
+            increment: 2.5,
+        },
+        min_reps: 1,
+        max_reps: None,
+    };
+    let eid = db.save_exercise(&ex).await.expect("save exercise");
+
+    let now_ms = js_sys::Date::now();
+    // 3 sessions with identical weight → slope = 0.
+    for i in 0..3_u32 {
+        let offset_days = (2 - i) as f64;
+        db.log_set_at(
+            &eid,
+            &CompletedSet {
+                set_number: 1,
+                reps: 5,
+                rpe: 8.0,
+                set_type: SetType::Weighted { weight: 100.0 },
+            },
+            now_ms - offset_days * 7.0 * 86_400_000.0,
+        )
+        .await
+        .expect("log set");
+    }
+
+    let settings = Settings::default();
+    let state = db
+        .get_progress_state(&eid, &settings)
+        .await
+        .expect("get_progress_state");
+
+    match state {
+        ProgressState::Stalled { slope } => {
+            assert!(slope.abs() < 1e-9, "expected slope ~0.0, got {slope}");
+        }
+        other => panic!("expected Stalled, got {other:?}"),
+    }
+}

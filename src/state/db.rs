@@ -3292,6 +3292,27 @@ impl Database {
             rolling_training_period,
         })
     }
+
+    /// Derives the progress state for an exercise by running linear regression
+    /// over its e1RM session history within the configured training window.
+    pub async fn get_progress_state(
+        &self,
+        exercise_id: &str,
+        settings: &crate::models::Settings,
+    ) -> Result<crate::models::ProgressState, DatabaseError> {
+        let sessions = self
+            .get_e1rm_session_history(exercise_id, settings.training_window_weeks as u32)
+            .await?;
+        if (sessions.len() as i64) < settings.min_sessions_for_regression {
+            return Ok(crate::models::ProgressState::InsufficientData);
+        }
+        let slope = crate::domain::e1rm::e1rm_trend(&sessions);
+        if slope > 0.0 {
+            Ok(crate::models::ProgressState::Progressing { slope })
+        } else {
+            Ok(crate::models::ProgressState::Stalled { slope })
+        }
+    }
 }
 
 impl Default for Database {

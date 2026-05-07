@@ -4,6 +4,7 @@
 /// sets, and workout data, along with validation logic to ensure data integrity.
 pub mod exercise;
 pub mod muscle_group;
+pub mod progress;
 pub mod set;
 pub mod settings;
 pub mod validation;
@@ -19,6 +20,8 @@ pub use muscle_group::{
 };
 #[allow(unused_imports)]
 pub use set::{CompletedSet, HistorySet, SetType};
+#[allow(unused_imports)]
+pub use progress::ProgressState;
 #[allow(unused_imports)]
 pub use settings::Settings;
 #[allow(unused_imports)]
