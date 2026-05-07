@@ -19,9 +19,9 @@ pub use muscle_group::{
     ContributionTier, ExerciseMuscleGroup, MuscleGroup, MuscleGroupVolume, validate_muscle_groups,
 };
 #[allow(unused_imports)]
-pub use set::{CompletedSet, HistorySet, SetType};
-#[allow(unused_imports)]
 pub use progress::ProgressState;
+#[allow(unused_imports)]
+pub use set::{CompletedSet, HistorySet, SetType};
 #[allow(unused_imports)]
 pub use settings::Settings;
 #[allow(unused_imports)]

@@ -4625,7 +4625,7 @@ async fn test_progress_state_positive_slope_returns_progressing() {
 
     let now_ms = js_sys::Date::now();
     // 3 sessions spaced 7 days apart (oldest first), weights strictly increasing.
-    let weights = [80.0_f64, 90.0, 100.0];
+    let weights = [80.0_f32, 90.0, 100.0];
     for (i, &weight) in weights.iter().enumerate() {
         let offset_days = (weights.len() - 1 - i) as f64;
         db.log_set_at(
@@ -4678,7 +4678,7 @@ async fn test_progress_state_negative_slope_returns_stalled() {
 
     let now_ms = js_sys::Date::now();
     // 3 sessions, weights strictly decreasing → negative slope.
-    let weights = [100.0_f64, 90.0, 80.0];
+    let weights = [100.0_f32, 90.0, 80.0];
     for (i, &weight) in weights.iter().enumerate() {
         let offset_days = (weights.len() - 1 - i) as f64;
         db.log_set_at(
