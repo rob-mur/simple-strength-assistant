@@ -3011,6 +3011,51 @@ impl Database {
         Ok(out)
     }
 
+    /// Returns a map of `exercise_id → Vec<MuscleGroup>` for every exercise
+    /// that has at least one Primary-tier muscle group association.
+    ///
+    /// Only `Primary` tier rows are included — Secondary/Tertiary do not drive
+    /// library grouping. Exercises with no Primary associations are absent from
+    /// the map (they will appear under an "Uncategorised" group in the UI).
+    pub async fn get_primary_muscle_groups_for_exercises(
+        &self,
+    ) -> Result<std::collections::HashMap<String, Vec<MuscleGroup>>, DatabaseError> {
+        let result = self
+            .execute(
+                "SELECT exercise_id, muscle_group FROM exercise_muscle_groups WHERE tier = 'Primary'",
+                &[],
+            )
+            .await?;
+
+        let array = match result.dyn_ref::<js_sys::Array>() {
+            Some(a) => a,
+            None => return Ok(std::collections::HashMap::new()),
+        };
+
+        let mut map: std::collections::HashMap<String, Vec<MuscleGroup>> =
+            std::collections::HashMap::new();
+
+        for i in 0..array.length() {
+            let row = array.get(i);
+
+            let ex_id = js_sys::Reflect::get(&row, &JsValue::from_str("exercise_id"))
+                .ok()
+                .and_then(|v| v.as_string())
+                .ok_or_else(|| DatabaseError::QueryError("Missing exercise_id".to_string()))?;
+
+            let mg_str = js_sys::Reflect::get(&row, &JsValue::from_str("muscle_group"))
+                .ok()
+                .and_then(|v| v.as_string())
+                .ok_or_else(|| DatabaseError::QueryError("Missing muscle_group".to_string()))?;
+
+            let muscle_group = MuscleGroup::from_str(&mg_str).map_err(DatabaseError::QueryError)?;
+
+            map.entry(ex_id).or_default().push(muscle_group);
+        }
+
+        Ok(map)
+    }
+
     pub async fn get_max_weight_per_rep(
         &self,
         exercise_id: &str,

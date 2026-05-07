@@ -1,8 +1,25 @@
 use crate::app::Route;
 use crate::components::exercise_form::ExerciseForm;
-use crate::models::{ExerciseMetadata, SetTypeConfig};
+use crate::models::{ExerciseMetadata, MuscleGroup, SetTypeConfig};
 use crate::state::{WorkoutState, WorkoutStateManager};
 use dioxus::prelude::*;
+use std::collections::HashMap;
+
+/// Canonical enum order for muscle group section headers.
+const MUSCLE_GROUP_ORDER: &[MuscleGroup] = &[
+    MuscleGroup::Chest,
+    MuscleGroup::Back,
+    MuscleGroup::Shoulders,
+    MuscleGroup::Biceps,
+    MuscleGroup::Triceps,
+    MuscleGroup::Quads,
+    MuscleGroup::Hamstrings,
+    MuscleGroup::Glutes,
+    MuscleGroup::Calves,
+    MuscleGroup::Core,
+    MuscleGroup::Forearms,
+    MuscleGroup::Traps,
+];
 
 #[derive(Clone, PartialEq)]
 pub struct TestSearchQuery(pub String);
@@ -18,6 +35,19 @@ pub fn LibraryView() -> Element {
     let mut show_archived = use_signal(|| false);
     // Holds archived exercises fetched on demand when the toggle is ON.
     let mut archived_exercises: Signal<Vec<ExerciseMetadata>> = use_signal(Vec::new);
+    // Primary muscle group map: exercise_id → Vec<MuscleGroup>. Loaded on mount.
+    let mut primary_muscle_groups: Signal<HashMap<String, Vec<MuscleGroup>>> =
+        use_signal(HashMap::new);
+
+    // Load primary muscle group associations once on mount.
+    use_effect(move || {
+        spawn(async move {
+            match WorkoutStateManager::fetch_primary_muscle_groups(&workout_state).await {
+                Ok(map) => primary_muscle_groups.set(map),
+                Err(e) => log::warn!("Failed to load muscle group associations: {}", e),
+            }
+        });
+    });
 
     // When show_archived flips to true, fetch archived exercises from DB.
     use_effect(move || {
@@ -179,7 +209,8 @@ pub fn LibraryView() -> Element {
                         }
                     }
                 }
-            } else {
+            } else if show_archived() {
+                // Archived view: flat list (no muscle-group grouping).
                 div {
                     class: "grid gap-4",
                     for exercise in filtered_exercises() {
@@ -305,6 +336,270 @@ pub fn LibraryView() -> Element {
                                                     stroke_linecap: "round",
                                                     stroke_linejoin: "round",
                                                     d: "m8.25 4.5 7.5 7.5-7.5 7.5"
+                                                }
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            } else {
+                // Active view: exercises grouped by primary muscle group in enum order.
+                {
+                    let exercises = filtered_exercises();
+                    let groups_map = primary_muscle_groups();
+
+                    // Build groups: for each muscle group in enum order, collect exercises that
+                    // list it as a Primary association.  An exercise may appear in multiple groups.
+                    let sections: Vec<(MuscleGroup, Vec<ExerciseMetadata>)> = MUSCLE_GROUP_ORDER
+                        .iter()
+                        .filter_map(|mg| {
+                            let mut group: Vec<ExerciseMetadata> = exercises
+                                .iter()
+                                .filter(|ex| {
+                                    ex.id.as_deref()
+                                        .and_then(|id| groups_map.get(id))
+                                        .map(|primaries| primaries.contains(mg))
+                                        .unwrap_or(false)
+                                })
+                                .cloned()
+                                .collect();
+                            if group.is_empty() {
+                                None
+                            } else {
+                                group.sort_by(|a, b| a.name.cmp(&b.name));
+                                Some((mg.clone(), group))
+                            }
+                        })
+                        .collect();
+
+                    // Exercises with no Primary muscle group go into an "Uncategorised" section.
+                    let mut uncategorised: Vec<ExerciseMetadata> = exercises
+                        .iter()
+                        .filter(|ex| {
+                            ex.id.as_deref()
+                                .and_then(|id| groups_map.get(id))
+                                .map(|v| v.is_empty())
+                                .unwrap_or(true)
+                        })
+                        .cloned()
+                        .collect();
+                    uncategorised.sort_by(|a, b| a.name.cmp(&b.name));
+
+                    rsx! {
+                        div {
+                            class: "flex flex-col gap-6",
+                            "data-testid": "library-grouped",
+                            for (group_idx, (muscle_group, group_exercises)) in sections.into_iter().enumerate() {
+                                div {
+                                    key: "{group_idx}",
+                                    "data-testid": "muscle-group-section",
+                                    "data-muscle-group": "{muscle_group}",
+                                    h3 {
+                                        class: "text-xs font-black text-base-content/50 tracking-widest uppercase px-1 mb-2",
+                                        "data-testid": "muscle-group-header",
+                                        "{muscle_group}"
+                                    }
+                                    div {
+                                        class: "grid gap-3",
+                                        for exercise in group_exercises {
+                                            {
+                                                let id = exercise.id.clone().unwrap_or_default();
+                                                let eid = id.clone();
+                                                let ex_for_session = exercise.clone();
+                                                let default_sets = workout_state.settings().default_planned_sets;
+                                                rsx! {
+                                                    div {
+                                                        key: "{id}",
+                                                        class: "card bg-base-100 shadow-md hover:shadow-lg transition-all border border-base-200 cursor-pointer",
+                                                        role: "link",
+                                                        tabindex: "0",
+                                                        "aria-label": "View {exercise.name} details",
+                                                        "data-testid": "exercise-card",
+                                                        onclick: {
+                                                            let nav_id = id.clone();
+                                                            move |_| { navigator.push(Route::LibraryExercise { exercise_id: nav_id.clone() }); }
+                                                        },
+                                                        onkeydown: {
+                                                            let nav_id = id.clone();
+                                                            move |evt: KeyboardEvent| {
+                                                                if evt.key() == Key::Enter {
+                                                                    navigator.push(Route::LibraryExercise { exercise_id: nav_id.clone() });
+                                                                }
+                                                            }
+                                                        },
+                                                        div {
+                                                            class: "card-body p-4",
+                                                            div {
+                                                                class: "flex justify-between items-start",
+                                                                div {
+                                                                    h3 {
+                                                                        class: "font-black text-xl text-base-content tracking-tight min-h-6",
+                                                                        "data-testid": "exercise-name",
+                                                                        "{exercise.name.to_uppercase()}"
+                                                                    }
+                                                                    div {
+                                                                        class: "flex gap-2 mt-1 items-center",
+                                                                        match exercise.set_type_config {
+                                                                            SetTypeConfig::Weighted { min_weight, increment } => rsx! {
+                                                                                span { class: "badge badge-primary badge-sm font-bold", "WEIGHTED" }
+                                                                                span { class: "text-xs font-bold text-base-content/50", "START: {crate::format::fmt_weight(min_weight)}kg (+{crate::format::fmt_weight(increment)}kg)" }
+                                                                            },
+                                                                            SetTypeConfig::Bodyweight => rsx! {
+                                                                                span { class: "badge badge-secondary badge-sm font-bold", "BODYWEIGHT" }
+                                                                            },
+                                                                        }
+                                                                    }
+                                                                }
+                                                                div {
+                                                                    class: "flex gap-2 items-center",
+                                                                    if workout_state.current_plan().is_some() {
+                                                                        button {
+                                                                            class: "btn btn-secondary btn-sm px-4 font-bold shadow-sm",
+                                                                            "data-testid": "add-to-workout-btn",
+                                                                            onclick: move |evt| {
+                                                                                evt.stop_propagation();
+                                                                                let eid2 = eid.clone();
+                                                                                let ex2 = ex_for_session.clone();
+                                                                                spawn(async move {
+                                                                                    if let Err(e) = WorkoutStateManager::add_exercise_to_plan(&workout_state, &eid2, default_sets).await {
+                                                                                        log::warn!("Failed to add exercise to plan: {}", e);
+                                                                                    } else {
+                                                                                        if let Err(e) = WorkoutStateManager::start_session(&workout_state, ex2).await {
+                                                                                            log::warn!("Failed to start session: {}", e);
+                                                                                        }
+                                                                                        navigator.push(Route::WorkoutTab);
+                                                                                    }
+                                                                                });
+                                                                            },
+                                                                            "Add to workout"
+                                                                        }
+                                                                    } else {
+                                                                        button {
+                                                                            class: "btn btn-primary btn-sm px-4 font-bold shadow-sm",
+                                                                            onclick: move |evt| {
+                                                                                evt.stop_propagation();
+                                                                                let ex3 = ex_for_session.clone();
+                                                                                spawn(async move {
+                                                                                    if let Err(err) = WorkoutStateManager::start_adhoc_plan(&workout_state, &ex3).await {
+                                                                                        WorkoutStateManager::handle_error(&workout_state, err);
+                                                                                    } else {
+                                                                                        navigator.push(Route::WorkoutTab);
+                                                                                    }
+                                                                                });
+                                                                            },
+                                                                            "START"
+                                                                        }
+                                                                    }
+                                                                    span {
+                                                                        "aria-hidden": "true",
+                                                                        class: "text-base-content/30",
+                                                                        svg {
+                                                                            xmlns: "http://www.w3.org/2000/svg",
+                                                                            fill: "none",
+                                                                            view_box: "0 0 24 24",
+                                                                            stroke_width: "2",
+                                                                            stroke: "currentColor",
+                                                                            class: "w-4 h-4",
+                                                                            path {
+                                                                                stroke_linecap: "round",
+                                                                                stroke_linejoin: "round",
+                                                                                d: "m8.25 4.5 7.5 7.5-7.5 7.5"
+                                                                            }
+                                                                        }
+                                                                    }
+                                                                }
+                                                            }
+                                                        }
+                                                    }
+                                                }
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                            // Uncategorised section: exercises with no Primary muscle group.
+                            if !uncategorised.is_empty() {
+                                div {
+                                    "data-testid": "muscle-group-section",
+                                    "data-muscle-group": "Uncategorised",
+                                    h3 {
+                                        class: "text-xs font-black text-base-content/50 tracking-widest uppercase px-1 mb-2",
+                                        "data-testid": "muscle-group-header",
+                                        "Uncategorised"
+                                    }
+                                    div {
+                                        class: "grid gap-3",
+                                        for exercise in uncategorised {
+                                            {
+                                                let id = exercise.id.clone().unwrap_or_default();
+                                                let eid = id.clone();
+                                                let ex_for_session = exercise.clone();
+                                                let default_sets = workout_state.settings().default_planned_sets;
+                                                rsx! {
+                                                    div {
+                                                        key: "{id}",
+                                                        class: "card bg-base-100 shadow-md hover:shadow-lg transition-all border border-base-200 cursor-pointer",
+                                                        role: "link",
+                                                        tabindex: "0",
+                                                        "aria-label": "View {exercise.name} details",
+                                                        "data-testid": "exercise-card",
+                                                        onclick: {
+                                                            let nav_id = id.clone();
+                                                            move |_| { navigator.push(Route::LibraryExercise { exercise_id: nav_id.clone() }); }
+                                                        },
+                                                        div {
+                                                            class: "card-body p-4",
+                                                            div {
+                                                                class: "flex justify-between items-start",
+                                                                h3 {
+                                                                    class: "font-black text-xl text-base-content tracking-tight",
+                                                                    "data-testid": "exercise-name",
+                                                                    "{exercise.name.to_uppercase()}"
+                                                                }
+                                                                if workout_state.current_plan().is_none() {
+                                                                    button {
+                                                                        class: "btn btn-primary btn-sm px-4 font-bold shadow-sm",
+                                                                        onclick: move |evt| {
+                                                                            evt.stop_propagation();
+                                                                            let ex3 = ex_for_session.clone();
+                                                                            spawn(async move {
+                                                                                if let Err(err) = WorkoutStateManager::start_adhoc_plan(&workout_state, &ex3).await {
+                                                                                    WorkoutStateManager::handle_error(&workout_state, err);
+                                                                                } else {
+                                                                                    navigator.push(Route::WorkoutTab);
+                                                                                }
+                                                                            });
+                                                                        },
+                                                                        "START"
+                                                                    }
+                                                                } else {
+                                                                    button {
+                                                                        class: "btn btn-secondary btn-sm px-4 font-bold shadow-sm",
+                                                                        "data-testid": "add-to-workout-btn",
+                                                                        onclick: move |evt| {
+                                                                            evt.stop_propagation();
+                                                                            let eid2 = eid.clone();
+                                                                            let ex2 = ex_for_session.clone();
+                                                                            spawn(async move {
+                                                                                if let Err(e) = WorkoutStateManager::add_exercise_to_plan(&workout_state, &eid2, default_sets).await {
+                                                                                    log::warn!("add to plan: {}", e);
+                                                                                } else {
+                                                                                    if let Err(e) = WorkoutStateManager::start_session(&workout_state, ex2).await {
+                                                                                        log::warn!("start session: {}", e);
+                                                                                    }
+                                                                                    navigator.push(Route::WorkoutTab);
+                                                                                }
+                                                                            });
+                                                                        },
+                                                                        "Add to workout"
+                                                                    }
+                                                                }
+                                                            }
+                                                        }
+                                                    }
                                                 }
                                             }
                                         }

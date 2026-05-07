@@ -617,6 +617,18 @@ impl WorkoutStateManager {
             .map_err(WorkoutError::Database)
     }
 
+    /// Returns Primary muscle group associations for all exercises, as a
+    /// `HashMap<exercise_id, Vec<MuscleGroup>>`.
+    pub async fn fetch_primary_muscle_groups(
+        state: &WorkoutState,
+    ) -> Result<std::collections::HashMap<String, Vec<crate::models::MuscleGroup>>, WorkoutError>
+    {
+        let db = state.database().ok_or(WorkoutError::NotInitialized)?;
+        db.get_primary_muscle_groups_for_exercises()
+            .await
+            .map_err(WorkoutError::Database)
+    }
+
     /// Archives an exercise (sets `deleted_at` to now) and refreshes the
     /// active exercise list in app state.
     pub async fn archive_exercise(
