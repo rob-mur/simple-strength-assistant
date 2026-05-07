@@ -494,6 +494,7 @@ pub fn LibraryView() -> Element {
                                                                         }
                                                                     }
                                                                     span {
+                                                                        "data-testid": "card-nav-chevron",
                                                                         "aria-hidden": "true",
                                                                         class: "text-base-content/30",
                                                                         svg {
@@ -550,51 +551,94 @@ pub fn LibraryView() -> Element {
                                                             let nav_id = id.clone();
                                                             move |_| { navigator.push(Route::LibraryExercise { exercise_id: nav_id.clone() }); }
                                                         },
+                                                        onkeydown: {
+                                                            let nav_id = id.clone();
+                                                            move |evt: KeyboardEvent| {
+                                                                if evt.key() == Key::Enter {
+                                                                    navigator.push(Route::LibraryExercise { exercise_id: nav_id.clone() });
+                                                                }
+                                                            }
+                                                        },
                                                         div {
                                                             class: "card-body p-4",
                                                             div {
                                                                 class: "flex justify-between items-start",
-                                                                h3 {
-                                                                    class: "font-black text-xl text-base-content tracking-tight",
-                                                                    "data-testid": "exercise-name",
-                                                                    "{exercise.name.to_uppercase()}"
-                                                                }
-                                                                if workout_state.current_plan().is_none() {
-                                                                    button {
-                                                                        class: "btn btn-primary btn-sm px-4 font-bold shadow-sm",
-                                                                        onclick: move |evt| {
-                                                                            evt.stop_propagation();
-                                                                            let ex3 = ex_for_session.clone();
-                                                                            spawn(async move {
-                                                                                if let Err(err) = WorkoutStateManager::start_adhoc_plan(&workout_state, &ex3).await {
-                                                                                    WorkoutStateManager::handle_error(&workout_state, err);
-                                                                                } else {
-                                                                                    navigator.push(Route::WorkoutTab);
-                                                                                }
-                                                                            });
-                                                                        },
-                                                                        "START"
+                                                                div {
+                                                                    h3 {
+                                                                        class: "font-black text-xl text-base-content tracking-tight min-h-6",
+                                                                        "data-testid": "exercise-name",
+                                                                        "{exercise.name.to_uppercase()}"
                                                                     }
-                                                                } else {
-                                                                    button {
-                                                                        class: "btn btn-secondary btn-sm px-4 font-bold shadow-sm",
-                                                                        "data-testid": "add-to-workout-btn",
-                                                                        onclick: move |evt| {
-                                                                            evt.stop_propagation();
-                                                                            let eid2 = eid.clone();
-                                                                            let ex2 = ex_for_session.clone();
-                                                                            spawn(async move {
-                                                                                if let Err(e) = WorkoutStateManager::add_exercise_to_plan(&workout_state, &eid2, default_sets).await {
-                                                                                    log::warn!("add to plan: {}", e);
-                                                                                } else {
-                                                                                    if let Err(e) = WorkoutStateManager::start_session(&workout_state, ex2).await {
-                                                                                        log::warn!("start session: {}", e);
+                                                                    div {
+                                                                        class: "flex gap-2 mt-1 items-center",
+                                                                        match exercise.set_type_config {
+                                                                            SetTypeConfig::Weighted { min_weight, increment } => rsx! {
+                                                                                span { class: "badge badge-primary badge-sm font-bold", "WEIGHTED" }
+                                                                                span { class: "text-xs font-bold text-base-content/50", "START: {crate::format::fmt_weight(min_weight)}kg (+{crate::format::fmt_weight(increment)}kg)" }
+                                                                            },
+                                                                            SetTypeConfig::Bodyweight => rsx! {
+                                                                                span { class: "badge badge-secondary badge-sm font-bold", "BODYWEIGHT" }
+                                                                            },
+                                                                        }
+                                                                    }
+                                                                }
+                                                                div {
+                                                                    class: "flex gap-2 items-center",
+                                                                    if workout_state.current_plan().is_some() {
+                                                                        button {
+                                                                            class: "btn btn-secondary btn-sm px-4 font-bold shadow-sm",
+                                                                            "data-testid": "add-to-workout-btn",
+                                                                            onclick: move |evt| {
+                                                                                evt.stop_propagation();
+                                                                                let eid2 = eid.clone();
+                                                                                let ex2 = ex_for_session.clone();
+                                                                                spawn(async move {
+                                                                                    if let Err(e) = WorkoutStateManager::add_exercise_to_plan(&workout_state, &eid2, default_sets).await {
+                                                                                        log::warn!("add to plan: {}", e);
+                                                                                    } else {
+                                                                                        if let Err(e) = WorkoutStateManager::start_session(&workout_state, ex2).await {
+                                                                                            log::warn!("start session: {}", e);
+                                                                                        }
+                                                                                        navigator.push(Route::WorkoutTab);
                                                                                     }
-                                                                                    navigator.push(Route::WorkoutTab);
-                                                                                }
-                                                                            });
-                                                                        },
-                                                                        "Add to workout"
+                                                                                });
+                                                                            },
+                                                                            "Add to workout"
+                                                                        }
+                                                                    } else {
+                                                                        button {
+                                                                            class: "btn btn-primary btn-sm px-4 font-bold shadow-sm",
+                                                                            onclick: move |evt| {
+                                                                                evt.stop_propagation();
+                                                                                let ex3 = ex_for_session.clone();
+                                                                                spawn(async move {
+                                                                                    if let Err(err) = WorkoutStateManager::start_adhoc_plan(&workout_state, &ex3).await {
+                                                                                        WorkoutStateManager::handle_error(&workout_state, err);
+                                                                                    } else {
+                                                                                        navigator.push(Route::WorkoutTab);
+                                                                                    }
+                                                                                });
+                                                                            },
+                                                                            "START"
+                                                                        }
+                                                                    }
+                                                                    span {
+                                                                        "data-testid": "card-nav-chevron",
+                                                                        "aria-hidden": "true",
+                                                                        class: "text-base-content/30",
+                                                                        svg {
+                                                                            xmlns: "http://www.w3.org/2000/svg",
+                                                                            fill: "none",
+                                                                            view_box: "0 0 24 24",
+                                                                            stroke_width: "2",
+                                                                            stroke: "currentColor",
+                                                                            class: "w-4 h-4",
+                                                                            path {
+                                                                                stroke_linecap: "round",
+                                                                                stroke_linejoin: "round",
+                                                                                d: "m8.25 4.5 7.5 7.5-7.5 7.5"
+                                                                            }
+                                                                        }
                                                                     }
                                                                 }
                                                             }
