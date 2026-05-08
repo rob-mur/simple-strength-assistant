@@ -43,9 +43,9 @@ export const test = base.extend<{}, WorkerFixtures>({
       const page = await _workerCtx.newPage();
       await page.addInitScript(() => {
         const w = window as unknown as Record<string, unknown>;
-        const seq = parseInt(localStorage.getItem("__test_seq__") || "0") + 1;
+        const seq = parseInt(sessionStorage.getItem("__test_seq__") || "0") + 1;
+        sessionStorage.setItem("__test_seq__", String(seq));
         localStorage.clear();
-        localStorage.setItem("__test_seq__", String(seq));
         w.__TEST_MODE__ = true;
         w.__TEST_DB_NAME__ = `workout-data-${seq}`;
       });
