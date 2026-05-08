@@ -34,7 +34,8 @@ Given(
       await checkbox.click();
     }
 
-    // Save exercise
+    // Select a muscle group (required) then save
+    await page.locator('[data-testid="region-Chest"]').click();
     await page.click('button:has-text("Save Exercise")');
     // Wait for form to disappear
     await expect(page.locator("#exercise-name-input")).not.toBeVisible();

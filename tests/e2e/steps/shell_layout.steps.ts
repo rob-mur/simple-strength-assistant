@@ -24,6 +24,7 @@ async function seedLongHistory(page: import("@playwright/test").Page) {
   }
 
   await setDioxusInput(page, "#exercise-name-input", "Squat");
+  await page.locator('[data-testid="region-Chest"]').click();
   await page.click('button:has-text("Save Exercise")');
 
   // Start a session

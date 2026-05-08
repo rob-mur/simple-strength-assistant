@@ -331,6 +331,8 @@ fn LibraryExercise(exercise_id: String) -> Element {
     // (completed_sets_count, plans_to_delete_count) for permanent-delete dialog
     let mut perm_delete_counts: Signal<Option<(u32, u32)>> = use_signal(|| None);
     let mut show_permanent_delete_dialog = use_signal(|| false);
+    let mut edit_muscle_groups: Signal<Option<Vec<crate::models::ExerciseMuscleGroup>>> =
+        use_signal(|| None);
 
     // Look in active exercises first; fall back to archived exercises.
     let active_exercises = workout_state.exercises();
@@ -385,20 +387,51 @@ fn LibraryExercise(exercise_id: String) -> Element {
         };
     };
 
+    // Load muscle groups when the edit form is opened.
+    {
+        let eid = exercise_id.clone();
+        use_effect(move || {
+            if show_edit_form() {
+                let eid2 = eid.clone();
+                spawn(async move {
+                    if let Some(db) = workout_state.database() {
+                        match db.get_muscle_groups(&eid2).await {
+                            Ok(groups) => edit_muscle_groups.set(Some(groups)),
+                            Err(e) => log::warn!("Failed to load muscle groups: {}", e),
+                        }
+                    }
+                });
+            }
+        });
+    }
+
     if show_edit_form() {
+        let Some(loaded_groups) = edit_muscle_groups() else {
+            return rsx! {
+                div {
+                    class: "max-w-md mx-auto p-4 flex items-center justify-center",
+                    span { "Loading..." }
+                }
+            };
+        };
         return rsx! {
             div {
                 class: "max-w-md mx-auto p-4",
                 ExerciseForm {
                     initial_exercise: Some(exercise.clone()),
-                    on_cancel: move |_| show_edit_form.set(false),
-                    on_save: move |updated_exercise| {
+                    initial_muscle_groups: loaded_groups,
+                    on_cancel: move |_| {
+                        show_edit_form.set(false);
+                        edit_muscle_groups.set(None);
+                    },
+                    on_save: move |(updated_exercise, muscle_groups)| {
                         let state = workout_state;
                         spawn(async move {
-                            if let Err(e) = WorkoutStateManager::save_exercise(&state, updated_exercise).await {
+                            if let Err(e) = WorkoutStateManager::save_exercise_with_muscle_groups(&state, updated_exercise, muscle_groups).await {
                                 WorkoutStateManager::handle_error(&state, e);
                             }
                             show_edit_form.set(false);
+                            edit_muscle_groups.set(None);
                         });
                     }
                 }

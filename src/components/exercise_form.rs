@@ -1,6 +1,8 @@
+use crate::components::body_diagram::BodyDiagram;
+use crate::components::muscle_group_tier_cards::MuscleGroupTierCards;
 use crate::components::step_controls::StepControls;
 use crate::components::tape_measure::TapeMeasure;
-use crate::models::{ExerciseMetadata, SetTypeConfig};
+use crate::models::{ExerciseMetadata, ExerciseMuscleGroup, SetTypeConfig};
 use dioxus::prelude::*;
 
 const MAX_EXERCISE_NAME_LENGTH: usize = 100;
@@ -28,8 +30,11 @@ fn validate_exercise_name(name: &str) -> Result<(), String> {
 #[component]
 pub fn ExerciseForm(
     initial_exercise: Option<ExerciseMetadata>,
+    /// Pre-loaded muscle group assignments (empty for create, existing for edit).
+    initial_muscle_groups: Vec<ExerciseMuscleGroup>,
     on_cancel: EventHandler<()>,
-    on_save: EventHandler<ExerciseMetadata>,
+    /// Called with the exercise metadata and selected muscle groups on save.
+    on_save: EventHandler<(ExerciseMetadata, Vec<ExerciseMuscleGroup>)>,
 ) -> Element {
     let mut exercise_name = use_signal(|| {
         initial_exercise
@@ -67,6 +72,7 @@ pub fn ExerciseForm(
         }
     });
     let mut validation_error = use_signal(|| None::<String>);
+    let mut muscle_groups = use_signal(|| initial_muscle_groups);
 
     let initial_id = initial_exercise.as_ref().and_then(|e| e.id.clone());
     let is_edit = initial_exercise.is_some();
@@ -76,6 +82,11 @@ pub fn ExerciseForm(
 
         if let Err(e) = validate_exercise_name(&name) {
             validation_error.set(Some(e));
+            return;
+        }
+
+        if muscle_groups().is_empty() {
+            validation_error.set(Some("Select at least one muscle group".to_string()));
             return;
         }
 
@@ -96,7 +107,7 @@ pub fn ExerciseForm(
             max_reps: initial_exercise.as_ref().and_then(|e| e.max_reps),
         };
 
-        on_save.call(exercise);
+        on_save.call((exercise, muscle_groups()));
     };
 
     rsx! {
@@ -225,6 +236,29 @@ pub fn ExerciseForm(
                         }
                     }
                 }
+
+                // ── Muscle Groups ──────────────────────────────────────────────
+                div {
+                    class: "form-control mt-6",
+                    label {
+                        class: "label",
+                        span {
+                            class: "label-text font-bold text-lg",
+                            "Muscle Groups"
+                        }
+                    }
+                    BodyDiagram {
+                        selections: muscle_groups(),
+                        on_selection_change: move |updated| muscle_groups.set(updated),
+                    }
+                    div { class: "mt-3",
+                        MuscleGroupTierCards {
+                            selections: muscle_groups(),
+                            on_selection_change: move |updated| muscle_groups.set(updated),
+                        }
+                    }
+                }
+
                 div {
                     class: "card-actions justify-end mt-8 gap-2",
                     button {
@@ -233,7 +267,13 @@ pub fn ExerciseForm(
                         "Cancel"
                     }
                     button {
-                        class: "btn btn-primary",
+                        "data-testid": "save-exercise-btn",
+                        class: if !is_edit && muscle_groups().is_empty() {
+                            "btn btn-primary btn-disabled"
+                        } else {
+                            "btn btn-primary"
+                        },
+                        disabled: !is_edit && muscle_groups().is_empty(),
                         onclick: handle_save,
                         "Save Exercise"
                     }

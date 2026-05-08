@@ -273,6 +273,7 @@ When(
       await page.locator("button.btn-circle.btn-primary").click();
     }
     await setDioxusInput(page, "#exercise-name-input", exerciseName);
+    await page.locator('[data-testid="region-Chest"]').click();
     await page.click('button:has-text("Save Exercise")');
     // Wait for the exercise to appear in the list
     await expect(

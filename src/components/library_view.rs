@@ -83,10 +83,11 @@ pub fn LibraryView() -> Element {
                 class: "max-w-2xl mx-auto p-4",
                 ExerciseForm {
                     initial_exercise: None,
+                    initial_muscle_groups: vec![],
                     on_cancel: move |_| show_new_form.set(false),
-                    on_save: move |exercise| {
+                    on_save: move |(exercise, muscle_groups)| {
                         spawn(async move {
-                            if let Err(e) = WorkoutStateManager::save_exercise(&workout_state, exercise).await {
+                            if let Err(e) = WorkoutStateManager::save_exercise_with_muscle_groups(&workout_state, exercise, muscle_groups).await {
                                 WorkoutStateManager::handle_error(&workout_state, e);
                             }
                             // Ordering dependency: show_new_form.set(false) only executes after

@@ -79,6 +79,7 @@ Given(
     }
 
     await setDioxusInput(page, "#exercise-name-input", exerciseName);
+    await page.locator('[data-testid="region-Chest"]').click();
     await page.click('button:has-text("Save Exercise")');
 
     // Wait for the exercise card to appear in the list after save completes.
@@ -124,6 +125,7 @@ Given(
       await page.locator("button.btn-circle.btn-primary").click();
     }
     await setDioxusInput(page, "#exercise-name-input", exerciseName);
+    await page.locator('[data-testid="region-Chest"]').click();
     await page.click('button:has-text("Save Exercise")');
     // Wait for form to close and library to refresh
     await page.waitForSelector(`div.card:has-text("${exerciseName}")`, {

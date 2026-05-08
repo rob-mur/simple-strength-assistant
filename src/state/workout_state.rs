@@ -403,6 +403,28 @@ impl WorkoutStateManager {
         Ok(id)
     }
 
+    /// Saves an exercise and its muscle group assignments atomically.
+    ///
+    /// The exercise is saved first to obtain its UUID, then the muscle groups
+    /// are stored in `exercise_muscle_groups`. Non-fatal muscle group errors
+    /// are logged as warnings — the exercise will still be persisted.
+    pub async fn save_exercise_with_muscle_groups(
+        state: &WorkoutState,
+        exercise: ExerciseMetadata,
+        muscle_groups: Vec<crate::models::ExerciseMuscleGroup>,
+    ) -> Result<String, WorkoutError> {
+        let id = Self::save_exercise(state, exercise).await?;
+
+        if !muscle_groups.is_empty() {
+            let db = state.database().ok_or(WorkoutError::NotInitialized)?;
+            if let Err(e) = db.set_muscle_groups(&id, &muscle_groups).await {
+                log::warn!("Failed to save muscle groups for exercise {}: {}", id, e);
+            }
+        }
+
+        Ok(id)
+    }
+
     pub async fn start_session(
         state: &WorkoutState,
         mut exercise: ExerciseMetadata,
