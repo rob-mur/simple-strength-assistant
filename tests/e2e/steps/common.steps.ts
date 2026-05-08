@@ -6,13 +6,26 @@ Given("I have a fresh context and clear storage", async ({ page, context }) => {
   page.on("pageerror", (error) => console.error("BROWSER ERROR:", error));
 
   await context.clearCookies();
-  // The init script in fixtures.ts clears localStorage and deletes the IDB on
-  // every navigation, so the app always initialises from a blank slate.
   // Use reload() for warm pages (WASM binary cached in V8 code cache) and
   // goto() only for the first load of the worker's shared page.
   if (page.url() === "about:blank") {
     await page.goto("/");
   } else {
+    // Close the DB before reload so indexedDB.deleteDatabase() isn't blocked
+    // by the existing crsqlite-wasm connection. If left open, the delete
+    // request enters "blocked" state and the old DB persists into the next test.
+    await page.evaluate(async () => {
+      const w = window as unknown as Record<string, unknown>;
+      if (typeof w.__closeDbForReset === "function") {
+        await (w.__closeDbForReset as () => Promise<void>)();
+      }
+      await new Promise<void>((resolve) => {
+        const req = indexedDB.deleteDatabase("workout-data");
+        req.onsuccess = () => resolve();
+        req.onerror = () => resolve();
+        req.onblocked = () => resolve();
+      });
+    });
     await page.reload();
   }
   // Wait for WASM app to render (either the DB setup screen or the main app)

@@ -42,7 +42,6 @@ export const test = base.extend<{}, WorkerFixtures>({
       const page = await _workerCtx.newPage();
       await page.addInitScript(() => {
         localStorage.clear();
-        indexedDB.deleteDatabase("workout-data");
         (window as unknown as Record<string, unknown>).__TEST_MODE__ = true;
       });
       await use(page);

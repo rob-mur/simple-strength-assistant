@@ -203,6 +203,12 @@ export async function initDatabase(fileData) {
     // Expose a raw SQL hook for the Playwright test harness.
     if (typeof window !== "undefined" && window.__TEST_MODE__) {
       window.__dbExecuteQuery = (sql, params) => executeQuery(sql, params);
+      window.__closeDbForReset = async () => {
+        if (db) {
+          await db.close();
+          db = null;
+        }
+      };
     }
 
     return true;
