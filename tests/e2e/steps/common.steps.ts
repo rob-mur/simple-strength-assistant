@@ -6,8 +6,15 @@ Given("I have a fresh context and clear storage", async ({ page, context }) => {
   page.on("pageerror", (error) => console.error("BROWSER ERROR:", error));
 
   await context.clearCookies();
-  await page.goto("/");
-  await page.evaluate(() => localStorage.clear());
+  // The init script increments __TEST_DB_NAME__ on every navigation so each
+  // test opens a fresh IDB database without needing to delete the previous one.
+  // Use reload() for warm pages (WASM binary cached in V8 code cache) and
+  // goto() only for the first load of the worker's shared page.
+  if (page.url() === "about:blank") {
+    await page.goto("/");
+  } else {
+    await page.reload();
+  }
   // Wait for WASM app to render (either the DB setup screen or the main app)
   await page.waitForSelector(
     'button:has-text("Create New Database"), [data-testid="tab-workout"]',

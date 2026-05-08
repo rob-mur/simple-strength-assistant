@@ -34,6 +34,9 @@ export default defineConfig({
   projects: [
     {
       name: "chromium",
+      // Exclude viewport-specific feature files: they run under the mobile project.
+      testIgnore:
+        /mobile_no_scroll|overscroll_pull_to_refresh|library_fab_archived|permanent_delete/,
       use: {
         ...devices["Desktop Chrome"],
         launchOptions: {
@@ -45,36 +48,9 @@ export default defineConfig({
       },
     },
     {
-      name: "mobile-iphone-se",
-      testMatch: /mobile_no_scroll|overscroll_pull_to_refresh/,
-      use: {
-        viewport: { width: 375, height: 667 },
-        userAgent: devices["Desktop Chrome"].userAgent,
-        launchOptions: {
-          headless: true,
-          ...(process.env.CHROMIUM_EXECUTABLE_PATH && {
-            executablePath: process.env.CHROMIUM_EXECUTABLE_PATH,
-          }),
-        },
-      },
-    },
-    {
-      name: "mobile-library-fab",
-      testMatch: /library_fab_archived/,
-      use: {
-        viewport: { width: 375, height: 667 },
-        userAgent: devices["Desktop Chrome"].userAgent,
-        launchOptions: {
-          headless: true,
-          ...(process.env.CHROMIUM_EXECUTABLE_PATH && {
-            executablePath: process.env.CHROMIUM_EXECUTABLE_PATH,
-          }),
-        },
-      },
-    },
-    {
-      name: "mobile-permanent-delete",
-      testMatch: /permanent_delete/,
+      name: "mobile",
+      testMatch:
+        /mobile_no_scroll|overscroll_pull_to_refresh|library_fab_archived|permanent_delete/,
       use: {
         viewport: { width: 375, height: 667 },
         userAgent: devices["Desktop Chrome"].userAgent,

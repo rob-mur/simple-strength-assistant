@@ -6,68 +6,87 @@ const SYNC_BASE_URL = process.env.SYNC_BASE_URL || "https://sync.clarob.uk";
 Given(
   "I open the app with real sync backend and clear storage",
   async ({ page, context }) => {
-    // Collect all console messages for later assertions
-    const consoleLogs: string[] = [];
-    page.on("console", (msg) => {
-      const text = msg.text();
-      consoleLogs.push(text);
-      console.log("BROWSER:", text);
-    });
-    page.on("pageerror", (error) => console.error("BROWSER ERROR:", error));
-
-    // Stash logs on the page object for later steps
-    (page as any).__syncConsoleLogs = consoleLogs;
-
-    // Disable __TEST_MODE__ so the real sync code path runs,
-    // and inject the real SYNC_BASE_URL so requests hit the actual backend
-    // instead of falling back to /api (relative).
-    // Use Object.defineProperty so the inline <script> in index.html
-    // (which sets window.SYNC_BASE_URL = "%%SYNC_BASE_URL%%") cannot
-    // overwrite our value — addInitScript runs before page scripts.
-    await page.addInitScript((syncUrl: string) => {
-      delete (window as unknown as Record<string, unknown>).__TEST_MODE__;
-      Object.defineProperty(window, "SYNC_BASE_URL", {
-        value: syncUrl,
-        writable: false,
-        configurable: false,
+    // Worker-scoped page: addInitScript and page.on() calls accumulate across
+    // scenarios. Guard each registration with a page-level flag so each hook
+    // runs exactly once per navigation rather than N times (N = scenarios run).
+    if (!(page as any).__syncListenersAdded) {
+      page.on("console", (msg) => {
+        const text = msg.text();
+        const logs: string[] = (page as any).__syncConsoleLogs;
+        if (logs) logs.push(text);
+        console.log("BROWSER:", text);
       });
-    }, SYNC_BASE_URL);
+      page.on("pageerror", (error) => console.error("BROWSER ERROR:", error));
+      page.on("request", (req) => {
+        if (req.url().includes("sync"))
+          console.log(`REQUEST: ${req.method()} ${req.url()}`);
+      });
+      page.on("requestfailed", (req) => {
+        console.log(
+          `REQUEST FAILED: ${req.method()} ${req.url()} — ${req.failure()?.errorText}`,
+        );
+      });
+      page.on("response", (res) => {
+        const url = res.url();
+        if (url.includes("sync")) {
+          console.log(`RESPONSE: ${res.status()} ${url}`);
+          const reqs: { url: string; method: string; status: number }[] = (
+            page as any
+          ).__syncRequests;
+          if (reqs)
+            reqs.push({
+              url,
+              method: res.request().method(),
+              status: res.status(),
+            });
+        }
+      });
+      (page as any).__syncListenersAdded = true;
+    }
 
-    // Capture all network requests and responses for sync URL debugging
-    const syncRequests: {
-      url: string;
-      method: string;
-      status: number;
-      body?: string;
-    }[] = [];
-    page.on("request", (req) => {
-      const url = req.url();
-      if (url.includes("sync")) {
-        console.log(`REQUEST: ${req.method()} ${url}`);
-      }
-    });
-    page.on("requestfailed", (req) => {
-      console.log(
-        `REQUEST FAILED: ${req.method()} ${req.url()} — ${req.failure()?.errorText}`,
-      );
-    });
-    page.on("response", (res) => {
-      const url = res.url();
-      if (url.includes("sync")) {
-        console.log(`RESPONSE: ${res.status()} ${url}`);
-        syncRequests.push({
-          url,
-          method: res.request().method(),
-          status: res.status(),
+    // Reset per-test tracking arrays each time the step runs.
+    (page as any).__syncConsoleLogs = [];
+    (page as any).__syncRequests = [];
+
+    // Init script: registered once; runs automatically on every navigation.
+    // Object.defineProperty with configurable:false would throw on re-definition,
+    // so guard this too.
+    if (!(page as any).__syncInitScriptAdded) {
+      await page.addInitScript((syncUrl: string) => {
+        delete (window as unknown as Record<string, unknown>).__TEST_MODE__;
+        Object.defineProperty(window, "SYNC_BASE_URL", {
+          value: syncUrl,
+          writable: false,
+          configurable: false,
         });
-      }
-    });
-    (page as any).__syncRequests = syncRequests;
+      }, SYNC_BASE_URL);
+      (page as any).__syncInitScriptAdded = true;
+    }
+
+    // Clear the OPFS database file left by a previous test. The file persists
+    // across navigations and localStorage.clear() does not affect OPFS, so
+    // without this the app skips the "Create New Database" UI and goes straight
+    // to Ready — causing the background step to hang for the full test timeout.
+    if (page.url() !== "about:blank") {
+      await page.evaluate(async () => {
+        try {
+          const root = await navigator.storage.getDirectory();
+          await root.removeEntry("workout-data.sqlite").catch(() => {});
+        } catch {
+          // OPFS unavailable — nothing to clear
+        }
+      });
+    }
 
     await context.clearCookies();
     await page.goto("/");
     await page.evaluate(() => localStorage.clear());
-    await page.waitForLoadState("networkidle");
+    // Wait for the app to render its first interactive state rather than relying
+    // on networkidle (which hangs if a WebSocket to the sync backend is open).
+    await page.waitForSelector(
+      'button:has-text("Create New Database"), [data-testid="tab-workout"]',
+      { timeout: 30000 },
+    );
   },
 );
 
