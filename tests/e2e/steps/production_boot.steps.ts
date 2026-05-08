@@ -3,33 +3,59 @@ import { Given, When, Then, expect } from "./fixtures";
 Given(
   "I open the app without test mode and clear storage",
   async ({ page, context }) => {
-    page.on("console", (msg) => console.log("BROWSER:", msg.text()));
-    page.on("pageerror", (error) => console.error("BROWSER ERROR:", error));
+    // Worker-scoped page: guard listener and init-script registration so each
+    // runs exactly once per navigation rather than accumulating across scenarios.
+    if (!(page as any).__productionBootListenersAdded) {
+      page.on("console", (msg) => console.log("BROWSER:", msg.text()));
+      page.on("pageerror", (error) => console.error("BROWSER ERROR:", error));
+      (page as any).__productionBootListenersAdded = true;
+    }
 
-    // Override the __TEST_MODE__ flag set by the fixtures so this test
-    // exercises the real production code path including sync.
-    // Also inject a counter that patches console.debug to count how many
-    // times the sync effect fires — used by the "at most once" assertion.
-    await page.addInitScript(() => {
-      delete (window as unknown as Record<string, unknown>).__TEST_MODE__;
+    // Init script: delete __TEST_MODE__ and install the sync-start counter.
+    // Added once; reruns automatically on every subsequent navigation.
+    if (!(page as any).__productionBootInitScriptAdded) {
+      await page.addInitScript(() => {
+        delete (window as unknown as Record<string, unknown>).__TEST_MODE__;
 
-      (window as any).__syncStartCount = 0;
-      const origDebug = console.debug.bind(console);
-      console.debug = (...args: unknown[]) => {
-        if (
-          typeof args[0] === "string" &&
-          args[0].includes("[Sync] App ready")
-        ) {
-          (window as any).__syncStartCount++;
+        (window as any).__syncStartCount = 0;
+        const origDebug = console.debug.bind(console);
+        console.debug = (...args: unknown[]) => {
+          if (
+            typeof args[0] === "string" &&
+            args[0].includes("[Sync] App ready")
+          ) {
+            (window as any).__syncStartCount++;
+          }
+          origDebug(...args);
+        };
+      });
+      (page as any).__productionBootInitScriptAdded = true;
+    }
+
+    // Clear the OPFS database file left by a previous test. The file persists
+    // across navigations and localStorage.clear() does not affect OPFS, so
+    // without this the app skips the "Create New Database" UI and goes straight
+    // to Ready — causing subsequent steps to hang for the full test timeout.
+    if (page.url() !== "about:blank") {
+      await page.evaluate(async () => {
+        try {
+          const root = await navigator.storage.getDirectory();
+          await root.removeEntry("workout-data.sqlite").catch(() => {});
+        } catch {
+          // OPFS unavailable — nothing to clear
         }
-        origDebug(...args);
-      };
-    });
+      });
+    }
 
     await context.clearCookies();
     await page.goto("/");
     await page.evaluate(() => localStorage.clear());
-    await page.waitForLoadState("networkidle");
+    // Wait for the app to render its first interactive state rather than relying
+    // on networkidle (which can hang when a WebSocket connection is open).
+    await page.waitForSelector(
+      'button:has-text("Create New Database"), [data-testid="tab-workout"]',
+      { timeout: 30000 },
+    );
   },
 );
 
