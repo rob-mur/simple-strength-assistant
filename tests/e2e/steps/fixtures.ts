@@ -15,11 +15,12 @@ type WorkerFixtures = {
 // Worker-scoped context and page eliminate per-test WASM cold-load and
 // BrowserContext creation overhead. The init script runs before every
 // page navigation so each test always starts with a blank slate:
+//   - A per-navigation counter increments on each load; __TEST_DB_NAME__ is set
+//     to "workout-data-<n>" so every test opens a fresh IDB database by name.
+//     Avoids the need to delete the old DB (IDBBatchAtomicVFS holds the
+//     connection open across reloads, causing deleteDatabase to block forever).
 //   - localStorage.clear() removes the FileSystem cached-handle entry so the
 //     app enters its fallback/test init path on every load.
-//   - indexedDB.deleteDatabase("workout-data") destroys the previous test's
-//     data; IDB operations are queued, so the app's subsequent sqlite.open()
-//     receives an empty database.
 //   - __TEST_MODE__ enables in-app test hooks (e.g. __dbExecuteQuery).
 export const test = base.extend<{}, WorkerFixtures>({
   _workerCtx: [
@@ -41,8 +42,12 @@ export const test = base.extend<{}, WorkerFixtures>({
     async ({ _workerCtx }, use) => {
       const page = await _workerCtx.newPage();
       await page.addInitScript(() => {
+        const w = window as unknown as Record<string, unknown>;
+        const seq = parseInt(localStorage.getItem("__test_seq__") || "0") + 1;
         localStorage.clear();
-        (window as unknown as Record<string, unknown>).__TEST_MODE__ = true;
+        localStorage.setItem("__test_seq__", String(seq));
+        w.__TEST_MODE__ = true;
+        w.__TEST_DB_NAME__ = `workout-data-${seq}`;
       });
       await use(page);
       await page.close();

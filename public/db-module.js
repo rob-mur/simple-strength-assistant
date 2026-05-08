@@ -9,7 +9,12 @@
 // Vendored @vlcn.io/crsqlite-wasm@0.16.0 — no external runtime dependency.
 // The .mjs bundle and .wasm binary live in public/vendor/crsqlite/.
 const CRSQLITE_WASM_URL = "/vendor/crsqlite/crsqlite-wasm.mjs";
-const DB_NAME = "workout-data";
+// In test mode the init script sets __TEST_DB_NAME__ to a per-navigation unique
+// name so each test opens a fresh IDB database without needing to delete the
+// previous one (IDBBatchAtomicVFS holds the connection open across reloads,
+// so deleteDatabase is always blocked).
+const DB_NAME =
+  (typeof window !== "undefined" && window.__TEST_DB_NAME__) || "workout-data";
 
 // Tables that must be marked as CRRs for CRDT-based replication.
 const CRR_TABLES = ["exercises", "completed_sets", "settings", "workout_plans", "workout_plan_exercises", "workout_templates", "workout_template_exercises"];
